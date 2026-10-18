@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+# KiCad temporary / backup files
+*-backups/
+*.kicad_prl
+*.lck
+fp-info-cache
+_autosave-*
+\#auto_saved_files#
+hardware/build/
