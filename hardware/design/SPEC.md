@@ -82,9 +82,10 @@ VBUS ── link ── R12 4.7 Ω ── VBUS_NRF → nRF VBUS pad (USB detect)
   (hardware/sim, LDO-1, LDO-6).
 * **Battery measurement**: always-on divider VSYS → 2.2 MΩ → VSYS_SENSE → 1 MΩ →
   GND, with 100 nF on VSYS_SENSE, into AIN0 (P0.02). That is ~1.3 µA, read with
-  the internal 0.6 V reference at gain 1/6. Keep the VSYS_SENSE node clean:
-  4.5 nA of leakage uses up the whole ±10 mV calibrated-accuracy budget
-  (hardware/sim, VSENSE-2).
+  the internal 0.6 V reference at gain 1/6. Keep the VSYS_SENSE node away from
+  other copper and clean: 4.5 nA of leakage on it uses up the whole ±10 mV
+  calibrated-accuracy budget (hardware/sim, VSENSE-4,
+  test_pin_leakage_sensitivity).
 * **Charger (base)**: BQ25180YBGR. IN 2.2 µF/25 V 0805 X7R + SMF5.0A TVS (an 0603
   X5R loses too much to DC bias to keep ≥ 1 µF effective; hardware/sim, USB-3),
   SYS 10 µF/25 V, BAT 4.7 µF. The TS/MR pin takes a 10 kΩ B3435 NTC
@@ -92,19 +93,24 @@ VBUS ── link ── R12 4.7 Ω ── VBUS_NRF → nRF VBUS pad (USB detect)
   Firmware register settings: docs/firmware.md §13.1. On USB, SYS regulates to
   the SYS_REG setting: firmware sets 4.4 V (rule in §5.4; the POR default is
   4.5 V). The total VSYS capacitance is already close to the BQ25180's 100 µF
-  maximum: do not add VSYS bulk (hardware/sim, NF-2). Firmware writes
-  TS_CONTROL (0x0B) = 0x90 at init (TS_HOT 50 °C, TS_COLD 3 °C) so the JEITA
-  limits hold with the NTC tolerances (hardware/sim, charger_ts-1), and MUST
+  maximum: do not add VSYS bulk (hardware/sim, NF-2). Firmware MUST write
+  TS_CONTROL (0x0B) = 0x90 at init (TS_HOT 50 °C, TS_COLD 3 °C): with the
+  default 0x00 the worst-case COLD trip is about −2 °C, so the JEITA limits do
+  not hold with the NTC tolerances (hardware/sim, charger_ts-1). It MUST
   treat STAT0.TS_OPEN_STAT = 1 as a fault (CHG_DIS = 1, "temperature sensor
   fault"), because an open NTC can disable TS monitoring rather than read cold
-  (hardware/sim, charger_ts-v1).
+  (hardware/sim, charger_ts-v1). While VBUS is present it MUST set CHG_DIS = 1
+  when the nRF die temperature reads below 0 °C and clear it above about 3 °C:
+  below about −11 °C the TS bias drives TS/MR above VTS_ENZ, where the
+  BQ25180 does not guarantee cold-charge protection (hardware/sim, charger_ts-3).
 * **Press / ship-wake network (base)**: SW1 (centre tact switch, TS-1187A-B-A-B,
   1.6 N) connects VBAT → 1 kΩ (R3) → SW_GATE. R4 = 100 kΩ pulls SW_GATE to GND,
-  so the Q1 gates discharge within the BQ25180 deglitch on release (worst
-  38.5 µs; it costs ~42 µA from VBAT only while the button is held)
+  so the Q1 gates discharge within 38.5 µs worst case on release, inside the
+  64 µs deglitch the simulation assumes (SLUSE99C specifies no TS deglitch);
+  it costs ~42 µA from VBAT only while the button is held
   (hardware/sim, charger_ts-2). SW_GATE
-  drives both gates of a BSS138DW: Q1 drain → BQ25180 TS/MR (MR wake/reset
-  function), Q2 drain → BTN_N (to nRF, SENSE wake). Both sources go to GND.
+  drives both gates of the BSS138DW Q1: Q1A drain → BQ25180 TS/MR (MR wake/reset
+  function), Q1B drain → BTN_N (to nRF, SENSE wake). Both sources go to GND.
   A press pulls TS/MR low, so firmware MUST ignore TS_STAT, TS_FAULT and TS
   interrupts while BTN_N is low and for 5 ms after (hardware/sim, charger_ts-v2).
 * **USB-C (base)**: HRO TYPE-C-31-M-12. Each CC pin gets its own 5.1 kΩ to GND.
@@ -156,8 +162,8 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 
 ### 5.1 `main_power` — link, LDO, rails
 * J1 link connector (pinout §2): side-entry SM12B-SRSS-TB on the bottom at r = 19.5 mm, θ = 330° (§8).
-* U1 RT9080-33GJ5 (C841192) VSYS → +3V3 (§3). VSYS bulk C1 22 µF 0805 plus C2 10 µF at the LDO. The 10 µF VSYS caps
-  (main C2, C6, C41; base C4) are 25 V parts (CL10A106MA8NRNC, C96446): a 10 V 0603 keeps only ~28 % of its value at
+* U1 RT9080-33GJ5 (C841192) VSYS → +3V3 (§3). VSYS bulk C1 22 µF 0805 plus C2 10 µF at the LDO. The 10 µF 0603 VSYS caps
+  (main C2, C6, C41; base C2, C4) are 25 V parts (CL10A106MA8NRNC, C96446): a 10 V 0603 keeps only ~28 % of its value at
   5 V, and VSYS has to absorb the stepper's coast energy on USB (hardware/sim, MD-5).
 * VSYS_SENSE divider R1 2.2 MΩ (C11490) / R2 1 MΩ / C5 100 nF (§3).
 * U2 TPS22917DBVR (C2681320; KiCad `Power_Management:TPS22917DBV`): VIN = VSYS (C6 10 µF/25 V), ON = LED_PWR_EN (R3
@@ -188,7 +194,8 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
     the pin sees the settled VBUS: 4.49–5.49 V for 4.5–5.5 V sources, worst 5.488 V vs the 5.8 V abs max
     (6.5–8.4 V without R12). The DC check at VBUS 4.5 V with a 1.1 A charger load gives 4.378 V at the pin vs the
     4.35 V minimum (28 mV margin, resting on the typical 2.4 mA IUSB), so bring-up confirms enumeration from a 4.5 V
-    supply through a 1 m cable (hardware/sim, USB-1).
+    supply through a 1 m cable (hardware/sim, USB-1). R12 also limits a C12 short to ≈ 1.2 A, which opens the 0402
+    (hardware/sim, V-5).
   * U12 USBLC6-2SC6 (C7519) at the module's D+/D− pads, rail on VBUS_NRF, as close as the module courtyard allows:
     without it an IEC 8 kV hit on D+/D− drives 2.6–3.7 A into the nRF pads through the ~145 nH link. Accepted
     residual risk (rev A): with both arrays at datasheet-max clamps the pad current is 1.27 A at a 100 mm harness vs
@@ -253,11 +260,15 @@ Boost:
     input cannot carry the boost inrush, so otherwise the unit reboot-loops exactly in the "battery empty, plug in"
     case (hardware/sim, NEW-1, OLED-V1).
   * Firmware MUST NOT toggle OLED_VCC_EN during an actuator move when VBAT < 3.6 V; it enables the OLED before the
-    park move (hardware/sim, NEW-2).
+    park move. The OLED turn-on surge on top of a stroke eats the BQ25180 BAT-pin margin to BUVLO at a low cell
+    (hardware/sim, NEW-2).
   * After OLED_VCC_EN goes high, firmware waits 200 ms (Orient sequence) before AFh. A wait shortened after measuring
-    VCC settling MUST never be below 10 ms, which covers U21's tON and the boost soft start (hardware/sim, OLED-V2).
-  * Firmware records OLED_VCC_EN in retained RAM; if the next reset is a brown-out or BAT_OCP_FAULT, it MUST leave the
-    OLED off and show an error on the LEDs (hardware/sim, OLED-V3).
+    VCC settling MUST never be below 10 ms: VCC can take ~6.3 ms to reach 12.5 V (VSYS 3.0 V, weak TPS61040, L20
+    −20 %, C37 +10 %; 4.9 ms with typical parts), so the old 5 ms floor was too short (hardware/sim, OLED-V2,
+    test_startup_time_vs_firmware_floor).
+  * Firmware records OLED_VCC_EN in retained RAM; if the next reset is a brown-out or BAT_OCP_FAULT with it recorded
+    high, it MUST leave the OLED off for the session and show an error on the LEDs, so a 13 V rail fault (J20 puts
+    VCC, pin 2, next to GND, pin 1, at 0.5 mm pitch) cannot reboot-loop the unit (hardware/sim, OLED-V3).
   * Below rested VBAT 3.75 V, and whenever the LED current exceeds its 150 mA sustained cap, firmware MUST hold
     C7 ≤ 08h and ≤ 30 % white area: at low VSYS the boost has almost no headroom over the full-white current
     (hardware/sim, OLED-BST-2).
@@ -267,18 +278,20 @@ Boost:
   `LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm`), chained DOUT→DIN (nets LED_D1…LED_D47; the last DOUT is LED_D48). Each LED has its own 100 nF 0402 (C1525) on
   VLED/GND (C101…C148, same index).
   BOM rule: D101–D148 must be V6 parts (the data-line margins below are for the V6 input threshold), or fit U43/C43 and
-  remove R43 (hardware/sim, LED-DATA-2). WS2812B-2020-V6 (C52917434) is pin-compatible only: its 12 mA/ch gives a 2.35 A
-  worst case, so it may be fitted only together with the firmware's instantaneous current cap (≈ 1.0 A at full
-  battery), and the link power contacts are then at their limit (hardware/sim, PI-3).
+  remove R43 (hardware/sim, LED-DATA-2). WS2812B-2020-V6 (C52917434) is pin-compatible only: at 12 mA/ch the full-white
+  ring draws 1.73 A (48 × 3 × 12 mA) and the coincident hardware worst case is ≈ 2.35 A (docs/architecture.md §8.4),
+  above the 1 A rating of each of the link's two VSYS contacts when uncapped, so it may be fitted only together with
+  the firmware's instantaneous current cap (≈ 1.0 A at full battery) (hardware/sim, PI-3).
 * LED_DIN_MCU → R40 220 Ω (next to U10 pad 22 = P0.06; limits DIN clamp injection if P0.06 is ever high while VLED is
   off) → LED_DIN_R, with a 100 kΩ pull-down (R41) on LED_DIN_R → R43 0 Ω (fitted) → LED_DIN (D101.DIN).
   D148.DOUT (LED_D48) goes to TP40 with a 100 kΩ pull-down (R42), since V6 DI/DO are swappable.
 * Level shifting: none fitted by default (3.3 V drive through R43). DC high-level margin at D101 DI against the V6 VIH:
   +427 mV realistic, and +41 mV on the nRF datasheet bound (VOH = VDD − 0.4 V) at VSYS 4.59 V (SYS_REG 4.5 V + 2 %);
-  ≈ +116 mV with SYS_REG 4.4 V. The tightest pulse width is T1H (15 ns margin) (hardware/sim, LED-DATA-2; architecture risk R27).
+  on the same bound ≈ +116 mV with SYS_REG 4.4 V (VSYS ≤ 4.488 V). The tightest pulse width is T1H (15 ns margin)
+  (hardware/sim, LED-DATA-2, LDO-2; architecture risk R27).
   A DNP SN74LV1T34 (U43, powered from VLED, with C43) is provided: remove R43 and fit U43/C43 if the bench test shows
   bit errors.
-* Firmware rules (details in docs/firmware.md §6.3–§6.4):
+* Firmware rules (details in docs/firmware.md §6.3–§6.4 and §13.1):
   * P0.06 (I2S0 SDOUT) MUST use `nordic,drive-mode = NRF_DRIVE_H0H1` in its default pinctrl state: standard drive does
     not guarantee the WS2812C T1H/T0L/T1L windows (hardware/sim, LED-DATA-V1).
   * Firmware MUST request the HFXO and wait for it before every LED frame, and release it afterwards: on the HFINT
@@ -291,8 +304,8 @@ Boost:
   * Switch-off order: all-zero frame, P0.06 low, then LED_PWR_EN low, then the ≥ 30 ms wait of §5.1. Firmware MUST
     never drive P0.06 high while VLED is off: QOD holds VLED at 0 V and DIN would back-power the ring through its ESD
     diode. This is a hard rule unless U43 (Ioff) + C43 are fitted and R43 is removed (hardware/sim, LSW-3).
-  * When the loaded VSYS falls below ~3.3 V (WS2812C VDD min), firmware sends an all-zero frame and drops LED_PWR_EN
-    (hardware/sim, LED-DATA-3).
+  * When the loaded VSYS falls below ~3.3 V, firmware MUST send an all-zero frame and drop LED_PWR_EN: VLED = VSYS
+    is then below the WS2812C's 3.3 V VDD minimum (hardware/sim, LED-DATA-3).
   * The LED/OLED/motor current limiter is a hardware-protection function: it MUST be active from the first frame after
     reset, and MCUboot and the USB-recovery image MUST keep LED_PWR_EN, OLED_VCC_EN and MOT_NSLEEP low
     (hardware/sim, PI-1).
@@ -300,6 +313,11 @@ Boost:
     2 kHz PWM draws 0.72 A peaks. The allowed peak rises from 0.19 A at VBAT 3.48 V to the full ring at ≥ 3.90 V, less
     ~0.23 A while the actuator moves; on USB, VBAT cannot be measured, so firmware uses the 3.48 V row until CHG_STAT
     reports CV/done or keeps the total on-USB load ≤ 0.40 A (hardware/sim, PI-2, NF-1).
+  * When the pack cannot supplement SYS on USB (pack absent, BUVLO_STAT = 1 or CHG_STAT = precharge), firmware MUST
+    run the "no supplement" profile: at ILIM 100 mA, LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase,
+    BLE TX 0 dBm, total ≤ 70 mA; at ILIM 500 mA, no actuator moves, LEDs ≤ 100 mA peak-limited, OLED C7 ≤ 08h, total
+    ≤ 400 mA. The POF handler sheds the OLED as well as the LEDs and motor. Otherwise both USB budgets exceed the
+    ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4).
 
 ### 5.5 `sensors` — encoder, IMU, piezo
 * U30 TMAG5273A2QDBVR (C3715882), **bottom side**, θ = 270°, long axis radial, placed so that the **Hall
@@ -329,7 +347,9 @@ Boost:
     (hardware/sim, MD-5).
   * Firmware MUST brake before sleep on every actuator stop path, including FAULT and abort: IN1 = IN2 = 1 on
     U40/U41 for ≥ 3 ms, then IN = 00 and nSLEEP low. It keeps sine microstepping and never uses full-current full
-    steps on USB (hardware/sim, MD-1).
+    steps on USB. Coasting from a full-current hold dumps the coil energy through the DRV8837 body diodes into VSYS,
+    and on USB after charge termination (BATFET off) only the VSYS ceramics absorb it, so VSYS can pass the BQ25180
+    5.5 V abs max (hardware/sim, MD-1).
 * J40 motor: JST SH 4-pin SM04B-SRSS-TB (C160404). Pin 1 = A+ (OUT1 of #1), pin
   2 = A− (OUT2 of #1), pin 3 = B+ (OUT1 of #2), pin 4 = B− (OUT2 of #2). A
   2-wire DC gearmotor can use pins 1–2 only.
@@ -372,7 +392,7 @@ dimensions are in mm.
 | 0.0–1.0 | 3× rubber/micro-suction feet | r = 28 |
 | 1.0–2.5 | base cup floor (PA12/PETG) | cup OD Ø70, wall 1.6, wall top z = 14.3 |
 | 2.5–9.0 | LiPo bay, protected 603450-class pack **≤ 6.0 thick** (≥ 1 mm swelling gap to the board) | long axis along **θ = 0°/180°** (|x| ≤ 27.5, |y| ≤ 17.25); leads exit at the θ = 180° end |
-| 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf, centred on the chord y = +23.5 (θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33) | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 1.75 mm from the pack side (y = 17.25); coax rises to the spindle side slot. Base-board copper keeps ≥ 5 mm away: no plane or pour on B.Cu, In1 or In2 for y > 15.4 (B.Cu/In2 tracks and vias may come to y ≈ 17.5), no F.Cu pour for y > 17 |
+| 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf, centred on the chord y = +23.5 (θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33) | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 1.75 mm from the pack side (y = 17.25); coax rises to the spindle side slot. Base-board planes and pours keep ≥ 5 mm away: no plane or pour on B.Cu, In1 or In2 for y > 15.4, no F.Cu pour for y > 17; B.Cu/In2 tracks and vias may come to y ≈ 17.5 (≈ 3.8 mm) |
 | 9.5–11.1 | **base board** (Ø46 disc + USB tab to r = 35 at θ = 0°, 4-layer 1.6 mm) | supports: **one M2 boss at r = 20, θ = 270°** (outside the pack, 1.9 mm of FR4 to the edge), a printed **rib** under the θ = 90° edge (y 17.75–18.75, between the pack and the antenna shelf; no boss fits there) and the USB-C shell clamped in the cup wall |
 | 11.1–12.6 | press switch TS-1187A (1.5 tall) at the base-board centre | |
 | 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, ±18°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30 with a **through-notch at θ = 0° for the USB-C** (x ≥ 26.5, |y| ≤ 5.6; the receptacle top is at z 14.36)). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |

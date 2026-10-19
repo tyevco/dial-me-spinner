@@ -20,8 +20,9 @@ The same hardware serves three uses:
 * **Fidget toy.** Long free spins or clicky spins, with a spin and RPM counter.
 
 > **Status: rev A. Schematics and both PCB placements are generated; nothing
-> has been built or tested.** The schematics of both boards pass ERC with no
-> errors or warnings. Both boards are placed by `layout.py`; for the routing,
+> has been built or tested.** The schematics of both boards pass ERC. The only
+> report is one intended pin pair that `build.py` waives and lists (U21's QOD
+> tied to its VOUT). Both boards are placed by `layout.py`; for the routing,
 > DRC and fab-output status, see the PR. `release.py` writes fab outputs into
 > `hardware/fab/` only after DRC and schematic parity pass. The mechanical
 > model's clash check of the generated boards reports only the intended
@@ -194,7 +195,8 @@ quietly start passing.
 ## Status and next steps
 
 * **Done:** subsystem research with independent verification. Architecture
-  (SPEC.md). Generator toolchain. Schematics of both boards, ERC-clean.
+  (SPEC.md). Generator toolchain. Schematics of both boards, ERC-clean
+  apart from the one documented `build.py` waiver.
   Both boards placed (`layout.py`: SPEC §8 placement of the constrained parts,
   clustering of the rest); for routing, DRC and fab outputs, see the PR.
   The fab-output script `release.py`, which writes Gerbers, the JLCPCB BOM and
@@ -210,9 +212,9 @@ quietly start passing.
   documents.
 * **In progress:** the SPEC items in mechanical §3A. The remaining strict
   `xfail`s of the SPICE suite are firmware-dependent rules (written into
-  firmware.md and SPEC §5) or accepted rev-A risks, such as the D21 sleep
-  leakage and the USB ESD margin with a short harness
-  ([docs/simulation.md](docs/simulation.md)).
+  firmware.md and SPEC §5) or accepted rev-A risks, such as the USB ESD
+  margin with a short harness, the actuator thrust and the OLED boost's
+  FB-bias spread ([docs/simulation.md](docs/simulation.md)).
 * **Not done:** no prototype has been built or tested, and no firmware code has
   been written. Every item marked "to verify on prototype" in the docs is
   still open. The detent actuator's thrust margin is open (architecture risk

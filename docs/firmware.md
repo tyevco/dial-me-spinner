@@ -181,8 +181,9 @@ Rules the firmware has to respect:
   the board files. In GPIO mode the NFCT stays disabled and the tag cannot
   work (hardware/sim, SLP-V1).
 * The TWIM pins keep the default S0D1 drive. Stronger pull-ups or H0D1 drive
-  would need series resistors in I2C_SCL/I2C_SDA, so H0D1 is not used
-  (hardware/sim, PB-2, NF-3).
+  would need series resistors in I2C_SCL/I2C_SDA, so H0D1 is not used and
+  the H0D1 proposal for VOL margin (PI-5) is not adopted (hardware/sim,
+  PB-2, NF-3).
 
 ### 1.4 Memory map
 
@@ -489,7 +490,7 @@ against the current bindings.
  * gpio0: P0.27 TMAG_INT_N, P0.30 IMU_INT2 */
 &gpio0 { status = "okay"; sense-edge-mask = <0x48000000>; };
 /* gpio1: P1.03 CHG_INT_N, P1.10 BTN_N, P1.12 IMU_INT1, P1.14 HOME_N */
-&gpio1 { status = "okay"; sense-edge-mask = <0x0000540C>; };
+&gpio1 { status = "okay"; sense-edge-mask = <0x00005408>; };
 
 &wdt0 { status = "okay"; };
 
@@ -1611,7 +1612,8 @@ There is no current sensing, so stall detection is open-loop. A PM stepper
 slips against the stop at 50 % current, and the final error is ±1–2 full
 steps (±0.02–0.04 mm, about ±2–4 % torque). *TVP:* confirm on the prototype
 that repeated 50 % stalls do not wear or jam the lead-screw nut, and that the
-run-current approach clears the loaded zone at 446 PPS at VSYS 3.4 V.
+run-current approach clears the loaded zone at 446 PPS at VSYS 3.55 V, the
+non-park move minimum of [§5.8](#58-limits).
 
 ### 5.5 Modes
 
@@ -1849,7 +1851,9 @@ while (lit_channels(frame) * I_CH > pk)
      taking VLED to 10 % in about 24 ms nominal and 26.6 ms worst case
      (3.48 V start, C8/C9 +20 %, DC bias) (SPEC §5.1; hardware/sim, LSW-2).
      Test 12 measures tFALL: the datasheet tFALL row implies an internal QOD
-     of about 170 Ω rather than 150 Ω (hardware/sim, NEW-4).
+     of about 170 Ω rather than 150 Ω (hardware/sim, NEW-4). Clear
+     LED_PWR_EN in the retained rail-state record once the pin is low
+     ([§15](#15-fault-handling)).
 
   This order is a hard rule (hardware/sim, LSW-3): all-zero frame, P0.06
   low, then LED_PWR_EN low. Firmware MUST never drive P0.06 high while VLED
@@ -1967,8 +1971,9 @@ or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
 * Firmware MUST never set OLED_VCC_EN while the BQ25180 input limit is
   100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS: no
   BUVLO_STAT and VBAT ≥ about 3.15 V, taken from the last battery-only
-  reading (unknown counts as "cannot"). It raises OLED_VCC_EN only after
-  ILIM = 500 mA, and until then shows the charging cue on the LEDs (≤ 20 mA).
+  reading (unknown counts as "cannot"). Otherwise it raises OLED_VCC_EN only
+  after ILIM = 500 mA, and until then shows the charging cue on the LEDs
+  (≤ 20 mA).
   A dead battery cannot supplement SYS and the 100 mA input cannot carry the
   boost's turn-on surge, so otherwise the unit reboot-loops exactly in the
   "battery empty, plug in" case (hardware/sim, NEW-1, OLED-V1; [§13.3](#133-input-current-strategy-on-usb)).
@@ -2528,8 +2533,9 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
    LED_PWR_EN or OLED_VCC_EN recorded high keeps that load off for the
    session ([§15](#15-fault-handling)); a latched `state/vled_fault` keeps
    the LEDs off.
-3. With VBUS present: TMR_ILIM = 0xC9 and the 100 mA / no-supplement rules
-   until the USB state is known ([§13.3](#133-input-current-strategy-on-usb)).
+3. With VBUS present, the step-1 init already writes TMR_ILIM = 0xC9 (the
+   `bq_desired` value), and the 100 mA / no-supplement rules apply until the
+   USB state is known ([§13.3](#133-input-current-strategy-on-usb)).
 4. LED limiter active before the first frame ([§6.3](#63-power-limiter));
    encoder init; homing if `state/carriage.valid = 0` (deferred while ILIM
    is 100 mA or VSYS is too low, [§5.8](#58-limits)); OLED init last, under
@@ -2670,7 +2676,7 @@ is the corrected one.
 | 5 | CHARGECTRL1 (0x06) | 0x92 | BATOCP 1.5 A, BUVLO 3.0 V, CHG_STATUS INT on, ILIM INT masked, VDPM INT on |
 | 6 | TMR_ILIM (0x08) | **0xCD** (or 0xC9, [§13.3](#133-input-current-strategy-on-usb)) | MR long press 20 s, MR_RESET_VIN 0, autowake 1 s, **ILIM code 101 = 500 mA** (450/475/498 mA min/typ/max) |
 | 7 | SHIP_RST (0x09) | 0x09 | Long press = hardware reset, WAKE1 300 ms, WAKE2 2 s, EN_PUSH = 1 |
-| 8 | SYS_REG (0x0A) | **0x20** | SYS_REG_CTRL = 001: **SYS 4.4 V** on USB (POR default 010 = 4.5 V), normal SYS mode (SLUSE99C Table 8-19). MUST be 001, or 010 at most, never 011–111 (4.6 V up to pass-through) while the LEDs may run; `bq25180.c` asserts this on every SYS_REG write. It holds the LED data margin ([§6.1](#61-hardware-facts-used)) and lowers the coast peak on VSYS (hardware/sim, LED-DATA-V3, LDO-2, MD-5) |
+| 8 | SYS_REG (0x0A) | **0x20** | SYS_REG_CTRL = 001: **SYS 4.4 V** on USB (POR default 010 = 4.5 V), normal SYS mode (SLUSE99C Table 8-19). MUST be 001; 010 (4.5 V) is the only other allowed value, never 011–111 (4.6 V up to pass-through) while the LEDs may run; `bq25180.c` asserts this on every SYS_REG write. It holds the LED data margin ([§6.1](#61-hardware-facts-used)) and lowers the coast peak on VSYS (hardware/sim, LED-DATA-V3, LDO-2, MD-5) |
 | 9 | TS_CONTROL (0x0B) | **0x90** | TS_HOT = 10 (50 °C), TS_COLD = 01 (3 °C), WARM 45 °C / COOL 10 °C unchanged (Table 8-20). With the 0x00 default the HOT/COLD thresholds sit exactly on the JEITA limits, and the NTC and bias tolerances let charging continue at about −2 °C and +65 °C (hardware/sim, charger_ts-1) |
 | 10 | Read STAT0/STAT1/FLAG0 (0x00/0x01/0x02) | | Clears flags; record the initial state, including FLAG0 BAT_OCP_FAULT and STAT1 BUVLO_STAT for the boot checks ([§12.2](#122-entry-and-exit-procedures)) |
 
@@ -3095,7 +3101,8 @@ here, marked, so the history is traceable.
     on USB at 100 mA, [§7.2](#72-init-sequence-and-power-sequencing),
     [§13.3](#133-input-current-strategy-on-usb)). The §1.3 GPIO-table drift
     (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
-    revision, so `test_gpio_sleep_states_from_firmware_doc` should now pass.
+    revision, and `test_gpio_sleep_states_from_firmware_doc` passes against
+    it (hardware/sim/results/report.md).
 
 **To verify on prototype or against documentation**
 
@@ -3124,8 +3131,9 @@ here, marked, so the history is traceable.
   sets whether the instantaneous budget of [§6.3](#63-power-limiter) can be
   relaxed (PI-2).
 * I2C with the errata-219 settings: tLOW at U30 pin 1 and U31 pin 1; SCL rise
-  time at J3 (above 250 ns, run TWIM1 at 100 kHz); SCL/SDA ringing at J3
-  (hardware/sim, NF-1, PB-2, NF-3).
+  time at J3 (above 250 ns, run TWIM1 at 100 kHz); SDA-to-SCL setup at
+  U31 and J3 (if short, also 100 kHz); SCL/SDA ringing at J3
+  (hardware/sim, NF-1, PB-2, NF-2, NF-3).
 * NFC: read range through the top cover and the C16/C17 retune; the NCS NFC
   Kconfig and API names; whether T2T and T4T link into one image; which
   TIMER the nrfx NFCT driver claims ([§9.7](#97-nfc-tag-emulation)).

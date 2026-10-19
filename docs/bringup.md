@@ -117,7 +117,7 @@ from the first good board and compare later boards against them (±20 %).
 | +3V3 (TP2) | > 10 kΩ after charging (record) | < 1 kΩ | Supply pins of nRF, flash, TMAG, IMU, OLED logic, DRV VCC, DRV5032 |
 | VLED (TP3) | > 10 kΩ | < 1 kΩ | 48 LEDs, 48× 100 nF, 2× 22 µF |
 | +13V_OLED (boost output cap C39) | **520–580 kΩ** (499 k + 52.3 k FB divider), panel not fitted | outside range | Confirms the divider |
-| OLED_VIN (boost input cap C38) | **≈ 0.55–0.9 MΩ**: about the +13V_OLED reading plus a diode drop (record) | < 10 kΩ | Behind the load switch U21 (TPS22917, off), but OLED_VIN reaches GND through L20 → D21 (forward-biased from OLED_VIN toward +13V_OLED) → the 499 k + 52.3 k divider. The exact value depends on the meter's test current and the B5819W drop. U21's QOD pin is tied to OLED_VIN, but its ≈ 150 Ω discharge acts only while U21 has VIN ([TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §9.3.3.1), so it does not show unpowered; B-5 and B-9.9a check it powered. U21's always-on reverse-current blocking (reverse leakage ≤ 1 µA) leaves no diode path back into VSYS |
+| OLED_VIN (boost input cap C38) | **≈ 0.55–0.9 MΩ**: about the +13V_OLED reading plus a diode drop (record) **[TVP]** | < 10 kΩ | Behind the load switch U21 (TPS22917, off), but OLED_VIN reaches GND through L20 → D21 (forward-biased from OLED_VIN toward +13V_OLED) → the 499 k + 52.3 k divider. The exact value depends on the meter's test current and the B5819W drop. U21's QOD pin is tied to OLED_VIN, but its ≈ 150 Ω discharge acts only while U21 has VIN ([TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §9.3.3.1), so it does not show unpowered; B-5 and B-9.9a check it powered. U21's always-on reverse-current blocking (reverse leakage ≤ 1 µA) leaves no diode path back into VSYS |
 | VBUS (J1 pin 5) | > 100 kΩ | < 10 kΩ | Only R12 hangs on this net on the main board |
 | VBUS_NRF (C12, module side of R12) | > 100 kΩ | < 10 kΩ | nRF VBUS pad 32, C12 4.7 µF and the U12 USBLC6 rail (pin 5). Low here: U12 turned (B-2) or C12 shorted. A C12 short with VBUS applied burns the 0402 R12 open at ≈ 1.2 A (hardware/sim, V-5) |
 | VBUS ↔ VBUS_NRF | ≈ 4.7 Ω (R12; zero the leads first) | open, or > 10 Ω | R12 FRC0402F4R70TS in series to the nRF VBUS pin (SPEC §5.2) |
@@ -324,8 +324,8 @@ AIN0 = P0.02, gain 1/6, internal 0.6 V reference (3.6 V full scale), TACQ **40 �
 Take the calibration reference from the DMM at TP1 (VSYS at the divider), not from the bench setpoint, or keep
 the board current below 5 mA while calibrating: the BATFET, link and path resistance otherwise store a permanent
 gain error (hardware/sim, VSENSE-5). The calibrated reading holds ±10 mV only at 25 ± 10 °C on a fresh board; it
-can drift ±46 mV over −10…60 °C and with ageing, which is why firmware's low-battery SHIP threshold is 3.53 V
-(hardware/sim, VSENSE-1, VSENSE-4).
+can drift ±46 mV over −10…60 °C and with ageing, which is why firmware MUST use a low-battery SHIP threshold of
+3.53 V, not 3.48 V (hardware/sim, VSENSE-1, VSENSE-4).
 
 On USB this reads SYS (4.4 V once firmware has set SYS_REG, 4.5 V at power-on), not the battery. Use the BQ25180
 CHG_STAT field while charging.
@@ -415,7 +415,7 @@ i2c scan i2c@40004000   # TWIM1, system bus (P0.08 SCL / P1.09 SDA)
   | SCL low time tLOW | U30 pin 1 (TMAG_SCL), U31 pin 1 (I2C_SCL) | ≥ 1.3 µs (UM10204 Fast mode). SPICE: 1.306–1.312 µs at U30 with the workaround, ≈ 1.97 µs at U31 at 250 kHz |
   | SCL rise time (30–70 %) | Base J3 pin 9, the far end of the harness | ≤ 250 ns (Fast mode allows 300 ns). If longer, run TWIM1 at 100 kHz; do not stiffen the pull-ups (hardware/sim, PB-2) |
   | SDA-to-SCL setup tSU;DAT | U31 pins 4/1 (0.8/0.2 × VDD_IO points) and base J3 pins 10/9 (0.7/0.3 × VDD) | ≥ 100 ns. If short, run TWIM1 at 100 kHz (hardware/sim, test_piezo_bus NF-2) |
-  | Ringing on SCL/SDA | Base J3 | Record; no extra crossings of VIL/VIH (hardware/sim, NF-3) |
+  | Ringing on SCL/SDA | Base J3 | Record; no extra crossings of VIL/VIH (hardware/sim, test_piezo_bus NF-3) |
 
 ### B-9.3 LIS2DW12
 
@@ -780,8 +780,8 @@ phase's inductance (LCR meter): the coast energy that VSYS must absorb when a mo
 
 | Check | Expected |
 |---|---|
-| Full steps at 100 PPS, ≤ 50 % amplitude | Smooth motion, 0.02 mm per full step |
-| Full stroke | 375 full steps = 7.5 mm |
+| Full steps at 100 PPS, ≤ 50 % amplitude | Smooth motion. Measure the carriage travel per full step with a dial indicator: the slider moves 0.02 mm per full step (M2×0.4 lead), and the 0.75 inclined slot of the link plate makes that 0.015 mm at the carriage ([`mechanical.md`](mechanical.md) §7) |
+| Full stroke | 7.5 mm of carriage = 500 full steps by mechanical.md §7. [`firmware.md`](firmware.md) §3.1 (`stroke-steps = <375>`), and with it the step counts in B-9.10d and B-12, still assume 0.02 mm per full step at the carriage, so 375 steps would move it only ≈ 5.6 mm. Record the measured travel and correct firmware.md and these step counts together |
 | Phase current at 100 % | ≈ 185 mA (3.7 V) to 225 mA (4.5 V) |
 | Supply peak | ≤ 0.45 A |
 | After every move, and on every stop path including FAULT and abort | Brake (IN1 = IN2 = 1 on U40 and U41 for ≥ 3 ms), then all IN low and nSLEEP low, so hold power is zero (the lead screw self-locks) ([detent research]). Firmware MUST brake before sleep: coasting both coils dumps their energy into VSYS, and on USB after charge termination nothing but the VSYS capacitors absorbs it. Never run full-current full steps on USB power (SPEC §5.6; hardware/sim, MD-1) |
@@ -864,8 +864,9 @@ reading plus about 3–6 µA. Readings below about 1 µA are at the instrument f
 
 The targets are derived from datasheet typicals at 25 °C ([TVP]); the panel-fitted rows include ≈ 5.4 µA of D21
 leakage through U21's QOD, which SPEC §5.3 accepts for rev A (hardware/sim, SLEEP BUDGET). For comparison, the
-SPICE sleep total (System ON idle with rotation and motion wake, pack PCM included) is 37.4 µA at VBAT 3.7 V and
-25 °C (architecture §8.2). Tighten the targets after the first good unit.
+SPICE sleep total (System ON idle with the TMAG W&S at 100 ms and IMU wake, the architecture §8.2 "Sleep" column)
+is 37.4 µA at VBAT 3.7 V and 25 °C. It includes the 3 µA pack-PCM line, so the PPK2 should read about 34 µA in
+that mode. Tighten the targets after the first good unit.
 
 | Mode | How to enter | Expected typ | Pass |
 |---|---|---|---|
@@ -912,10 +913,10 @@ against the footprint first) (hardware/sim, LDO-6, SLP-3).
 | ≈ +0.9 mA | SPIM3 not fully off (anomaly 195) | Write 1 to 0x4002F004 after disable |
 | ≈ +15 µA | A wake pin on a GPIOTE IN channel instead of PORT/SENSE (17.37 vs 2.36 µA) | Use `sense-edge-mask` |
 | ≈ +70 µA | TMAG_INT_N latched low through its 47 kΩ pull-up | Read CONV_STATUS to clear it |
-| +10–50 µA | QSPI flash not in deep power-down | Send B9h; enable the driver's power management; the sleep pinctrl must bias SCK and IO0–IO3 low (pull-down) (hardware/sim, SLP-4) |
+| +10–50 µA | QSPI flash not in deep power-down | Send B9h; enable the driver's power management; the sleep pinctrl MUST set bias-pull-down on SCK and IO0–IO3 (hardware/sim, SLP-4) |
 | +60–170 µA | LIS2DW12 SA0 grounded (address 0x18) | Assembly/schematic fault |
 | ≈ +33 µA on main, + ≈ 37–42 µA on base | BTN_N held low: switch pre-gap is 0. Main: R56 100 kΩ from +3V3; base: VBAT through R3 1 kΩ + R4 100 kΩ | Mechanical, assembly §11.3 steps 1 and 7 |
-| Tens of µA, bursty; OLED_VIN ≈ 0.5–1.2 V in sleep | U21's QOD (pin 5) not connected to OLED_VIN (open joint): D21's leakage floats OLED_VIN and the boost hiccups (hardware/sim, SLP-1) | Reflow U21 pin 5 |
+| Hardly any at 25 °C, but OLED_VIN ≈ 1.5 V in sleep instead of < 50 mV (B-9.9b) | U21's QOD (pin 5) not connected to OLED_VIN (open joint): D21's leakage floats OLED_VIN to the TPS61040's UVLO (1.46–1.53 V simulated) and the boost hiccups, burning about what the QOD would sink (≈ 5 µA at 25 °C, ≈ 27 µA at 60 °C; the pre-fix design drew 36.9 µA against 37.4 µA now), so the current alone does not show it (hardware/sim, SLP-1, `test_boost_enable_pin_in_shutdown_in_sleep`) | Reflow U21 pin 5 |
 | Reading rises steeply when the unit is warm | D21 reverse leakage (≈ 30 µA at 60 °C) | Not a fault; measure at 20–25 °C |
 | ≈ +5 mA | OLED VCC left on (black screen) | `AE` + VCC_EN low |
 | mA level | VLED left on, logging backend active, CPU not sleeping | Check LED_PWR_EN, disable UART/RTT |

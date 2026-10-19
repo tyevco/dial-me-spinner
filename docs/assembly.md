@@ -206,7 +206,7 @@ Ask JLC to send the X-ray images. If they are not available, rely on the electri
 6. The main board is assembled on both sides. The base board is assembled on the top side only.
 ```
 
-Copy notes 5 and 6 from the generated `hardware/fab/<board>/ORDER-NOTES.md` rather than from this text (§3.5):
+Copy notes 5 and 6 from the `hardware/fab/<board>/ORDER-NOTES.md` that `release.py` writes rather than from this text (§3.5):
 it lists the parts flagged `dnp=True` in the sheets and every bottom-side placement.
 
 ### 3.4 CPL and orientation spot-checks (in the JLC preview, before paying)
@@ -413,7 +413,8 @@ r 17.3, θ = 215°, u.FL end facing outward at r ≈ 23). The 50 mm -0050 is too
 * The earlier chord y = +26 put the strip's corners at r ≈ 35.1, outside the cup's inner wall at r = 33.4, so
   SPEC moved it to y = +23.5. The pack is then only 1.75 mm away in plan instead of ≥ 4 mm, and SPEC replaced the
   θ = 90° base-board boss, which stood on the strip, with a printed rib at y 17.75–18.75 (§11.2). The base board
-  keeps its copper ≥ 5 mm from the antenna: no B.Cu copper for y > 15.4 and no F.Cu pour for y > 17 (`layout.py`).
+  keeps its copper ≥ 5 mm from the antenna: no plane or pour on B.Cu, In1 or In2 for y > 15.4 (B.Cu/In2 tracks
+  and vias may come to y ≈ 17.5) and no F.Cu pour for y > 17 (§2.2, `layout.py`).
 * The θ = 60° guide ear sits 0.75 mm above the antenna's +x end, so its pin, cross pin and stop screw are plastic
   (§4.3). The steel spring stays unless S11 says otherwise **[TVP]**.
 * At z ≈ 5.5–6 the radiator is about 6 mm above the desk (SPEC). A metal desk still detunes it; bring-up
@@ -760,7 +761,7 @@ FA to the base.
 | A4 | Build and test the **bench harness** (§6). Link the boards. First linked power-up: 5.00 V at a 100–150 mA limit into the base VBUS TP, no battery. Only after that passes, a charger behind a USB meter | B-6 |
 | A5 | SWD: recover, UICR, flash the bring-up image | B-7 |
 | A6 | First firmware: clocks, DC/DC, SAADC, USB CDC | B-8.1–B-8.6 |
-| A7 | Peripheral smoke tests that need no mechanics: QSPI, I2C, IMU, BQ25180, battery and press network, piezo, LED ring, **bare boost at 13 V** | B-9.1–B-9.9a |
+| A7 | Peripheral smoke tests that need no mechanics: QSPI, I2C, IMU, BQ25180, battery and press network, piezo, LED ring, **bare boost screen (12.7–13.3 V)** | B-9.1–B-9.9a |
 | A8 | Mount the actuator on the main board (§7.3): bond and shim the rails, fit the carriage with its FR4 link plate, zero-lash leaf and detent magnet, and screw the stepper saddle to the θ = 60° hole H4 with a brass M2 (H5 at θ = 120° stays unused). Plug the motor lead into J40. Run the driver, motor and home-sensor tests on the bench. **End at PARK with all IN low and nSLEEP low**, after the ≥ 3 ms brake (SPEC §5.6) | B-9.10a–c |
 | A9 | **MCUboot and recovery gate**, with the TC2030 removed and a battery on J2. Record which recovery route works | B-8.7 |
 

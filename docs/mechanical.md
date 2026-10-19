@@ -18,7 +18,8 @@ magnetic detent, press-click suspension, antenna placement, assembly and mechani
   the full output is in [`calcs_output.txt`](../hardware/mechanical/calcs_output.txt). Its section 11 reads the
   model's geometry directly (OpenSCAD `view="prims"` + `board_parts.json`).
 * **Interference check:** [`check_clashes.sh`](../hardware/mechanical/check_clashes.sh) runs CGAL booleans: rotor
-  envelope, press travel, rest, and FA-internal pairs (board parts vs actuator, hub, harness, coax).
+  envelope, press travel, rest, and same-body pairs (board parts vs actuator, hub, harness, coax; battery leads vs
+  cup, plate and guide pins).
   Result: [`clash_report.txt`](../hardware/mechanical/clash_report.txt).
 * **Parts:** [`hardware/mechanical/stl/`](../hardware/mechanical/stl/) (binary STL, oriented for the bed).
   `render_all.sh` regenerates every render, STL and report.
@@ -90,7 +91,7 @@ z is measured from the desk. θ = 0° is the USB-C direction, CCW seen from abov
 | 18.0–25.0 | 608-2Z | outer race r 11 | slip fit in the H7 collar on the lip; wave washer z 25.0–25.5; **0.5 mm 316 cap ring bonded on the collar top, z 25.5–26.0** |
 | 25.0–29.1 | brass hub: inner-race spacer + flange r ≤ 8.5 with 3× M2 tapped at r 6.5 (θ 90/210/330), C-gap at θ 270 for the wires | "3× M2 at r 6.5 (spindle flange)"; rotating hub top z 26.0 | the rotor hub (cap ring) tops out at **26.0** (§3 A6, now in SPEC) |
 | 19.8–29.1 | bowl: stepper (Ø8 can at x 6.5–15.5, y 15.5, axis z 23.8), saddle to the θ 60 board hole | "chord placement near θ = 90°" | sweeps θ ≈ 35–160° (§7) |
-| 26.6–29.08 | detent carriage: Ø3×2 N52 (z 26.6–28.6), 0.48 plate between two rails on the board bottom, 0.8 mm FR4 link plate (z 26.7–27.5) with the inclined slot | 1.0 above the track, r 29 → 21.5 along θ 90 | as SPEC |
+| 26.6–29.08 | detent carriage: Ø3×2 N52 (z 26.6–28.6), 0.48 plate between two rails on the board bottom, 0.8 mm FR4 link plate (z 26.7–27.5) with the inclined slot | 1.0 above the track, r 29 → 21.5 along θ 90; carriage plate 0.5 | as SPEC, except the plate is 0.48 in a 0.50 gap (§7) |
 | 27.65–29.1 | TMAG5273 (bottom), package at r 29.4, θ 270° | Hall element at r 29, θ 270 | Hall element 3.13 mm above the track face |
 | 29.1–30.7 | **main board** Ø64, 4-layer 1.6 mm, parts on both sides | centre Ø5 + 3× plated GND M2 r 6.5 (H1–H3) + 2× NPTH M2 r 17 θ 60/120 (H4/H5) | holes from the PCB; the board sits on the hub, clamped by the M4 nut |
 | 30.7–32.2 | M4×0.5 brass nut, OD 7 | top r ≤ 4.6 kept free for it | on the board top under the OLED, in the bracket's centre hole |
@@ -121,11 +122,13 @@ rails and saddle on the board bottom, and two near misses at 0.3 mm margin (the 
 drop-stop flange 0.15 mm under the carrier lip). The PCB clashes found earlier are fixed (§3B). The tightest
 remaining gaps:
 
-* **Antenna coax** between U12 and the module's inner corner: 0.13 mm to U12 and 0.44 mm above the rotating cap ring
-  (r 9–13). It must be tacked up with Kapton tape at assembly (§12 step 12).
+* **Antenna coax** between U12 and the module's inner corner: 0.13 mm to U12, 0.25 mm to U10 and 0.44 mm above the
+  rotating cap ring (r 9–13). It must be tacked up with Kapton tape at assembly (§12 step 12.4).
+* **Harness** under C11 and R12 (0402s at r 9–10): 0.30 and 0.45 mm.
 * **Coax over base J3 and its plug:** 0.47 mm at rest, 0.22 mm pressed (the free span sags with the FA).
-* **J40** (motor connector, 2.95 tall) to the slider nut at click: 0.35 mm.
+* **J40** (motor connector, 2.95 tall): 0.35 mm to the slider nut at click, 0.55 mm to the rotor envelope.
 * **U10 MDBT50Q** to the rotor envelope: 0.90 mm; to the brass hub 1.05 mm.
+* **USB-C J1** (base) to the ring: 1.24 mm at rest, 0.74 mm pressed.
 * **Battery leads** to the pressed spider plate: 1.40 mm (r 30.2, θ 196°, z 10).
 
 ![clash view](../hardware/mechanical/renders/clash.png)
@@ -151,7 +154,7 @@ remaining gaps:
 | A8 | *(adopted)* FA plate outer ring r 26–30 (continuous) | The USB-C receptacle (z up to 14.36) sits at r 27.7–35 under the ring. | SPEC now has the notch \|y\| ≤ 5.6. | – |
 | A9 | Pre-gap 0.15, "FA moves 0.3–0.5" | TS-1187A travel is 0.25 ± 0.1 (verify). A fixed pre-gap and hard stop cannot cover that spread without crushing or missing the switch (the old 0.5 mm TPU dot put 14–26 N through the 1.6 N switch). | Hard stop **0.50** (SPEC's pressed clearance 1.2 mm kept). Silicone pad k ≈ 20–25 N/mm. **Pre-gap set per unit** = 0.38 − measured travel (0.03–0.23). The switch then sees 2.7 N (≤ 3.9 N worst) at the stop. Reject switches with travel > 0.32. §8. | Medium |
 | A10 | 3 feet at r 28 | A rim press tips the 227 g device at **1.60 N**, below the rim click force (1.9–2.4 N). | 3 × 70° **arc pads** (r 25–31): tip edge 28.1 mm, tip force 11.6 N. | **High** (Surface-Dial use) |
-| A11 | *(adopted)* Actuator in the bowl, chord near θ 90; bottom keep-out θ 60–120 | A ~33 mm VSM08102 cannot lie radially (hub r ≤ 12.2, ring r ≥ 27). The working chord (y 15.5, inclined-slot link) sweeps **θ ≈ 35–160°**. | SPEC now: bottom-side parts in θ 30–160°, r 8.5–27 must keep their bottom at **z ≥ 27.8** (≤ 1.3 mm tall), except where `calcs_output.txt` §11 shows clearance. The only taller part there is J40 (2.95 mm), which clears the slider nut by 0.35 mm and must not move toward the corridor. The θ 120 board hole is unused. | – |
+| A11 | *(adopted)* Actuator in the bowl, chord near θ 90; bottom keep-out θ 60–120 | A ~33 mm VSM08102 cannot lie radially (hub r ≤ 12.2, ring r ≥ 27). The working chord (y 15.5, inclined-slot link) sweeps **θ ≈ 35–160°**. | SPEC now: bottom-side parts in θ 30–160°, r 8.5–27 must keep their bottom at **z ≥ 27.8** (≤ 1.3 mm tall), except where `calcs_output.txt` §11 shows clearance. Two taller parts reach into it: J40 (2.95 mm), which clears the slider nut by 0.35 mm and must not move toward the corridor, and the piezo BZ1 (1.9 mm, r 22, θ 22°), whose edge reaches θ ≈ 36° and clears the actuator by ≥ 1.0 mm (not listed in §11). The θ 120 board hole is unused. | – |
 | A12 | SPEC §7: no ferromagnetic part within 10 mm of the track; SPEC §8: an 8 mm stepper in the bowl r 12–27 | **Conflict.** Any Ø8 can in the bowl is within 10 mm of the track wherever r > 17. The VSM08102 can comes within **3.1 mm** of the nearest track magnet (r 24.9 vs magnet edge r 28, overlapping z), and its steel lead screw within 4.6 mm. The can cannot move inboard: the collar (r 12.2, top 26.0) blocks it. | Rough estimate of the can's cogging on the alternating track: **10–100 µN·m**, the same order as the bearing drag at 0.1–1 rev/s (18–44 µN·m). It may give preferred rest angles in FREE mode. **Bench test before PCB freeze** (§15 #2). Non-ferrous options: piezo (e.g. squiggle-type) or SMA actuators. Confirm the MDBT50Q shield-can material too. | **High** (to verify) |
 | A13 | Light box z 31.6–34.2, r 27–30 | The LED research wants a 4.0–4.5 mm air gap; this gives 2.6 mm. | Walls 0.1 above the LED tops; 24 septa (one per detent): a segmented "prize wheel" look. Uniformity to verify. | Low |
 | A14 | Detent LUT (research) at R_t 30 on the ring underside | SPEC: R_t 29 on the top face (pitch 3.80 vs 3.93 mm) | Expect ~2–5 % lower torque. Firmware self-calibrates from the in-well f_n. | Low |
@@ -589,8 +592,8 @@ stops).
 **NFC tag coil (13.56 MHz, SPEC §5.2/§8).** A flex coil (~1.4–1.5 µH assumed; C16/C17 180 pF are sized for it)
 lives in the top cover. Its tail solders to the flat pads J11 (NFC_COIL, no part fitted) on the main-board top at
 r 21.5, θ 222°. The pads (1.2 × 2.0 mm, 2.0 mm pitch, at x −15.3 / −16.7, y −15.1 / −13.6) lie under the OLED glass
-and under the OLED bracket rim (rim band |x| 14.7–16.7, z 31.8–32.8, 1.1 mm above the board), which is why they are
-flat pads and not a 2.95 mm header. The model does not contain the coil, a recess for it in the cover or the tail's
+and under the OLED bracket rim (rim band |x| 14.7–16.7, z 31.8–32.8, 1.1 mm above the board), so the tail joint has
+only 1.1 mm of height there. The model does not contain the coil, a recess for it in the cover or the tail's
 path yet: the tail has to come down outside the glass edge (x < −16.9, inside the light box at r 27) and run under the
 rim to the pads, or the rim needs a relief at J11 (to add to the model and verify on the first build). Range and
 detuning (the coil sits close to the OLED, the main-board planes and the steel ring) are architecture risk R39:
