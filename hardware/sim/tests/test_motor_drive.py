@@ -96,7 +96,7 @@ FW_VREAD_MARGIN = 0.075                  # firmware.md §12.4 (VSENSE-1/4/5): VS
 FW_VSYS_MOVE_EST = 3.54                  # firmware.md §5.8 (MD-2): non-park moves only with idle VSYS_est >= 3.54 V
 FW_VSYS_MOVE = round(FW_VSYS_MOVE_EST + FW_VREAD_MARGIN, 6)   # 3.615 V: the MD-2 threshold as an idle VSYS reading
 FW_VSYS_MOVE_PREV = 3.55                 # the MD-2 rule before the reading margin: 3.55 V measured idle VSYS, no margin
-                                         # (its corners stay in MD3_CASES: lower true VSYS than the new rule allows)
+                                         # (its corners stay in MD3_CASES as extra passing corners)
 FW_VSYS_PARK = 3.30                      # firmware.md §5.8 minimum VSYS for a park move
 # firmware.md §12.4 (VSENSE-1/4): the calibrated reading is within about ±24 mV at 15-35 °C on a fresh unit and can be up
 # to 73 mV high on an aged unit at -10 / 60 °C (hardware/sim/tests/test_vsys_sense.py CAL_ACC_FRESH, CAL_DRIFT_AGED_T).
@@ -1112,8 +1112,8 @@ def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, vmeas
     rule = f"; firmware rule {SRC_MD3}"
     if vmeas is not None:
         check("idle VSYS firmware measures (true idle VSYS is the supply)", vmeas, None, None, "V", f"info: {SRC_ADC}")
-        rule += (f"; MD-2 threshold read {vmeas:.3f} V, {(vmeas - vbat) * 1e3:.0f} mV above the true idle VSYS "
-                 f"({SRC_ADC})")
+        rule += (f"; idle VSYS read {vmeas:.3f} V, {(vmeas - vbat) * 1e3:.0f} mV above the true idle VSYS (MD-2 "
+                 f"threshold: a reading >= {FW_VSYS_MOVE:.3f} V; {SRC_ADC})")
     run_microstep(main, base, check, f"{cid}-MD-3", sup, temp, r_eff=r_eff, duty_src=SRC_MD3, rule=rule,
                   vsys_meas=vmeas)
 

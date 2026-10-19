@@ -799,12 +799,12 @@ def test_read_margin_covers_over_read_with_fw_rule(cid, v_est, src, check):
     a true value >= X. Worst over-read at the true threshold value over every fresh and aged corner of this file, both
     calibration references (_worst_over_read)."""
     over, corner = _worst_over_read(v_est)
-    check(f"info: corner of the worst over-read at a true {v_est:.3f} V", over, None, None, "V", f"info: {corner}")
-    check(f"info: true value at a {v_est + VREAD_MARGIN:.3f} V reading is at least VBAT_est {v_est:.3f} V plus",
-          VREAD_MARGIN - over, None, None, "V", "info: VREAD_MARGIN minus the worst over-read")
+    check(f"info: margin left at VBAT_est {v_est:.3f} V (VREAD_MARGIN − worst over-read; a {v_est + VREAD_MARGIN:.3f} V "
+          f"reading is at least this far above the threshold)", VREAD_MARGIN - over, None, None, "V",
+          f"info: worst corner {corner}")
     check(f"worst calibrated over-read at a true {v_est:.3f} V ({cid}) vs VREAD_MARGIN", over, None, VREAD_MARGIN, "V",
           f"firmware rule firmware.md §12.4 (VSENSE-1/4/5): VBAT_est = reading − 75 mV must not exceed the true value; "
-          f"threshold: {src}")
+          f"threshold: {src}; worst corner {corner}")
 
 
 def test_pin_leakage_sensitivity(main, check):
