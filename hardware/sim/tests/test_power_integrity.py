@@ -1022,7 +1022,20 @@ def test_usb_without_battery_with_fw_rule(main, base, check, phase, cname):
     all) and checks the average input current against ILIM and the instantaneous VLED / +3V3 minimums."""
     s = System(main, base, CORNERS[cname])
     vsysreg = BQ_VSYSREG_FW * (1 - BQ_VSYSREG_TOL) if cname == "worst" else BQ_VSYSREG_FW
-    vg = vsysreg - 0.001   # nodeset only: the no-pack op converges reliably from just inside SYS regulation
+    # nodeset guesses just inside SYS regulation: the no-pack operating point is unique (SYS regulated, I(IN) below
+    # ILIM) but Newton finds it only from a guess within ~1 mV, so a few are tried; only a run that converges without
+    # ngspice errors is accepted (run_op / run_tran assert on them), the checks below are unchanged
+    guesses = [vsysreg - d for d in (0.0005, 0.0, 0.001, 0.002, 0.003)]
+
+    def converged(run):
+        err = None
+        for vg in guesses:
+            try:
+                return run(vg)
+            except AssertionError as e:
+                err = e
+        raise err
+
     if phase == "ILIM100":
         ilim = BQ_ILIM100[0]
         loads = Loads(oled_icc=0.0, oled_ripple=False, tx=False, i3v3_base=I3V3_BASE - 25e-3,   # no W25Q erase
@@ -1037,12 +1050,14 @@ def test_usb_without_battery_with_fw_rule(main, base, check, phase, cname):
            f"{cname}")
     src_ilim = f"BQ25180 DS SLUSE99C 7.5 ILIM min (load must stay below it without supplement); {RULE_PI4}"
     if phase == "ILIM500-aligned-peak":
-        r = run_tran(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg, vguess=vg), stop=1.2e-3)
+        r = converged(lambda vg: run_tran(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg,
+                                                 vguess=vg), stop=1.2e-3))
         items = [(f"{tag}: I(IN) average", r["iin_avg"], None, 0.98 * ilim, "A", src_ilim),
                  (f"{tag}: VLED min", r["vled_min"], WS_VDD_MIN, None, "V", f"{SRC_WS}; {RULE_PI4}"),
                  (f"{tag}: +3V3 min", r["v3v3_min"], V3V3_MIN, None, "V", f"{SRC_3V3}; {RULE_PI4}")]
     else:
-        r = run_op(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg, vguess=vg))
+        r = converged(lambda vg: run_op(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg,
+                                               vguess=vg)))
         items = [(f"{tag}: I(IN) (pinned at ILIM = no regulation)", r["iin"], None, 0.98 * ilim, "A", src_ilim),
                  (f"{tag}: VLED", r["vled"], WS_VDD_MIN, None, "V", f"{SRC_WS}; {RULE_PI4}"),
                  (f"{tag}: +3V3", r["v3v3"], V3V3_MIN, None, "V", f"{SRC_3V3}; {RULE_PI4}")]

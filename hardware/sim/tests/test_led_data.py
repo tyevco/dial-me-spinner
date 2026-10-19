@@ -4,8 +4,10 @@ D101 DI (first WS2812C-2020-V6), plus the DNP SN74LV1T34 option (U43/C43 fitted,
 What is simulated (all passives straight from hardware/kicad/main/dial-me-spinner-main.net):
   * the P0.06 output stage, standard (S0S1) and high (H0H1) drive, at the nRF52840 PS min / typ / max
     IOH / IOL corners (models/led_data__nrf52840_gpio.lib), on +3V3 = RT9080-33 (+/-2 %, dropout at low VSYS);
-  * the PCB traces LED_DIN_MCU (U10.22 -> R40) and LED_DIN (R43/U43 -> D101.DI) as LC ladders, with lengths
-    taken from the routed board when routed, else from the placed pads (rectilinear MST x ROUTE_FACTOR);
+  * the PCB traces LED_DIN_MCU (U10.22 -> R40, ~1 mm since R40 sits next to pad 22, LED-DATA-1) and LED_DIN
+    (R43/U43 -> D101.DI) as LC ladders, and LED_DIN_R (R40 -> R41/R43/U43, the ~40 mm run) as its lumped capacitance
+    (an LC ladder in test_trace_and_r40_placement), with lengths taken from the routed board when routed, else from
+    the placed pads (rectilinear MST x ROUTE_FACTOR);
   * D101.DI as CI <= 15 pF, II <= 1 uA and ESD clamps (models/led_data__ws2812c_din.lib), VDD = VLED = VSYS;
   * the WS2812 bit stream as the I2S driver generates it (SCK 3.2 MHz, nibble 0x8 = "0", 0xC = "1").
 What is checked: the DI high level against VIH (0.55 x VDD datasheet, 0.6 x VDD PCN) and the low level against
@@ -17,8 +19,9 @@ the U43 option; tolerance extremes, temperature, load extremes; and fault inject
 Added by the independent verification:
   * the PS-GUARANTEED drive (NRF52840_GPIO_BOUND: I >= IOH,min x min(Vds/0.4 V, 1), the weakest concave I-V the PS
     table allows) for both drive modes; the tanh fit above scales the TYPICAL tRF shape to the min corner, which the
-    PS does not guarantee. Standard drive fails the T1H/T0L/T1L windows there (strict xfail, DESIGN ISSUE), high drive
-    passes: P0.06 must run at H0H1;
+    PS does not guarantee. Standard drive fails the T1H/T0L/T1L windows there (strict xfail, the evidence for
+    firmware rule LED-DATA-V1), high drive passes: P0.06 must run at H0H1, as docs/firmware.md 3.1 / 6.1 and
+    SPEC 5.4 now require ([HD] is the guard of that rule);
   * +3V3 low corner = RT9080 accuracy -2 % AND load regulation -1 % (DS9080-09 table 14), not accuracy alone;
   * P0.06 high-Z (reset / DFU / pin not yet configured, PIN_CNF reset value): R41 must hold D101.DI (and U43.A)
     below VIL against the +/-1 uA input leakage;
@@ -95,7 +98,10 @@ VDD_LO = VDD_NOM * (1 - VDD_ACC - VDD_LOADREG)
 VDD_HI = VDD_NOM * (1 + VDD_ACC)
 RT_RDROP = 0.53 / 0.6                 # ohm: DS9080-09 VDROP max 0.53 V at 600 mA (VOUT >= 3 V)
 I_3V3 = 0.05                          # A: +3V3 peak load, docs/architecture.md 8 rail table ("about 50 mA peak")
-SYS_REG, SYS_ACC = 4.5, 0.02          # BQ25180 SLUSE99C SYS_REG default 4.5 V, VSYS_REG_ACCURACY +/-2 %
+# BQ25180 SLUSE99C SYS_REG 4.5 V, VSYS_REG_ACCURACY +/-2 %: 4.5 V is the POR default and the highest SYS that
+# docs/firmware.md 13.1 allows (it writes 0x20 = 4.4 V; 010 = 4.5 V is the only other allowed value, LED-DATA-V3), so it
+# is the worst case for the VIH margin.  Not lowered to 4.4 V: that would loosen every VIH check.
+SYS_REG, SYS_ACC = 4.5, 0.02
 # VSYS as the charger delivers it: battery (SYS = VBAT through the BATFET) and USB (VBUS 4.5 V is in dropout so
 # VSYS <= 4.5 V; VBUS 5.0 / 5.5 V regulate to 4.5 V +/-2 %). VLED = VSYS (dark ring: no TPS22917 drop = highest VIH).
 SUPPLY = [("VBAT 3.0 V", 3.0), ("VBAT 3.7 V", 3.7), ("VBAT 4.2 V", 4.2),
@@ -349,7 +355,7 @@ def fresh() -> Design:
 
 
 def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_II, trace_scale=1.0,
-          temp=None, lv=None, scale=None, r40_at_source=False, fine=False, tedge_scale=1.0, title="LED data",
+          temp=None, lv=None, scale=None, din_r_line=False, fine=False, tedge_scale=1.0, title="LED data",
           drive="fit"):
     vled = vsys
     vdd = vdd_of(vsys, vdd_k)
@@ -376,16 +382,17 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
         deck += f"XP006 {pad} ctl {vdd_n} 0 NRF52840_GPIO_OUT {fmt(prm)}"
     mcu, r_node, din = d.node("LED_DIN_MCU"), d.node("LED_DIN_R"), d.node("LED_DIN")
     _, _, cp = microstrip(track_width())
-    if not r40_at_source:
-        deck += ladder("tmcu", pad, mcu, L["LED_DIN_MCU"][0] * trace_scale)
+    deck += ladder("tmcu", pad, mcu, L["LED_DIN_MCU"][0] * trace_scale)
+    if not din_r_line:
+        # R40 sits next to U10 pad 22 (LED-DATA-1), so LED_DIN_R (R40 -> R41/R43/U43) is the long run; it is lumped
+        # here: ~0.25 ns of line behind R40 = 220 R (>> Z0) next to edges of several ns
         deck += f"Ctr_r {r_node} 0 {cp * L['LED_DIN_R'][0] * trace_scale:.4g}"
     else:
-        # what-if: R40 at the P0.06 pin (the sheet's placement note); the long run is then on LED_DIN_R
-        deck += ladder("tmcu", pad, mcu, 1e-3)
-        deck += ladder("tr", r_node, f"{r_node}_far", L["LED_DIN_MCU"][0] * trace_scale)
+        # the same run as an LC ladder, with R41/R43/U43 at its far end (cross-check of the lumped model)
+        deck += ladder("tr", r_node, f"{r_node}_far", L["LED_DIN_R"][0] * trace_scale)
         r_node_far = f"{r_node}_far"
     passives = data_passives(d, scale=scale)
-    if r40_at_source:
+    if din_r_line:
         # move every LED_DIN_R connection except R40 to the far end of the long trace
         passives = [ln if ln.startswith("RR40 ") else
                     " ".join(r_node_far if tok == r_node else tok for tok in ln.split()) for ln in passives]
@@ -396,7 +403,7 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
     if d.fitted("U43"):
         deck.include(LV_LIB)
         a = d.pin("U43", "2")
-        if r40_at_source and a == r_node:
+        if din_r_line and a == r_node:
             a = r_node_far
         deck += (f"XU43 {a} {d.pin('U43', '4')} {d.pin('U43', '5')} {d.pin('U43', '3')} SN74LV1T34 "
                  f"{fmt(lv or lv_params(vled))}")
@@ -511,15 +518,15 @@ def label(r):
     return f"VSYS {r['vsys']:.2f} V, VDD {r['vdd']:.3f} V, {r['mode']}/{r['skew']}"
 
 
-def check_widths(check, results, tag):
+def check_widths(check, results, tag, source=SRC_WS_T):
     """Worst-case widths over all results against the WS2812C-2020-V6 windows."""
     for r in results:
         assert r["widths_ok"], f"{tag}: bit pattern not reproduced at D101.DI ({label(r)})"
     for name, (lo, hi) in (("T0H", T0H), ("T1H", T1H), ("T0L", TXL), ("T1L", TXL)):
         vmin, rmin = worst([dict(r, x=r["w"][name][0]) for r in results], "x", min)
         vmax, rmax = worst([dict(r, x=r["w"][name][1]) for r in results], "x", max)
-        check(f"{tag}: {name} seen by D101, shortest ({label(rmin)})", vmin, lo, hi, "s", SRC_WS_T)
-        check(f"{tag}: {name} seen by D101, longest ({label(rmax)})", vmax, lo, hi, "s", SRC_WS_T)
+        check(f"{tag}: {name} seen by D101, shortest ({label(rmin)})", vmin, lo, hi, "s", source)
+        check(f"{tag}: {name} seen by D101, longest ({label(rmax)})", vmax, lo, hi, "s", source)
 
 
 # ======================================================================================================== tests
@@ -689,18 +696,22 @@ def test_load_extremes(check):
 
 
 def test_trace_and_r40_placement(check):
-    """R40 as placed (at the LED end) vs at the P0.06 pin; strongest drive, lightest load (most ringing), plus an
-    fast-corner sensitivity beyond the PS fit (pre-driver 2x faster than the strong corner, traces x2)."""
+    """R40 as placed: next to U10 pad 22 (P0.06), 0.25 mm from it (fix LED-DATA-1, a layout.py pin anchor), so
+    LED_DIN_MCU is ~1 mm and the ~40 mm run is LED_DIN_R (R40 -> R41/R43/U43 at the LED end).  That run is checked
+    both lumped (the model of every other test here) and as an LC ladder with its loads at the far end; strongest
+    drive, lightest load (most ringing), plus a fast-corner sensitivity beyond the PS fit (pre-driver 2x faster than
+    the strong corner, traces x2)."""
     L = pcb_net_lengths()
-    length, routed = L["LED_DIN_MCU"]
     z0, _, _ = microstrip(track_width())
-    check(f"(info) LED_DIN_MCU length ({'routed' if routed else 'placed, est.'}), Z0 {z0:.0f} ohm", length, None,
-          None, "m", "kicad_pcb")
-    for where, tes, ts in ((False, 1.0, 1.0), (True, 1.0, 1.0), (False, 0.5, 2.0), (True, 0.5, 2.0)):
+    for net in ("LED_DIN_MCU", "LED_DIN_R"):
+        length, routed = L[net]
+        check(f"(info) {net} length ({'routed' if routed else 'placed, est.'}), Z0 {z0:.0f} ohm", length, None,
+              None, "m", "kicad_pcb")
+    for line, tes, ts in ((False, 1.0, 1.0), (True, 1.0, 1.0), (False, 0.5, 2.0), (True, 0.5, 2.0)):
         rs = run_many([(fresh(), dict(vsys=v, vdd_k=1, mode="HD", skew="strong", ci=1e-12, ii=-WS_II,
-                                       r40_at_source=where, fine=True, tedge_scale=tes, trace_scale=ts))
+                                       din_r_line=line, fine=True, tedge_scale=tes, trace_scale=ts))
                        for v in (3.0, VSYS_MAX)])
-        tag = ("R40 at P0.06 (what-if)" if where else "R40 as placed") + (
+        tag = ("R40 as placed, LED_DIN_R as an LC line" if line else "R40 as placed, LED_DIN_R lumped") + (
             ", TEDGE/2 + traces x2 (sensitivity)" if tes != 1.0 else "")
         v, r = worst([dict(x, m=x["pad_max"] - x["vdd"]) for x in rs], "m", max)
         check(f"{tag}: P0.06 pad max - VDD", v, None, NRF_VIO_OVER, "V", SRC_PS_AMR)
@@ -802,13 +813,15 @@ def test_u43_option_pulse_widths(check, u43_sweep):
 
 # ------------------------------------------------------------------------- PS-guaranteed drive (verifier)
 BOUND_SD_REASON = (
-    "DESIGN ISSUE: with only the drive the nRF52840 PS guarantees (IOH/IOL,SD >= 1 mA at a 0.4 V drop, PS v1.1 "
-    "6.9.3.1; tRF is typical-only) standard drive (S0S1, the Zephyr/nrfx pinctrl default) cannot guarantee the "
-    "WS2812C-2020-V6 windows: T1H down to 547 ns (< 580 ns), T0L up to 1015 ns (> 1 us), T1L down to 558 ns at "
-    "VSYS 4.59 V, CI 15 pF, traces x1-x2; with U43 fitted T1H 576 ns, T1L 569 ns and U43.A dt/dv 21.3 ns/V "
-    "(> 20 ns/V, SCLS743E 6.3). High drive (H0H1) passes both paths (T1H >= 607 ns, T0L <= 955 ns, T1L >= 605 ns, "
-    "dt/dv <= 4.9 ns/V). Fix: SPEC 5.4 and the firmware pinctrl must REQUIRE nordic,drive-mode = NRF_DRIVE_H0H1 "
-    "on P0.06 (I2S0 SDOUT); today it is only an R27 mitigation.")
+    "DESIGN ISSUE (firmware-dependent, LED-DATA-V1): with only the drive the nRF52840 PS guarantees (IOH/IOL,SD >= "
+    "1 mA at a 0.4 V drop, PS v1.1 6.9.3.1; tRF is typical-only) standard drive (S0S1, the Zephyr/nrfx pinctrl "
+    "default) cannot guarantee the WS2812C-2020-V6 windows: T1H down to 547 ns (< 580 ns), T0L up to 1015 ns "
+    "(> 1 us), T1L down to 558 ns at VSYS 4.59 V, CI 15 pF, traces x1-x2; with U43 fitted T1H 576 ns, T1L 569 ns and "
+    "U43.A dt/dv 21.3 ns/V (> 20 ns/V, SCLS743E 6.3). High drive (H0H1) passes both paths. The rule is now REQUIRED "
+    "by docs/firmware.md 3.1 (i2s0_default) / 6.1 and SPEC 5.4: nordic,drive-mode = NRF_DRIVE_H0H1 on P0.06 "
+    "(I2S0 SDOUT); the [HD] case of this test is its guard.")
+FW_RULE_V1 = ("firmware rule LED-DATA-V1 (docs/firmware.md 3.1 / 6.1, SPEC 5.4): P0.06 nordic,drive-mode = "
+              "NRF_DRIVE_H0H1")
 
 
 def bound_jobs(mode):
@@ -830,22 +843,28 @@ def bound_jobs(mode):
                                                                                     reason=BOUND_SD_REASON))])
 def test_pulse_widths_ps_guaranteed_drive(check, mode):
     """The P0.06 drive the PS GUARANTEES (min column with the weakest concave I-V, NRF52840_GPIO_BOUND), CI 15 pF,
-    VSYS 3.0 / 4.59 V, default path (traces x1 / x2) and U43 option (traces x2, threshold x tpd-skew corners)."""
+    VSYS 3.0 / 4.59 V, default path (traces x1 / x2) and U43 option (traces x2, threshold x tpd-skew corners).
+    [SD] (standard drive, the old pinctrl default) is the strict-xfail evidence for firmware rule LED-DATA-V1; [HD]
+    is its guard: the same corners and limits with P0.06 at H0H1, as docs/firmware.md 3.1 / 6.1 and SPEC 5.4 require.
+    The other LED data rules are applied in every case: exact 3.2 MHz SCK = HFXO clocking (LED-DATA-V2) and VSYS up
+    to 4.5 V + 2 %, the highest SYS_REG firmware allows (LED-DATA-V3)."""
     rs = run_many(bound_jobs(mode))
     c, errs = soft(check)
     default = [r for r in rs if not r.get("u43")]
     u43 = [r for r in rs if r.get("u43")]
+    pm = f"PS-guaranteed {mode}" + (" (fw rule LED-DATA-V1: H0H1)" if mode == "HD" else " (old pinctrl default)")
+    rule = ("; " + FW_RULE_V1) if mode == "HD" else ""
     v, r = worst([dict(x, m=x["voh_dc"] - WS_VIH_PCN * x["vled"]) for x in default], "m", min)
-    c(f"PS-guaranteed {mode}: DC high at D101.DI - 0.6 VDD ({label(r)})", v, 0.0, None, "V", SRC_PCN)
-    for tag, sel in ((f"PS-guaranteed {mode}, default path", default), (f"PS-guaranteed {mode}, U43 fitted", u43)):
+    c(f"{pm}: DC high at D101.DI - 0.6 VDD ({label(r)})", v, 0.0, None, "V", SRC_PCN + rule)
+    for tag, sel in ((f"{pm}, default path", default), (f"{pm}, U43 fitted", u43)):
         if not all(x["widths_ok"] for x in sel):
             errs.append(f"{tag}: bit pattern not reproduced")
             continue
-        check_widths(c, sel, tag)
+        check_widths(c, sel, tag, source=SRC_WS_T + rule)
     v, r = worst(u43, "dtdv_r", max)
-    c(f"PS-guaranteed {mode}, U43 fitted: A rise rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv")
+    c(f"{pm}, U43 fitted: A rise rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv" + rule)
     v, r = worst(u43, "dtdv_f", max)
-    c(f"PS-guaranteed {mode}, U43 fitted: A fall rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv")
+    c(f"{pm}, U43 fitted: A fall rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv" + rule)
     assert not errs, "\n".join(errs)
 
 

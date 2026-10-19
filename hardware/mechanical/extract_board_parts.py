@@ -11,7 +11,8 @@ Each part becomes an oriented box: its F.Fab/B.Fab outline (courtyard - 0.25 mm 
 footprint has no Fab outline) extruded by a height from HEIGHTS below.  Heights are
 datasheet maxima where known; the ones tagged "verify" are assumptions (to verify on
 prototype).  Side-entry JST connectors also get a mated-plug box on their mouth side, and
-the MDBT50Q gets its mated u.FL plug.  Model frame: x = KiCad x - 100, y = 100 - KiCad y
+the MDBT50Q gets its mated u.FL plug.  The NFC coil pads J11 (no part fitted) get a solder-joint
+body: the pads grown by GROW, holding the solder and the lap-soldered end of the coil tail.  Model frame: x = KiCad x - 100, y = 100 - KiCad y
 (board centre at KiCad (100, 100)), z from the desk.
 """
 import json
@@ -32,7 +33,8 @@ CX, CY = 100.0, 100.0
 
 # (footprint-name regex, height mm, note).  First match wins.
 HEIGHTS = [
-    (r"MountingHole|TestPoint|Tag-Connect|Fiducial|NFC_Coil_Pads", None, "no body"),
+    (r"MountingHole|TestPoint|Tag-Connect|Fiducial", None, "no body"),
+    (r"NFC_Coil_Pads", 0.35, "solder joint: 0.05 solder + 0.15 coil tail end + 0.15 fillet/bulge, verify"),
     (r"WS2812", 0.90, "SPEC 30.7-31.6"),
     (r"C_0402", 0.55, "0402 MLCC max"),
     (r"R_0402", 0.40, ""),
@@ -49,7 +51,6 @@ HEIGHTS = [
     (r"SOIC-8", 2.16, "208 mil SOIC max"),
     (r"SC-20S", 0.60, ""),
     (r"JST_SH", 2.95, "JST SH side entry"),
-    (r"S2B-PH-SM4", 5.50, "JST PH SMT side entry, verify (distributor data)"),
     (r"MDBT50Q", 2.20, "Raytac, verify"),
     (r"PKMCS0909", 1.90, "Murata"),
     (r"SWPA3015", 1.50, ""),
@@ -61,7 +62,8 @@ HEIGHTS = [
     (r"TS-1187A", 1.50, "XKB, actuator top"),
     (r"DSBGA", 0.50, ""),
 ]
-PLUG_EXT = {"JST_SH": 3.0, "S2B-PH": 4.5}      # mated housing beyond the header body (verify)
+PLUG_EXT = {"JST_SH": 3.0}      # mated housing beyond the header body (verify)
+GROW = {"NFC_Coil_Pads": 0.1}   # box grown all round (solder fillet, tail end overhang); its Fab outline is the pads
 
 
 def height_for(fpname):
@@ -133,6 +135,9 @@ def extract(board_key):
         lu = [(p[0] - pos[0]) * u[0] + (p[1] - pos[1]) * u[1] for p in pts]
         lv = [(p[0] - pos[0]) * v[0] + (p[1] - pos[1]) * v[1] for p in pts]
         box = [min(lu) + shrink, max(lu) - shrink, min(lv) + shrink, max(lv) - shrink]
+        for key, g in GROW.items():
+            if key in fpname:
+                box = [box[0] - g, box[1] + g, box[2] - g, box[3] + g]
         z0 = z_top if side == "T" else z_bot - h
         val = fp.GetValue()
         parts.append(dict(ref=ref, value=val, fp=fpname, side=side, x=round(pos[0], 3), y=round(pos[1], 3),

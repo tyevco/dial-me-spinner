@@ -3,8 +3,9 @@
 * =====================================================================================================
 * Part      : Texas Instruments BQ25180YBGR (base board U1, DSBGA-8)
 * Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf  SLUSE99C (Sept 2021, revised Jan 2023)
-* Register settings used (docs/architecture.md 6.5, docs/firmware.md 12.x): SYS_REG 0x40 = 4.5 V on USB,
-*   TMR_ILIM ILIM code 500 mA (475 mA typ), CHARGECTRL1 BATOCP 1.5 A, BUVLO 3.0 V.
+* Register settings used (docs/architecture.md 6.5, docs/firmware.md 13.1): SYS 4.5 V on USB by default (the POR
+*   default and the highest value firmware allows; firmware writes SYS_REG 0x20 = 4.4 V, param vsysreg), TMR_ILIM
+*   ILIM code 500 mA (475 mA typ) or 100 mA (0xC9, param ilim), CHARGECTRL1 BATOCP 1.5 A, BUVLO 3.0 V.
 * Two sub-circuits, chosen by the test:
 *   LSW_BQ25180_BAT  battery only (no VBUS): cell source vbat (the battery terminal voltage before the event)
 *                    -> rpack (cell + PCM + leads, NOT a BQ25180 parameter; given by the test)
