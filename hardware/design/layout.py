@@ -559,6 +559,7 @@ ANT_B_CLEAR = 3.6        # B.Cu pour: with the 3.5 mm height gap, ≥ 5 mm from 
 ANT_B_TRACK_CLEAR = 1.5  # thin B.Cu tracks/vias may come closer (≈ 3.8 mm): they hardly load a ground-plane-free antenna
 ANT_F_POUR_CLEAR = 2.0   # top pour held back from over the antenna
 BQ_POS = (19.5, 255.0)   # charger (r, θ)
+PIN_ANCHOR_MM = 3.0  # sheets: R40 within 3 mm of P0.06, U12 within 3 mm of the module's D+/D-
 BGA_CLEAR_MM = 1.6  # free radius around the BQ25180 so its escape stubs and first vias have room
 
 
@@ -611,7 +612,7 @@ BOARDS = {
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
                  post_fixed=main_post_fixed,
                  # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
-                 pin_anchors={"R40": ("U10", "LED_DIN_MCU")},
+                 pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM")},
                  fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
                             ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
     "base": dict(layers=4, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
@@ -685,15 +686,23 @@ def generate(board, pours=True):
     for fp in bb.board.GetFootprints():  # mounting holes added by the board builder
         if fp.GetReference().startswith("H"):
             placer.mark(fp)
-    # parts that must sit at a specific IC pin (series terminations at the driver), placed before everything else
+    # parts that must sit at a specific IC pin (series terminations at the driver, ESD arrays at the pins), placed
+    # before everything else: within PIN_ANCHOR_MM on the IC's side, else on the other side over the pad (one via),
+    # else as close as possible on the IC's side (a module's own courtyard can keep its side > 3 mm away)
     for ref, (ic, net) in cfg.get("pin_anchors", {}).items():
         if ref in bb.footprints and ic in bb.footprints:
             pads = [p for p in bb.footprints[ic].Pads() if p.GetNetname().split("/")[-1] == net]
             if pads:
                 px, py = pcbnew.ToMM(pads[0].GetPosition().x), pcbnew.ToMM(pads[0].GetPosition().y)
                 side = Placer.side(bb.footprints[ic])
-                if not placer.place_near(bb.footprints[ref], px, py, side, max_r=6):
-                    print("WARN: could not place", ref, "at", ic, net)
+                other = "F" if side == "B" else "B"
+                fp = bb.footprints[ref]
+                if not (placer.place_near(fp, px, py, side, max_r=PIN_ANCHOR_MM) or
+                        placer.place_near(fp, px, py, other, max_r=PIN_ANCHOR_MM)):
+                    if placer.place_near(fp, px, py, side, max_r=6):
+                        print(f"WARN: {ref} is more than {PIN_ANCHOR_MM} mm from {ic} {net}")
+                    else:
+                        print("WARN: could not place", ref, "at", ic, net)
                 fixed[ref] = None
     # anchors: explicit side/region parts first, placed near their region centre
     anchor_cfg = cfg["anchors"](comps)
