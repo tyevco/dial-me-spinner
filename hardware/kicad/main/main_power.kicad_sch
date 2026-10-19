@@ -2995,6 +2995,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 55.88 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C45783"
 			(at 55.88 38.1 0)
 			(effects
@@ -3633,6 +3642,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 193.04 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C19702"
 			(at 193.04 35.56 0)
 			(effects
@@ -3858,6 +3876,15 @@
 			)
 		)
 		(property "MPN" "CL10A106KP8NNNC"
+			(at 223.52 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
 			(at 223.52 35.56 0)
 			(effects
 				(font
@@ -4099,6 +4126,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 256.54 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C1525"
 			(at 256.54 35.56 0)
 			(effects
@@ -4332,6 +4368,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "UNI-ROYAL"
+			(at 292.1 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C11490"
 			(at 292.1 35.56 0)
 			(effects
@@ -4521,6 +4566,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "UNI-ROYAL"
+			(at 337.82 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C26083"
 			(at 337.82 35.56 0)
 			(effects
@@ -4702,6 +4756,15 @@
 			)
 		)
 		(property "MPN" "CL05B104KO5NNNC"
+			(at 375.92 35.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
 			(at 375.92 35.56 0)
 			(effects
 				(font
@@ -5295,6 +5358,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 83.82 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C19702"
 			(at 83.82 111.76 0)
 			(effects
@@ -5528,6 +5600,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "FH"
+			(at 116.84 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C1523"
 			(at 116.84 111.76 0)
 			(effects
@@ -5697,6 +5778,15 @@
 			)
 		)
 		(property "MPN" "0402WGF1003TCE"
+			(at 154.94 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "UNI-ROYAL"
 			(at 154.94 111.76 0)
 			(effects
 				(font
@@ -5894,6 +5984,15 @@
 				(hide yes)
 			)
 		)
+		(property "Manufacturer" "UNI-ROYAL"
+			(at 27.94 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "LCSC" "C25076"
 			(at 27.94 149.86 0)
 			(effects
@@ -6063,6 +6162,15 @@
 			)
 		)
 		(property "MPN" "CL21A226MAQNNNE"
+			(at 63.5 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
 			(at 63.5 149.86 0)
 			(effects
 				(font
@@ -6296,6 +6404,15 @@
 			)
 		)
 		(property "MPN" "CL21A226MAQNNNE"
+			(at 96.52 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
 			(at 96.52 149.86 0)
 			(effects
 				(font

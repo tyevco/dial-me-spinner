@@ -674,6 +674,17 @@ def generate(board, pours=True):
     return out
 
 
+def finish(board, path):
+    """Post-route clean-up on an existing board: duplicate/dangling wiring, silk references, zone refill."""
+    b = pcbnew.LoadBoard(path)
+    dups, trimmed = pcbgen.dedupe_tracks(b), pcbgen.trim_dangling(b)
+    moved, hidden = silk.place_refs(b)
+    pcbnew.SaveBoard(path, b)
+    pcbgen.refill(path)
+    print(f"[{board}] finish: {dups} duplicate tracks removed, {trimmed} stubs trimmed, "
+          f"{moved} references placed, {hidden} hidden")
+
+
 def add_pours(board, path):
     bb = pcbgen.BoardBuilder.load(path)
     BOARDS[board]["pours"](bb)
@@ -725,9 +736,16 @@ def main():
     ap.add_argument("--route", action="store_true")
     ap.add_argument("--passes", type=int, default=12)
     ap.add_argument("--attempts", type=int, default=3, help="re-run Freerouting on the routed board while connections remain")
+    ap.add_argument("--finish", action="store_true", help="only clean up an already routed board (no re-placement)")
     a = ap.parse_args()
     for board in BOARDS:
         if a.board and board != a.board:
+            continue
+        if a.finish:
+            out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            finish(board, out)
+            rpt, counts = drc(out)
+            print(f"[{board}] DRC errors:", counts or "none", "->", rpt)
             continue
         out = generate(board, pours=not a.route)
         print(f"[{board}] placed ->", out)
