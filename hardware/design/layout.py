@@ -223,8 +223,12 @@ def main_anchor_sides(comps):
     sides = {}
     for ref, c in comps.items():
         m = mpn(c)
-        if any(k in m for k in ("W25Q", "SC-20S", "32.768")):
-            sides[ref] = ("B", (16.0, 165.0))
+        if "W25Q" in m:
+            # on the module's QSPI side (pads 41-46, P0.17-P0.23 face θ ≈ 250°), just outside its courtyard
+            sides[ref] = ("B", (18.5, 249.0))
+        elif any(k in m for k in ("SC-20S", "32.768")):
+            # beside the module's inner corner near XL1/XL2 (the inner end itself is at the hub, r 8.8)
+            sides[ref] = ("B", (11.5, 172.0))
         elif any(k in m for k in ("RT9080", "TPS22917", "TPS22918")):
             sides[ref] = ("F", (16.0, 30.0))
         elif any(k in m for k in ("TPS61040", "AO3401", "2N7002", "SWPA3015", "B5819")):
@@ -621,7 +625,14 @@ BOARDS = {
                  rules=dict(track=0.12, clearance=0.10, via=0.40, via_drill=0.20),
                  post_fixed=main_post_fixed,
                  # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
-                 pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM")},
+                 pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM"),
+                              # VSYS_SENSE is a 690 kΩ node: the divider and its filter cap at the AIN0 pin
+                              "R2": ("U10", "VSYS_SENSE"), "C5": ("U10", "VSYS_SENSE"), "R1": ("U10", "VSYS_SENSE"),
+                              # VSL / IREF networks at the OLED connector pins
+                              "R22": ("J20", "OLED_VSL"), "R21": ("J20", "OLED_IREF"),
+                              # spare test pads at their pins
+                              "TP10": ("U10", "TP_SPARE1"), "TP11": ("U10", "TP_SPARE2"),
+                              "TP12": ("U10", "TP_SPARE3"), "TP13": ("U10", "TP_SPARE4")},
                  fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
                             ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
     "base": dict(layers=4, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
@@ -716,8 +727,9 @@ def generate(board, pours=True):
                         placer.place_near(fp, px, py, other, max_r=PIN_ANCHOR_MM)):
                     if placer.place_near(fp, px, py, side, max_r=6):
                         print(f"WARN: {ref} is more than {PIN_ANCHOR_MM} mm from {ic} {net}")
-                    else:
+                    else:  # left to the normal clustering below
                         print("WARN: could not place", ref, "at", ic, net)
+                        continue
                 fixed[ref] = None
     # anchors: explicit side/region parts first, placed near their region centre
     anchor_cfg = cfg["anchors"](comps)

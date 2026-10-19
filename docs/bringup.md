@@ -660,7 +660,7 @@ Firmware cap: **300 mA burst / 150 mA sustained** ([leds research]), and on top 
 lit channels × 5 mA, scaled with VBAT_est (0.19 A at 3.48 V and 0.26 A at 3.53 V up to the full ring at ≥ 3.90 V,
 less ≈ 0.23 A while the actuator moves), because aligned PWM draws the full peak (SPEC §5.4; hardware/sim, PI-2).
 The limiter MUST be active from the first frame after reset (PI-1). If the WS2812**B**-2020-V6 (12 mA/ch) was fitted
-instead, full white is 1.73 A: never test it; it needs the instantaneous cap (1.0 A only from VBAT_est ≥ 3.91 V)
+instead, full white is 1.73 A: never test it; it needs the instantaneous cap (1.0 A only from VBAT_est ≥ 3.92 V)
 from first boot (hardware/sim, PI-3).
 
 **B-9.8f Logic margin.** Run the walk test for 10 min with VSYS at 4.6 V (bench), then at 3.4 V. Reach 3.4 V by
@@ -823,9 +823,9 @@ reading on every unit for rev B (sensor further from the magnet, or a DRV5032 va
    (s = 500) and back. On the way back, HOME must assert inside the edge window around the learned assert step
    (firmware.md §5.4 rule 2; 32 steps wide at 80 PPS, 60 at 446 PPS). Otherwise re-home; after
    3 failures go to FAULT and stay in FREE ([detent research]).
-3. Speed profile: ≤ 300–500 PPS through the magnetically loaded 0–4 mm zone (267 full steps), ≤ 800–1000 PPS
-   beyond (233 steps). Expect ≈ 0.8–1.2 s per full stroke (mechanical.md §7: 0.83–1.18 s; the firmware profile of
-   firmware.md §5.3, 446 PPS in the loaded zone, takes about 0.9–1.1 s).
+3. Speed profile: ≤ 446 PPS through the magnetically loaded 0–4 mm zone (267 full steps; firmware.md §5.3),
+   ≤ 800–1000 PPS beyond (233 steps). Expect ≈ 0.8–1.2 s per full stroke (mechanical.md §7: 0.83–1.18 s; the
+   firmware profile of firmware.md §5.3, 446 PPS in the loaded zone, takes about 0.9–1.1 s).
 
 **Robustness:** 50 round trips with the rotor resting in a detent well. HOME must read asserted after every park
 stall, and every HOME edge must fall inside its window (no E_DET_STEPS; firmware test 19 runs 20 cycles).

@@ -281,7 +281,7 @@ APPROTECT enabled by default, which changes the programming procedure.
 
 | Part | LCSC | Stock seen | Fallback / note |
 |---|---|---|---|
-| WS2812C-2020-V6 (5 mA/ch) | C55109522 | ~47k, single source | Only **V6** parts: the LED data margins are for the V6 input threshold; with any other part fit U43/C43 and remove R43 (SPEC §5.4; hardware/sim, LED-DATA-2). WS2812B-2020-V6 C52917434 (~897k) is footprint- and pin-compatible but **12 mA/ch**: 48 LEDs at full white draw 1.73 A instead of 0.72 A, 2.35 A worst case (SPEC §5.4), so it may be fitted only with firmware's instantaneous current cap (1.0 A only from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that; `docs/firmware.md` §6.3), and the link power contacts are then at their limit ([leds verifier]; hardware/sim, PI-3) |
+| WS2812C-2020-V6 (5 mA/ch) | C55109522 | ~47k, single source | Only **V6** parts: the LED data margins are for the V6 input threshold; with any other part fit U43/C43 and remove R43 (SPEC §5.4; hardware/sim, LED-DATA-2). WS2812B-2020-V6 C52917434 (~897k) is footprint- and pin-compatible but **12 mA/ch**: 48 LEDs at full white draw 1.73 A instead of 0.72 A, 2.35 A worst case (SPEC §5.4), so it may be fitted only with firmware's instantaneous current cap (1.0 A only from VBAT_est ≥ 3.92 V, the PI-2 rows in amperes below that; `docs/firmware.md` §6.3), and the link power contacts are then at their limit ([leds verifier]; hardware/sim, PI-3) |
 | TMAG5273A2QDBVR | C3715882 | ~5.4k LCSC / 6.3k JLC; other variants nearly 0 | Buy reserve stock. The TMAG5173-Q1 is pin-compatible at VCC ≥ 2.3 V (OK at 3.3 V); order the A2/0x35 variant ([sensing verifier]) |
 | BQ25180YBGR | C3682423 | ~4.1k | BQ25188YBGR C43043524 (62 pcs); check its register map before swapping |
 | PKMCS0909E4000-R1 piezo | C910763 | 0 to 4k across snapshots | DigiKey/Mouser; hand-solder if JLC is out |
@@ -521,9 +521,9 @@ magnet radially from r = 29.0 (click) to r = 21.5 (free) along θ = 90°, 1.0 mm
      motor model gives at most 0.93 N from any battery VSYS against the verified 0.8–1.15 N worst-case load
      (architecture risk R4; hardware/sim, MD-4; §13 #26). Keep the friction low (PTFE tape, lubricated slot) and
      the carriage preload low (the load must stay ≤ 0.5 N), move the carriage only with the rotor at rest or below
-     1 rev/s, and step the loaded 0–4 mm zone at ≤ 300 PPS. Gate: slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the
-     real carriage. If it fails, fall back to an N20 or Ø6 planetary gearmotor; the 10 mm stepper does not fit the
-     bowl.
+     1 rev/s, and step the loaded 0–4 mm zone at ≤ 446 PPS (firmware.md §5.3). Gate: slider thrust ≥ 0.85 N at
+     3.0 V / 300 PPS against the real carriage (measured at both 300 and 500 PPS, mechanical.md §15 #6). If it
+     fails, fall back to an N20 or Ø6 planetary gearmotor; the 10 mm stepper does not fit the bowl.
    * The M2×0.4 lead screw self-locks, so the carriage cannot be pushed by hand. Move it only by stepping
      (bring-up B-9.10).
    * Fit the damping shoe (felt or UHMW-PE pad on the carriage flexure, not PTFE) so that it lands on the ring top

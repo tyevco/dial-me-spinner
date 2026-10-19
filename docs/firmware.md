@@ -1710,7 +1710,7 @@ because the ring may be moving. "Blanking" here means suppressing the
 * 48× WS2812C-2020-V6 (D101–D148), 5 mA per channel. The WS2812B-2020-V6
   (12 mA per channel) is pin-compatible only: firmware supports it as a
   factory-set variant, and with it the instantaneous cap of
-  [§6.3](#63-power-limiter) (1.0 A from VBAT_est ≥ 3.91 V, the PI-2 rows below that) is mandatory
+  [§6.3](#63-power-limiter) (1.0 A from VBAT_est ≥ 3.92 V, the PI-2 rows below that) is mandatory
   (hardware/sim, PI-3). Until the variant is set, **firmware assumes 12 mA**,
   which is the safe direction. Both variants must be V6 parts; the data-line
   margins below assume the V6 input threshold (SPEC §5.4).
@@ -1853,18 +1853,17 @@ while (lit_channels(frame) * I_CH > pk)
     of about 3.3 V) protects VLED (hardware/sim, NF-1).
   * With the B variant, I_ch = 12 mA. The rows above apply in amperes (the
     ≥ 3.90 V row is 0.72 A, i.e. 60 lit B channels, not the 1.73 A B ring),
-    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.91 V (a
-    reading of 3.9939 V): at the worst corner (300 mA bursts, OLED C7 ≤ 08h)
+    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.92 V (a
+    reading of 4.0041 V): at the worst corner (300 mA bursts, OLED C7 ≤ 08h)
     VLED reaches 3.3 V at a true 3.9025 V and keeps +10 mV from 3.9123 V; with
     the OLED at 100 % the bursts would need 3.9405 V (hardware/sim, PI-3).
-    At the R1' bound (true VBAT = VBAT_est = 3.910 V) the burst phase keeps
-    +7.9 mV (VLED 3.3079 V; sustained +53.7 mV, moving +112.2 mV): above the
-    3.3 V limit, but short of the 10 mV the 3.91 V threshold was sized for.
-    With the simulated worst over-read at 3.91 V (79.9 mV, so a true VBAT of
-    at least about 3.914 V) it is about +11.7 mV (interpolated). A threshold
-    of VBAT_est 3.92 V (a reading of 4.0041 V) would keep +17.9 mV at the
-    bound itself; this revision keeps 3.91 V ([§18](#18-open-items-and-to-verify-list)
-    item 12).
+    At the R1' bound (true VBAT = VBAT_est = 3.920 V) the burst phase keeps
+    +17.85 mV (VLED 3.3178 V, I(BAT) 1.12 A; sustained +64.0 mV, moving
+    +122.7 mV), above the 10 mV it is sized for. The simulated worst
+    over-read at 3.92 V (80.2 mV) leaves VBAT_est 3.84 mV below the true
+    value, so a real unit sits a little higher still. The earlier threshold,
+    VBAT_est 3.91 V, kept only +7.9 mV at its R1' bound (true 3.910 V), short
+    of the 10 mV ([§18](#18-open-items-and-to-verify-list) item 12, closed).
   * *TVP:* bring-up scopes the summed ring current after power-up to see
     whether the V6 PWM phases really align; the budget stays until that is
     measured.
@@ -2707,20 +2706,20 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   calibrated with the board under 5 mA): 67.9 mV at 3.21 V (2.07 % of the
   reading, the largest fraction), 71.4 mV at 3.465 V, 72.4 mV at 3.54 V,
   73.3 mV at 3.60 V, 74.7 mV at 3.70 V, 75.7 mV at 3.75 V, 77.0 mV at
-  3.80 V, 79.6 mV at 3.90 V, 79.9 mV at 3.91 V and 87.6 mV at 4.20 V. At
+  3.80 V, 79.6 mV at 3.90 V, 80.2 mV at 3.92 V and 87.6 mV at 4.20 V. At
   every threshold the worst VBAT_est stays below the true value, over
   11 264 corner values each (fresh unit at −10/15/25/35/60 °C, aged unit at
   −10/25/60 °C, both calibration references; hardware/sim, VSENSE-1,
   VSENSE-4, `test_read_margin_covers_over_read_with_fw_rule`):
 
-  | Threshold T (V, VBAT_est or VSYS_est) | 3.21 | 3.465 | 3.48 | 3.53 | 3.54 | 3.60 | 3.65 | 3.70 | 3.75 | 3.80 | 3.90 | 3.91 |
+  | Threshold T (V, VBAT_est or VSYS_est) | 3.21 | 3.465 | 3.48 | 3.53 | 3.54 | 3.60 | 3.65 | 3.70 | 3.75 | 3.80 | 3.90 | 3.92 |
   |---|---|---|---|---|---|---|---|---|---|---|---|---|
-  | Reading T / 0.979 (V) | 3.2789 | 3.5393 | 3.5546 | 3.6057 | 3.6159 | 3.6772 | 3.7283 | 3.7794 | 3.8304 | 3.8815 | 3.9837 | 3.9939 |
-  | Margin left (mV, true − worst VBAT_est) | +0.97 | +2.87 | +2.98 | +3.35 | +3.43 | +3.87 | +4.24 | +4.62 | +4.68 | +4.43 | +3.94 | +3.89 |
+  | Reading T / 0.979 (V) | 3.2789 | 3.5393 | 3.5546 | 3.6057 | 3.6159 | 3.6772 | 3.7283 | 3.7794 | 3.8304 | 3.8815 | 3.9837 | 4.0041 |
+  | Margin left (mV, true − worst VBAT_est) | +0.97 | +2.87 | +2.98 | +3.35 | +3.43 | +3.87 | +4.24 | +4.62 | +4.68 | +4.43 | +3.94 | +3.84 |
 
   The thresholds are NEW-1 (3.21), SHIP (3.465), the PI-2 rows (3.48–3.90,
   with the NF-1 on-USB row at 3.48 and the derating edges 3.53 / 3.60 /
-  3.65), MD-2 (VSYS_est 3.54), OLED-BST-2 (3.75) and PI-3 (3.91). Firmware
+  3.65), MD-2 (VSYS_est 3.54), OLED-BST-2 (3.75) and PI-3 (3.92). Firmware
   computes VBAT_est and compares it with T; the reading row is for bench
   checks. R1' replaces the flat VBAT_est = reading − 75 mV, which covered
   the over-read only up to a true 3.72 V (closed,
@@ -3249,7 +3248,7 @@ here, marked, so the history is traceable.
     GPIO-table drift (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
     revision, and `test_gpio_sleep_states_from_firmware_doc` passes against
     it (hardware/sim/results/report.md).
-12. **VBAT reading margin above 3.72 V (closed; hardware/sim, VSENSE-1/4).**
+12. **VBAT reading margin above 3.72 V (closed; hardware/sim, VSENSE-1/4, PI-3).**
     The flat 75 mV VREAD_MARGIN covered the worst calibrated over-read only up
     to a true 3.72 V, because the over-read is a gain error that grows with
     VSYS. [§12.4](#124-battery-measurement-and-low-battery-policy) now uses
@@ -3258,15 +3257,14 @@ here, marked, so the history is traceable.
     three strict xfails of `test_read_margin_covers_over_read_with_fw_rule`
     now pass and are retired: at 3.75 / 3.80 / 3.90 V the worst VBAT_est was
     0.66 / 1.99 / 4.63 mV above the true value and is now 4.68 / 4.43 /
-    3.94 mV below it. Every threshold keeps its VBAT_est value; only the
-    reading equivalents changed (the table in §12.4). One residual stays
-    open: at the 3.91 V B-variant threshold ([§6.3](#63-power-limiter)) the
-    R1' bound (true VBAT ≥ 3.910 V) leaves +7.9 mV of VLED margin in the
-    300 mA bursts, above the 3.3 V limit but short of the 10 mV the
-    threshold was sized for (+10.8 mV at the former true 3.913 V; about
-    +11.7 mV with the simulated worst over-read). VBAT_est 3.92 V would keep
-    +17.9 mV at the bound itself (hardware/sim, PI-3); this revision keeps
-    3.91 V.
+    3.94 mV below it. Every threshold keeps its VBAT_est value, and only the
+    reading equivalents changed (the table in §12.4), except the B-variant
+    threshold of [§6.3](#63-power-limiter): at 3.91 V the R1' bound (true
+    VBAT ≥ 3.910 V) left +7.9 mV of VLED margin in the 300 mA bursts, short
+    of the 10 mV the threshold was sized for (+10.8 mV at the former true
+    3.913 V). It is now VBAT_est 3.92 V (a reading of 4.0041 V), which keeps
+    +17.85 mV at the bound itself (sustained +64.0 mV, moving +122.7 mV;
+    hardware/sim, PI-3). Nothing in this item stays open.
 
 **To verify on prototype or against documentation**
 

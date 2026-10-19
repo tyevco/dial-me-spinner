@@ -301,7 +301,7 @@ Boost:
   remove R43 (hardware/sim, LED-DATA-2). WS2812B-2020-V6 (C52917434) is pin-compatible only: at 12 mA/ch the full-white
   ring draws 1.73 A (48 × 3 × 12 mA) and the coincident hardware worst case is ≈ 2.35 A (docs/architecture.md §8.4),
   above the 1 A rating of each of the link's two VSYS contacts when uncapped, so it may be fitted only together with
-  the firmware's instantaneous current cap (1.0 A from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that)
+  the firmware's instantaneous current cap (1.0 A from VBAT_est ≥ 3.92 V, the PI-2 rows in amperes below that)
   (hardware/sim, PI-3).
 * LED_DIN_MCU → R40 220 Ω (next to U10 pad 22 = P0.06; limits DIN clamp injection if P0.06 is ever high while VLED is
   off) → LED_DIN_R, with a 100 kΩ pull-down (R41) on LED_DIN_R → R43 0 Ω (fitted) → LED_DIN (D101.DIN).

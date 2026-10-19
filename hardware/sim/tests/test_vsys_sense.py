@@ -151,15 +151,15 @@ READ_THRESHOLDS = (
                               "table assumes it)", None),
     ("PI-2-row-3.80", 3.80, _PI2, None),
     ("PI-2-row-3.90", 3.90, _PI2 + " (>= 3.90 V: full ring)", None),
-    ("PI-3-B-variant-3.91", 3.91, "firmware.md §6.1 / §6.3 (PI-3): the WS2812B variant's 1.0 A instantaneous cap only "
-                                  "from VBAT_est >= 3.91 V", None),
+    ("PI-3-B-variant-3.92", 3.92, "firmware.md §6.1 / §6.3 (PI-3): the WS2812B variant's 1.0 A instantaneous cap only "
+                                  "from VBAT_est >= 3.92 V", None),
 )
 
 TEMPS = (-10.0, 25.0, 60.0)
 V_POINTS = tuple(sorted({3.0, 3.3, V_SHIP_OLD, V_SHIP, 3.7, CAL_REFS["board-under-5mA"], 3.8, 4.2, 4.41, 4.5, 4.59, 5.0,
                          5.5} | {c[1] for c in READ_THRESHOLDS}))
 # 3.0/3.7/4.2 battery corners; 3.48 / 3.5393 old / current SHIP threshold (reading); READ_THRESHOLDS true values
-# (3.21 ... 3.91 V; 3.465 V = SHIP VBAT_est); 3.79875 = VSENSE-5 loaded calibration point;
+# (3.21 ... 3.92 V; 3.465 V = SHIP VBAT_est); 3.79875 = VSENSE-5 loaded calibration point;
 # 4.41/4.5/4.59 = SYS_REG 4.5 V ±2 % on USB (BQ25180 DS SLUSE99C §7.5 VSYS_REG_ACCURACY): 4.5 V is the POR default and
 # the only alternative firmware.md §13.1 allows (it sets 4.4 V, 0x20), so these are the upper USB points;
 # 4.5/5.0/5.5 = VBUS corners with SYS_REG_CTRL = 111 pass-through (VSYS = VIN, SLUSE99C §8.3): firmware never sets it,

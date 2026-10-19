@@ -505,9 +505,10 @@ passes a few millimetres below it.
   * The 10 mm sibling (about 1.7 N claimed) is not an option: its Ø10 can
     does not fit the 10.1 mm bowl ([docs/mechanical.md](mechanical.md) §7).
   * So reduce preloads to about 0.4–0.5 N on a PTFE/POM pair, make the
-    anti-lash spring push toward PARK, and step at ≤ 300–500 PPS through the
-    loaded 0–4 mm zone; if that is not enough, fall back to an N20 or a Ø6
-    planetary gearmotor with a lead screw (same connector, mechanical.md §7).
+    anti-lash spring push toward PARK, and step at ≤ 446 PPS through the
+    loaded 0–4 mm zone (firmware.md §5.3); if that is not enough, fall back
+    to an N20 or a Ø6 planetary gearmotor with a lead screw (same connector,
+    mechanical.md §7).
   * Expect **about 0.8–1.2 s per full stroke** (500 full steps; 0.83–1.18 s
     in mechanical.md §7) and about 0.045–0.08 mAh per stroke.
   * Peak battery current is 0.36–0.42 A.
@@ -744,7 +745,7 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 
 | Option | Why rejected |
 |---|---|
-| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit, and with aligned PWM its ring peak is 1.73 A even under the 300 mA average cap. Fitting it requires the instantaneous lit-channel cap (sum of lit channels × 12 mA within the [§8.4](#84-peak-current) budget: 1.0 A only from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that) from first boot; otherwise it has to be dropped from the SPEC §5.4 alternates (hardware/sim, PI-3). |
+| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit, and with aligned PWM its ring peak is 1.73 A even under the 300 mA average cap. Fitting it requires the instantaneous lit-channel cap (sum of lit channels × 12 mA within the [§8.4](#84-peak-current) budget: 1.0 A only from VBAT_est ≥ 3.92 V, the PI-2 rows in amperes below that) from first boot; otherwise it has to be dropped from the SPEC §5.4 alternates (hardware/sim, PI-3). |
 | Legacy WS2812B-2020 | 3.7 V minimum supply, about 0.6 mA idle per LED, discontinued. |
 | SK6805-EC15 / EC20, SK6812MINI-E | VIH 0.78 × VDD (needs a level shifter) or VDD ≥ 3.5–3.7 V, 1 kHz PWM, about 0.5 mA idle per LED. |
 | APA102-2020 / SK9822 (clocked) | 5 V class, so a boost plus a level shifter; about 1 mA idle per LED. Worth it only for high-speed video. |
@@ -1471,7 +1472,7 @@ L = likelihood, I = impact (H / M / L).
 | D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 8 mm VSM08102 with the preloads cut to ≤ 0.5 N; the N20 or a Ø6 planetary gearmotor as the fallback. The 10 mm sibling's Ø10 can does not fit the 10.1 mm bowl ([docs/mechanical.md](mechanical.md) §7). The 8 mm motor reaches at most 0.93 N from battery VSYS, below the 0.8–1.15 N worst-case load, so it works only with preloads cut to ≤ 0.5 N (hardware/sim, MD-4; R4). Chord path with an inclined-slot link in the mechanical model ([docs/mechanical.md](mechanical.md) A11) | Before mechanical CAD freeze |
 | D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N. Pick the lowest preload that stops rocking; it must meet the verified ≥ 45 s acceptance (R3). If no preload does both, the conflict goes back to SPEC | First rotor prototype |
 | D4 | Detent damping shoe | None, felt, UHMW | Make it removable and decide by feel | First rotor prototype |
-| D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.91 V) implemented and verified, otherwise drop it from the alternates (hardware/sim, PI-3). Either way, V6 parts only (LED-DATA-2) | Before the PCBA order |
+| D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.92 V) implemented and verified, otherwise drop it from the alternates (hardware/sim, PI-3). Either way, V6 parts only (LED-DATA-2) | Before the PCBA order |
 | D6 | OLED SPI instance | SPIM3 at 16 MHz, SPIM2 at 8 MHz | **Decided: SPIM3 at 16 MHz** (SPEC §4) with the anomaly 198 and 195 workarounds ([§6.3](#63-display)). SPIM2 at 8 MHz on the same pins is the fallback | Done |
 | D7 | 3V3 LDO | RT9080-33 (2 µA typical, 4 µA max), TPS7A0233 (25 nA) | TPS7A0233 if stocked: −2 µA sleep. Pin-compatible SOT-23-5, so check the EN/NC pins. The rev-A sheet fits the RT9080-33GJ5 (U1, LCSC C841192); measure its ground current at the ~20 µA sleep load on the first boards and switch if it is above a few µA (hardware/sim, LDO-6/SLP-3) | Before the PCBA order |
 | D8 | Battery pack | Any protected pack ≤ 6.0 mm at the drawing maximum (the SPEC §8 envelope; a 603450-class pack only if its drawing maximum incl. PCM is ≤ 6.0 mm), the 503450/523450-class BOM pick (≤ 5.6 mm, SPEC §8, docs/mechanical.md §13), a deeper bay | Get the vendor drawing with PCM and leads. SPEC §8 now sets the envelope: long axis along θ 0°/180°, \|x\| ≤ 27.5, \|y\| ≤ 17.25, leads at the θ 180° end, inside Ø66.8, clear of the θ 270° boss (r = 20), the θ 90° rib (y 17.75–18.75) and the antenna shelf. **Maximum drawing thickness ≤ 6.0 mm, which leaves ≥ 1 mm to the base-board underside as the swelling allowance.** A 6.3 mm pack does not fit. Nothing sits on the base-board underside. A 5.0 mm pouch holds roughly 15–20 % less (*estimate* by volume) | Before the base CAD freeze |
@@ -1745,7 +1746,7 @@ item 8, and item 9.
     LED-DATA-2, LED-DATA-V1/V2/V3, LDO-2). SPEC §3 now sets 4.4 V, and SPEC
     §5.4 carries the SPICE margins and these rules. SPEC §5.4 allowed the
     WS2812B-2020-V6 with a "≤ 0.75 A" ring cap; with aligned PWM it needs the
-    instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.91 V), and SPEC §5.4
+    instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.92 V), and SPEC §5.4
     now allows it only together with that cap (PI-3).
 
 ---

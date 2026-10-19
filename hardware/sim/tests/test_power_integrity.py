@@ -59,7 +59,7 @@ What the simulation shows (rev A netlists; xfail tests carry the evidence, *_wit
     VBAT_est itself (its strict xfails, a row picked from the raw reading, are retired).
   * On USB with a pack (NF-1, R7) the 3.48 V row or the INSTANTANEOUS 0.40 A sum holds at a 3.48 V pack; the sum read
     as an average, or applied to a pack below ~3.43 V, does not (strict xfails, not allowed by the rule).
-  * WS2812B drop-in (PI-3, R10): the 1.0 A instantaneous cap from VBAT_est 3.91 V, guarded at a true 3.91 V
+  * WS2812B drop-in (PI-3, R10): the 1.0 A instantaneous cap from VBAT_est 3.92 V, guarded at a true 3.92 V
     (test_ws2812b_dropin_threshold_*).
   * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses); the "no supplement"
     profile (PI-4) is guarded by test_usb_without_battery_with_fw_rule.
@@ -239,14 +239,13 @@ FW_PK_USB_ROW = 3.48
 # the BQ25180 runs in DPPM / supplement and SYS follows the pack (VLED = 3.3 V at a 3.434 V pack, worst corner)
 FW_USB_TOTAL = 0.40
 FW_VOCV_EMPTY = 3.30       # 0 % SoC point of the docs/firmware.md 12.4 OCV table: a cell self-discharged after SHIP
-# WS2812B-2020-V6 variant (12 mA/ch, PI-3, R10): instantaneous cap about 1.0 A from VBAT_est >= 3.91 V (true
-# >= 3.91 V under R1'; it was >= 3.913 V under the flat 75 mV rule). Worst corner, 300 mA bursts with the OLED at
-# C7 <= 08h (the binding phase): VLED = 3.3 V at true 3.9025 V, 3.31 V at 3.9123 V. At the R1' bound (true 3.910 V) the
-# 3.3 V limit holds with +7.9 mV (test_ws2812b_dropin_threshold_with_fw_rule), less than the R3 10 mV margin the
-# 3.91 V was chosen for (+10.8 mV at the former true 3.913 V); a VBAT_est of 3.92 V (true >= 3.92 V) restores it
-# (+17.9 mV). Below it the
+# WS2812B-2020-V6 variant (12 mA/ch, PI-3, R10): instantaneous cap about 1.0 A from VBAT_est >= 3.92 V (true
+# >= 3.92 V under R1'). Worst corner, 300 mA bursts with the OLED at C7 <= 08h (the binding phase): VLED = 3.3 V at
+# true 3.9025 V, 3.31 V at 3.9123 V. At the R1' bound (true 3.920 V) the 3.3 V limit holds with +17.85 mV
+# (test_ws2812b_dropin_threshold_with_fw_rule), above the R3 10 mV margin. The earlier 3.91 V kept it under the flat
+# 75 mV rule (+10.8 mV at true 3.913 V) but only +7.88 mV at its R1' bound (true 3.910 V). Below it the
 # table rows apply in amperes (the ">= 3.90 V full ring" row means the C ring's 0.72 A, 60 lit B channels)
-FW_PK_B_FULL, FW_PK_B_V = 1.0, 3.91
+FW_PK_B_FULL, FW_PK_B_V = 1.0, 3.92
 # "no supplement" profile on USB (pack absent, or BUVLO_STAT = 1, which also covers precharge: CHG_STAT has no precharge
 # code and reports it as CC), firmware.md 6.3 / 13.3, PI-4:
 # ILIM 100 mA phase: LEDs <= 20 mA cue, OLED off, no flash erase, BLE TX 0 dBm, total <= 70 mA;
@@ -1511,17 +1510,18 @@ def test_ws2812b_dropin_peak_with_fw_rule(main, base, check, cname):
 @pytest.mark.parametrize("phase", list(fw_policy(FW_PK_B_V)))
 def test_ws2812b_dropin_threshold_with_fw_rule(main, base, check, phase):
     """Guard for the VBAT threshold of rule PI-3 (R10; docs/firmware.md 6.1 / 6.3, SPEC 5.4): the WS2812B-2020-V6
-    (12 mA/ch) gets the 1.0 A instantaneous cap only from VBAT_est >= FW_PK_B_V (3.91 V, a reading >= 3.9939 V). Worst
+    (12 mA/ch) gets the 1.0 A instantaneous cap only from VBAT_est >= FW_PK_B_V (3.92 V, a reading >= 4.0041 V). Worst
     corner, pack at the lowest true VBAT that VBAT_est allows (VBAT_est itself, R1'), every phase the documented
     policy allows there (fw_policy: 300 mA bursts with the OLED at C7 <= 08h, 150 mA sustained with the OLED at
     100 %, 100 mA while the actuator moves with 1.0 - 0.23 A), aligned LED / coil PWM, TX bursts, boost ripple, every
     supply limit.
     Derivation (bisection on the true VBAT, worst corner): VLED = 3.3 V at 3.9025 V for the burst phase (binding;
     3.31 V at 3.9123 V), 3.8582 V sustained, 3.8029 V moving; the review run at 3.90 V gave 3.2973 V (-2.7 mV). Under
-    the flat 75 mV rule (true VBAT_est + 3 mV: VLED 3.3108 V, +10.8 mV) 3.91 V kept the R3 10 mV margin; under R1'
-    the pack sits at a true 3.910 V and the burst phase keeps +7.9 mV (VLED 3.3079 V, recorded below), above the
-    3.3 V limit but short of R3's 10 mV, which a VBAT_est of 3.92 V restores (+17.9 mV at a true 3.920 V). The OLED
-    at 100 % during a burst (the 4.2 V guard deck above, not allowed by OLED-BST-2) needs a true 3.9405 V."""
+    R1' the pack sits at a true 3.920 V and the burst phase keeps +17.85 mV (VLED 3.3178 V, I(BAT) 1.122 A, recorded
+    below; sustained +63.96 mV, moving +122.74 mV), above R3's 10 mV. The earlier threshold of 3.91 V kept the R3
+    margin under the flat 75 mV rule (true VBAT_est + 3 mV: VLED 3.3108 V, +10.8 mV) but only +7.88 mV at its R1'
+    bound (VLED 3.3079 V at a true 3.910 V). The OLED at 100 % during a burst (the 4.2 V guard deck above, not allowed
+    by OLED-BST-2) needs a true 3.9405 V."""
     s = System(main, base, WORST)
     cap, icc, moving = fw_policy(FW_PK_B_V)[phase]
     pk = fw_peak_cap(FW_PK_B_V, s.n_led, moving, ich=WSB_ICH)

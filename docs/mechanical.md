@@ -379,11 +379,14 @@ face is the GND contact). Correct magnet-only errors at the magnet cup.
 | In-well f_n (Hz) | 9.2 | 8.4 | 7.6 | 7.0 | 5.4 | 3.2 | 1.6 | 0.8 | 0.4 | 0.1 |
 | Full steps from click | 0 | 33 | 67 | 100 | 133 | 200 | 267 | 333 | 400 | 500 |
 
-The bold columns are the verified LUT points; the rest are log-linear interpolations (`calcs.py` §4). An EC11 encoder
-is about 10–12 mN·m. The default CLICK strength is 1.5 mm (9.5 mN·m). In FREE (7.5 mm) the magnet's residual cogging is
-2.7 µN·m. **That is not the whole free-mode cogging:** the stepper's steel can and lead screw sit 3.1–4.6 mm from the
-track (A12), and their cogging is unknown and possibly comparable to the bearing drag. Do not expect "no preferred
-rest angle" until §15 #2 passes.
+The bold columns are the verified LUT points; the rest are log-linear interpolations (`calcs.py` §4). The firmware
+default is full click (s = 100 %, x = 0, about 16.5 mN·m by the LUT; firmware.md §5.1), where the friction shoe damps
+it. An offset of 1.5 mm gives 9.5 mN·m. An EC11 encoder is about 10–12 mN·m; the EC11-like s = 85 % (x ≈ 1.15 mm,
+77 full steps) gives about 11 mN·m, inside that range, and becomes the default only if the factory-measured
+`shoe_x_max` is at least 1.3 mm (firmware.md §5.1). In FREE (7.5 mm) the magnet's residual cogging is 2.7 µN·m.
+**That is not the whole free-mode cogging:** the stepper's steel can and lead screw sit 3.1–4.6 mm from the track
+(A12), and their cogging is unknown and possibly comparable to the bearing drag. Do not expect "no preferred rest
+angle" until §15 #2 passes.
 
 ![detent](../hardware/mechanical/renders/calc_detent.png)
 
@@ -438,14 +441,17 @@ stronger actuator (the fallbacks below; the 10 mm sibling does not fit) (hardwar
 
 * **Keep friction low:** PTFE tape on the rails, lubricated slot, ramp ≤ 8°.
 * **Firmware:** move the carriage only with the rotor at rest or below 1 rev/s, and run the loaded zone (0–4 mm) at
-  ≤ 300 PPS. Non-park moves MUST start only from VSYS_est ≥ 3.54 V (VSYS_est = 0.979 × the idle VSYS reading, so a
-  reading ≥ 3.6159 V; firmware.md §5.8, §12.4), because at the old 3.40 V the stroke-load sag leaves the coils below
-  the motor's 3.3 V / 165 mA rated drive (hardware/sim, MD-2).
-* **Gate:** slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the real carriage (§15 #6). If it fails, fall back to the
-  N20 or a Ø6 planetary micro gearmotor (below).
+  ≤ 446 PPS (firmware.md §5.3; the SPICE motor tests check the 0.5 N budget at 446 PPS, hardware/sim, MD-3).
+  Non-park moves MUST start only from VSYS_est ≥ 3.54 V (VSYS_est = 0.979 × the idle VSYS reading, so a reading
+  ≥ 3.6159 V; firmware.md §5.8, §12.4), because at the old 3.40 V the stroke-load sag leaves the coils below the
+  motor's 3.3 V / 165 mA rated drive (hardware/sim, MD-2).
+* **Gate:** slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the real carriage (§15 #6). The bench test measures at
+  both 300 and 500 PPS, which bracket the 446 PPS firmware speed. If it fails, fall back to the N20 or a Ø6 planetary
+  micro gearmotor (below).
 
-**Stroke time:** 267 steps in the loaded zone at 300–500 PPS plus 233 steps at 800 PPS = **0.83–1.18 s**
-(1.6 s at 200 PPS).
+**Stroke time** (`calcs.py` §10): 267 steps in the loaded zone at the §15 #6 bench speeds (500 / 300 PPS) plus 233
+steps at 800 PPS = **0.83–1.18 s** (1.6 s at 200 PPS). The firmware profile (446 PPS in the loaded zone, then the
+521–781 PPS ramp) takes about 0.9–1.1 s (firmware.md §5.3).
 
 **Packaging:**
 
@@ -472,16 +478,16 @@ return to FREE. Factory test 19 checks that HOME is released at full click.
 
 | Release at 6° in a well | Bearing friction only | + 1.6 mN·m shoe | Rest error with shoe (T_f/k) |
 |---|---|---|---|
-| Full click (16.5 mN·m) | 156 cycles, > 20 s | **4 cycles, 0.50 s** | **±0.23°** |
-| Default (9.5 mN·m) | 121 cycles, > 20 s | 2 cycles, 0.42 s | **±0.40°** |
+| Full click, the firmware default (16.5 mN·m) | 156 cycles, > 20 s | **4 cycles, 0.50 s** | **±0.23°** |
+| 1.5 mm offset (9.5 mN·m) | 121 cycles, > 20 s | 2 cycles, 0.42 s | **±0.40°** |
 
 With the shoe engaged, a 5 rev/s click spin lasts ≈ 2.2 s (prize-wheel feel).
 
 * **Pad:** a 3 × 0.8 mm **wool felt or UHMW-PE** pad (not PTFE, whose μ is too low) on a flexure at the carriage's outer
   tip. At click it lands on the ring top face at r ≈ 31.6–32.4, outside the magnets.
 * **Force:** 0.20 N normal → 1.3–1.9 mN·m at μ 0.2–0.3, r 32.
-* **Engagement window:** offsets ≤ 1.5 mm, which covers the default. An 8° ramp on the rail lifts the flexure 0.5 mm
-  between 1.5 and 2.3 mm, so the pad never wipes the magnets. Detail the ramp with the real flexure.
+* **Engagement window:** offsets ≤ 1.5 mm, which covers the full-click default (x = 0). An 8° ramp on the rail lifts
+  the flexure 0.5 mm between 1.5 and 2.3 mm, so the pad never wipes the magnets. Detail the ramp with the real flexure.
 * Firmware also predicts the landing detent.
 * Felt wear, debris and μ drift: to verify on prototype.
 
