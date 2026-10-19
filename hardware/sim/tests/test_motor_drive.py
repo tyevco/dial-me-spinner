@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import functools
 import math
+import re
 
 import numpy as np
 import pytest
@@ -171,16 +172,42 @@ def _base_lines(lines):
 
 
 def vsys_caps(d):
-    return [r for r in d.on_net("VSYS", "C") if set(d.pins[r].values()) <= {"VSYS", "GND"}]
+    """Fitted VSYS-GND capacitors (a removed or DNP part is not in the deck, so it must not count in C_eff either)."""
+    return [r for r in d.on_net("VSYS", "C") if d.fitted(r) and set(d.pins[r].values()) <= {"VSYS", "GND"}]
 
 
 def mlcc_tol(d, ref):
-    """Capacitance tolerance from the Samsung MPN code (10th character: K = 10 %, M = 20 %); the value string carries
-    none, and the harness default (10 %) would understate the M-grade 22 uF (C1) and base C2."""
+    """Capacitance tolerance from the Samsung MPN code (9th character, after the 3-digit value: K = 10 %, M = 20 %;
+    the 10th is the voltage code); the value string carries none, and the harness default (10 %) would understate the
+    M-grade parts (main C1, C2, C6, C41; base C2, C4)."""
     mpn = d.mpn(ref)
-    if mpn.startswith("CL") and len(mpn) >= 10 and mpn[9] in "KM":
-        return {"K": 0.10, "M": 0.20}[mpn[9]]
+    if mpn.startswith("CL") and len(mpn) >= 9 and mpn[8] in "KM":
+        return {"K": 0.10, "M": 0.20}[mpn[8]]
     return d.tol(ref)
+
+
+SAMSUNG_VRATED = {"R": 4.0, "Q": 6.3, "P": 10.0, "O": 16.0, "A": 25.0, "L": 35.0, "B": 50.0, "C": 100.0}
+
+
+def cap_vrated(d, ref):
+    """Rated voltage: from the value string ('10u/25V') if it carries one, else from the Samsung MPN voltage code
+    (10th character, Samsung MLCC part-numbering guide). Unknown parts fail loudly."""
+    v = d.comps[ref]["value"]
+    if "/" in v and v.split("/")[1].strip().upper().endswith("V"):
+        return float(v.split("/")[1].strip()[:-1])
+    mpn = d.mpn(ref)
+    if mpn.startswith("CL") and len(mpn) >= 10 and mpn[9] in SAMSUNG_VRATED:
+        return SAMSUNG_VRATED[mpn[9]]
+    raise KeyError(f"{d.board} {ref} {v!r} / MPN {mpn!r}: no voltage rating in the value or the MPN")
+
+
+def cap_case_len_mm(d, ref):
+    """Body length in mm from the KiCad footprint name (C_0805_2012Metric -> 2.0). Unknown footprints fail loudly."""
+    fp = d.comps[ref]["fields"].get("Footprint", "")
+    m = re.search(r"_(\d{2})(\d{2})Metric", fp)
+    if not m:
+        raise KeyError(f"{d.board} {ref}: no metric case size in footprint {fp!r}")
+    return int(m.group(1)) / 10.0
 
 
 def mlcc_dcbias(d, ref, v):
@@ -741,23 +768,86 @@ def test_firmware_drive_coast_kick(main, base, check, theta):
     position) or an MCU reset / brown-out / HardFault mid-move (θ = 45°, both coils at 0.71 x), where the nRF pins
     float, the DRV8837 pulldowns give IN = 00 and nSLEEP = 0, and firmware cannot brake first. Worst corner: USB, charge
     done (BATFET off), -10 C, coil -10 %, L 10 mH, VSYS MLCCs at vendor DC bias minus tolerance, 3 mA other load.
-    Margin is thin (about 50 mV): X5R ageing and the -10 C bias-TCC (not modelled) take it to about 5.53 V."""
+    Guards fix MD-5 (main C2, C6, C41 and base C4 now 25 V CL10A106MA8NRNC): 5.31 V (θ = 0) / 5.36 V (θ = 45°), C_eff
+    32.1 uF at 5 V, i.e. 140-190 mV below 5.5 V (was about 50 mV with the 10 V parts). X5R ageing (x0.93) and the -10 C
+    bias-TCC (x0.97), not modelled, take θ = 45° to about 5.44 V."""
     i0, vmax = firmware_coast_peak(main, base, theta)
     check("firmware drive: coil current vector before coast", i0, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT")
     check("VSYS peak after coast from the firmware drive (IDLE entry / MCU reset)", vmax, None, SYS_ABS_MAX, "V",
           f"{DS_BQ} Table 7.1 SYS abs max 5.5 V")
 
 
+# ------------------------------------------------ VM decoupling structure (SPEC §5.6)
+VM_BYPASS_MIN = 0.1e-6       # DRV8837 §5 Pin Functions (VM) / §9.1: 0.1 uF ceramic bypass rated for VM, per device
+VM_BULK_MIN = 10e-6          # SPEC §5.6: "0.1 uF each + one 10 uF 0805 shared" on the DRV8837 VM pins
+VM_BULK_CASE_MM = 2.0        # SPEC §5.6: the shared bulk is an 0805 (2012 metric, 2.0 mm long; an 0603 is 1.6 mm)
+SRC_VM_CAPS = (f"SPEC §5.6 (VM <- VSYS: 0.1 uF each + one 10 uF 0805 shared); {DS_DRV} §5 Pin Functions / §9.1 "
+               f"(0.1 uF VM bypass); {DS_DRV} §8.1 gives no bulk value (system-level)")
+DRIVERS = ("U40", "U41")
+
+
+def vm_caps(d):
+    """The DRV8837 VM decoupling as the netlist has it: fitted capacitors from the drivers' VM net to GND on the
+    drivers' own schematic sheet (netlist Sheetname of U40/U41), split into the shared bulk (>= 10 uF nominal) and the
+    per-device bypass (0.1 uF class). Every main VSYS cap is on one SPICE node here (no PCB inductance between them),
+    so only this sheet-local structure says whether the bulk sits at the drivers as SPEC §5.6 asks."""
+    vm = {d.funcs[r]["VM"] for r in DRIVERS}
+    assert len(vm) == 1, f"U40/U41 VM pins on different nets: {vm}"
+    vm = vm.pop()
+    sheets = {d.comps[r]["props"].get("Sheetname") for r in DRIVERS}
+    caps = sorted((r for r in d.on_net(vm, "C") if d.fitted(r) and set(d.pins[r].values()) == {vm, "GND"}
+                   and d.comps[r]["props"].get("Sheetname") in sheets), key=lambda r: -d.value(r))
+    eps = 1 - 1e-9                      # '10u' parses to 10 x 1e-6 = 9.999999999999999e-06 (float rounding)
+    bulk = [r for r in caps if d.value(r) >= VM_BULK_MIN * eps]
+    bypass = [r for r in caps if VM_BYPASS_MIN * eps <= d.value(r) < VM_BULK_MIN * eps]
+    return vm, caps, bulk, bypass
+
+
+def test_vm_capacitors_per_spec(main, base, check):
+    """Structural (netlist) check of the DRV8837 VM decoupling against SPEC §5.6 and the DRV8837 datasheet: one 0.1 uF
+    bypass per device, one shared >= 10 uF 0805 bulk on the detent sheet, each rated above the highest VM (DS §8.1:
+    'the voltage rating for bulk capacitors should be higher than the operating voltage, to provide margin for cases
+    when the motor transfers energy to the supply'; VSYS may reach the 5.5 V BQ25180 abs max on a coast). The DS gives
+    no numeric bulk value (§8.1: system-level testing), so the bulk's DC-bias-derated value is recorded as info; the
+    electrical consequence of the total is the coast check (test_firmware_drive_coast_kick)."""
+    vm, caps, bulk, bypass = vm_caps(main)
+    check(f"VM bypass caps (0.1 uF class) on the driver sheet, one per DRV8837 ({' '.join(bypass)})", len(bypass),
+          len(DRIVERS), None, "", SRC_VM_CAPS)
+    check(f"shared VM bulk caps (>= 10 uF nominal) on the driver sheet ({' '.join(bulk)})", len(bulk), 1, None, "",
+          SRC_VM_CAPS)
+    for r in bulk:
+        check(f"{r} case size, body length (SPEC §5.6: 0805 or larger)", cap_case_len_mm(main, r), VM_BULK_CASE_MM,
+              None, "mm", "SPEC §5.6 (one 10 uF 0805 shared)")
+    for r in caps:
+        check(f"{r} voltage rating vs the highest VM (VSYS abs max)", cap_vrated(main, r), SYS_ABS_MAX, None, "V",
+              f"{DS_DRV} §8.1 bulk rating above the operating voltage; {DS_BQ} Table 7.1 SYS 5.5 V")
+    cs = vsys_cscale(main, base, V_DCBIAS_KICK, worst=True)
+    c_bulk = sum(main.value(r) * cs[r] for r in bulk)
+    check("shared VM bulk, effective at 5 V (vendor DC bias, minus MPN tolerance)", c_bulk, None, None, "F",
+          f"info: {SRC_DCBIAS}")
+    check("shared VM bulk share of the effective VSYS capacitance at 5 V", c_bulk / vsys_ceff(main, base, cs), None,
+          None, "", "info")
+
+
 @pytest.mark.fault
 def test_fault_c74_left_off_is_detected(main, base, check):
-    """Fault (verifier addition): C74, the shared 10 uF VM bulk cap (SPEC §5.6), left off. Before the vendor DC-bias
-    derating and the firmware-drive coast test, no check in this file noticed it. The firmware-drive coast check must
-    now catch it (mid-step reset, worst corner)."""
+    """Fault (verifier addition): C74, the shared 10 uF VM bulk cap (SPEC §5.6), left off. Before MD-5 the
+    firmware-drive coast caught it (5.59 V > 5.5 V). With the 25 V VSYS caps (MD-5) the design no longer depends on
+    C74 for that limit: at the worst corner the mid-step coast peaks at 5.48 V without C74 vs 5.36 V with it (C_eff
+    27.6 vs 32.1 uF at 5 V), and no other electrical limit in this file separates the two (DRV8837 VM abs max 12 V,
+    operating max 11 V; the DRV8837 has no VM UVLO, DS §7.3.4; BQ25180 SYS abs max 5.5 V; no VM ripple limit is
+    documented; the closest full-step limit, VSYS min 3.013 V vs 3.0 V at VBAT 3.3 V / -10 C, moves 1 mV without C74;
+    all main VSYS caps share one SPICE node, so C74's locality is not modelled). Only the unmodelled X5R
+    ageing and -10 C bias-TCC would push it to about 5.57 V (5.44 V fitted). So the SPEC §5.6 structural check of
+    test_vm_capacitors_per_spec must catch it; the coast peak is recorded as info."""
     main.remove("C74")
+    _, _, bulk, _ = vm_caps(main)
+    assert len(bulk) < 1, f"fault not detected: shared VM bulk caps {bulk}"
+    check("FAULT C74 left off: shared VM bulk caps (>= 10 uF) on the driver sheet (must be < 1)", len(bulk), None, 0,
+          "", f"{SRC_VM_CAPS} (fault detected when below 1)")
     i0, vmax = firmware_coast_peak(main, base, 45)
-    assert vmax > SYS_ABS_MAX, f"fault not detected: VSYS peak {vmax} V"
-    check("FAULT C74 left off: VSYS peak after a mid-step coast (must exceed 5.5 V)", vmax, SYS_ABS_MAX, None, "V",
-          f"{DS_BQ} Table 7.1 SYS abs max (fault detected when above)")
+    check("FAULT C74 left off: VSYS peak after a mid-step coast (worst corner)", vmax, None, None, "V",
+          f"info: below the {DS_BQ} 5.5 V abs max since MD-5 (25 V VSYS caps); 5.36 V with C74 fitted")
 
 
 # ------------------------------------------------ firmware drive: 25 kHz slow-decay 8-µstep sine

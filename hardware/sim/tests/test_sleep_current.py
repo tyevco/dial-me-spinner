@@ -154,12 +154,13 @@ class SleepSim:
     """One DC operating point of both boards in SLEEP (System ON idle) or SHIP mode."""
 
     def __init__(self, main, base, vbat=3.7, temp=25.0, maxc=0, mode="sleep", scale=None, kgnd=0.0,
-                 u20_en_net=None, tmag_tsleep=0.1, sw1_closed=False, pcm_ua=None):
+                 u20_en_net=None, tmag_tsleep=0.1, sw1_closed=False, pcm_ua=None, u21_qod_open=False):
         self.main, self.base = main, base
         self.vbat, self.temp, self.maxc, self.mode = vbat, temp, maxc, mode
         self.scale = scale or {}
         self.kgnd = kgnd
         self.u20_en_net = u20_en_net
+        self.u21_qod_open = u21_qod_open     # what-if only: U21 QOD left unconnected (the pre-LSW-1 schematic)
         self.tmag_tsleep = tmag_tsleep
         self.sw1_closed = sw1_closed or "SW1" in base._shorted
         self.pcm_ua = arch_sleep_budget()["pcm"] if pcm_ua is None else pcm_ua
@@ -250,7 +251,8 @@ class SleepSim:
                  f"params: MAXC={MX} KGND={self.kgnd}")
         self._ic(deck, "U2", "leds", [p("U2", "VIN"), p("U2", "ON"), "__G__", p("U2", "VOUT"), p("U2", "QOD")],
                  "SC_TPS22917_OFF", f"params: MAXC={MX}")
-        self._ic(deck, "U21", "oled", [p("U21", "VIN"), p("U21", "ON"), "__G__", p("U21", "VOUT"), p("U21", "QOD")],
+        u21_qod = "n_u21_qod_open" if self.u21_qod_open else p("U21", "QOD")
+        self._ic(deck, "U21", "oled", [p("U21", "VIN"), p("U21", "ON"), "__G__", p("U21", "VOUT"), u21_qod],
                  "SC_TPS22917_OFF", f"params: MAXC={MX}")
         en = m.node(self.u20_en_net) if self.u20_en_net else p("U20", "EN")
         self._ic(deck, "U20", "oled", [p("U20", "VIN"), en, p("U20", "SW"), p("U20", "FB")], "SC_TPS61040",
@@ -446,16 +448,20 @@ def test_sleep_breakdown_and_top_contributors(nominal, budget, check):
     assert top[0][1] > 0
 
 
-D21_ISSUE = ("DESIGN ISSUE: TPS61040 U20 has EN tied to its own VIN (OLED_VIN). In sleep the panel's VCI->VCC ESD "
-             "path lifts +13V_OLED to about 2.7 V; the B5819W rectifier D21 then leaks backwards (CJ typ 4.9 uA at "
-             "25 C, 27 uA at 60 C) into the floating OLED_VIN, U20 wakes at its 1.5 V UVLO and burns it (DC model, "
-             "no credit for hiccup energy returned to +13V_OLED; with ideal recycling still >= +2.2 uA at 25 C). "
-             "Fix: hold U20 EN low in sleep (own GPIO + pull-down <= 400 kOhm so II 1 uA max keeps EN <= VIL 0.4 V "
-             "while the MCU is in reset; asserted only once OLED_VIN is up since EN <= VIN + 0.3 V), or a low-IR "
-             "rectifier.")
+D21_ISSUE = ("DESIGN ISSUE (sleep budget; remains after the SLP-1/LSW-1 fix): the sleep total is 36.0 / 37.4 / "
+             "37.5 uA at VBAT 3.0 / 3.7 / 4.2 V (typ, 25 C), above the architecture.md 8.2 sum of 32.41 uA. The "
+             "panel's VCI->VCC ESD path holds +13V_OLED at about 2.7 V. U21 QOD, now tied to OLED_VIN, holds "
+             "OLED_VIN at about 0 V, so the B5819W rectifier D21 sits at VR about 2.7 V. Its reverse leakage (CJ typ "
+             "curve: 5.4 uA at 25 C, 30 uA at 60 C) flows all the time: +3V3 -> panel ESD -> D21 -> L -> U21 QOD -> "
+             "GND. The boost itself is off (test_boost_is_really_off_in_sleep). Before the fix, OLED_VIN floated "
+             "to the U20 UVLO (D21 VR about 1.2 V, 4.95 uA) and U20 burned that leakage while hiccuping (total "
+             "36.9 uA). The 8.2 OLED line (12 uA: ICI, divider, RES# pull-down) "
+             "does not include it; the sim gives 17.6 uA. Fix: either budget it in architecture 8.2 (OLED about "
+             "17.6 uA, 60 C about 42 uA), or remove the leak in hardware: a low-IR rectifier, or U20 EN on its own "
+             "GPIO with U21 QOD open (32.18 uA, test_boost_fix_whatif_en_held_low).")
 
 
-@pytest.mark.xfail(strict=True, reason=D21_ISSUE)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=D21_ISSUE)
 @pytest.mark.parametrize("vbat", [3.0, 3.7, 4.2])
 def test_sleep_total_within_budget_vs_vbat(main, base, budget, vbat, check):
     """Total battery drain in SLEEP (typ, 25 C) against the itemised architecture.md §8.2 sleep budget."""
@@ -475,21 +481,24 @@ def test_sleep_temperature_sweep(main, base, budget, temp, check):
     check(f"D21 reverse current at {temp:+.0f} C", ua(r["id21"]), unit="µA", source="informational")
 
 
-@pytest.mark.parametrize("temp", [-10.0, pytest.param(25.0, marks=pytest.mark.xfail(strict=True, reason=D21_ISSUE)),
-                                  pytest.param(60.0, marks=pytest.mark.xfail(strict=True, reason=D21_ISSUE))])
+@pytest.mark.parametrize("temp", [-10.0, 25.0, 60.0])
 def test_boost_is_really_off_in_sleep(main, base, temp, check):
-    """With OLED_VCC_EN low the boost must be in shutdown: U20 may draw only ISD + EN leakage (both max)."""
+    """Guards fix SLP-1/LSW-1 (U21 QOD tied to OLED_VIN). With OLED_VCC_EN low, the boost must be in shutdown:
+    U20 may draw only ISD + EN leakage (both max, 2.0 uA). QOD now holds OLED_VIN at 0.1 / 0.8 / 4.5 mV, and U20
+    draws 0.100 / 0.101 / 0.105 uA at -10 / 25 / 60 C, so the margin is about 1.9 uA. With QOD open it drew 4.96 uA
+    at 25 C and 27.3 uA at 60 C (UVLO hiccup)."""
     sim, r = simulate(main, base, temp=temp)
     check(f"OLED_VIN in sleep at {temp:+.0f} C", sim.v(r, "OLED_VIN"), unit="V", source="informational")
     check(f"U20 TPS61040 current in sleep at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=1.0 + 1.0, unit="µA",
           source="TPS61040 SLVS413L §5.5 ISD 1 µA max + II 1 µA max; architecture §6.3 'boost input draws 0 µA'")
 
 
-@pytest.mark.parametrize("temp", [pytest.param(t, marks=pytest.mark.xfail(strict=True, reason=D21_ISSUE))
-                                  for t in (-10.0, 25.0, 60.0)])
+@pytest.mark.parametrize("temp", [-10.0, 25.0, 60.0])
 def test_boost_enable_pin_in_shutdown_in_sleep(main, base, temp, check):
-    """State check behind the current check above (verifier addition): TPS61040 shutdown is EN <= VIL. The
-    current check alone passes at -10 C although the boost is enabled there too (D21 leaks less when cold)."""
+    """Guards fix SLP-1/LSW-1 (U21 QOD tied to OLED_VIN). This is the state check behind the current check above
+    (verifier addition): TPS61040 shutdown needs EN <= VIL 0.4 V. EN = OLED_VIN is held at 0.1 / 0.8 / 4.5 mV at
+    -10 / 25 / 60 C, a margin of at least 0.395 V. With QOD open it was 1.46-1.53 V. The current check alone passed
+    at -10 C even though the boost was enabled there too (D21 leaks less when cold)."""
     sim, r = simulate(main, base, temp=temp)
     en = main.pin("U20", "EN")
     check(f"U20 EN in sleep at {temp:+.0f} C", 0.0 if en == "0" else r["v"][en], hi=0.4, unit="V",
@@ -497,29 +506,48 @@ def test_boost_enable_pin_in_shutdown_in_sleep(main, base, temp, check):
 
 
 def test_boost_fix_whatif_en_held_low(main, base, budget, check):
-    """What-if for the D21 finding (not the schematic): U20 EN held low in sleep instead of tied to OLED_VIN."""
+    """What-if (not the schematic): the EN-low alternative to the SLP-1 fix. U21 QOD is left open, as before the
+    LSW-1 change, and U20 EN is held low (own GPIO + pull-down, SLP-1/SLP-V2 proposal) instead of tied to OLED_VIN.
+
+    Re-targeted after the schematic fixed SLP-1 differently (U21 QOD tied to OLED_VIN). On that circuit EN low
+    changes nothing: QOD already holds EN = OLED_VIN at about 0 V, and the totals are identical (37.37 uA at 25 C
+    either way). The original deck had therefore become a copy of the real-design total, and it failed that
+    total's budget. This deck keeps the alternative it was written for. OLED_VIN floats up to +13V_OLED, D21 sees
+    VR of about 0 V, and its reverse leakage falls from 5.4 uA (QOD fix) to 0.19 uA. The result, 32.18 uA, is the
+    same as on the pre-fix netlist. The test (a) records that this alternative meets the architecture 8.2 budget
+    (32.41 uA), which the built fix misses by 5.0 uA (37.37 uA, 5.19 uA above this alternative), and (b) keeps the
+    SLP-V3 role. It is the regression guard on every
+    other sleep contributor while the real-design total (test_sleep_total_within_budget_vs_vbat) is xfailed for
+    the D21 leak."""
     for temp in (-10.0, 25.0, 60.0):
-        sim, r = simulate(main, base, temp=temp, u20_en_net="GND")
-        check(f"[what-if EN low] U20 current at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=2.0, unit="µA",
-              source="TPS61040 SLVS413L §5.5 ISD 1 µA max + II 1 µA max")
-        check(f"[what-if EN low] sleep battery current at {temp:+.0f} C", ua(r["ibat"]), unit="µA",
+        sim, r = simulate(main, base, temp=temp, u20_en_net="GND", u21_qod_open=True)
+        check(f"[what-if EN low, QOD open] U20 current at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=2.0,
+              unit="µA", source="TPS61040 SLVS413L §5.5 ISD 1 µA max + II 1 µA max")
+        check(f"[what-if EN low, QOD open] sleep battery current at {temp:+.0f} C", ua(r["ibat"]), unit="µA",
               source="informational")
-    sim, r = simulate(main, base, u20_en_net="GND", maxc=1)
-    check("[what-if EN low] OLED + boost sleep current, datasheet max, 25 C", ua(r["by_cat"]["oled"]), unit="µA",
-          source="informational (architecture §8.2 claims 35–40 µA max)")
-    sim, r = simulate(main, base, u20_en_net="GND")
-    check("[what-if EN low] sleep battery current (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget),
+    sim, r = simulate(main, base, u20_en_net="GND", u21_qod_open=True, maxc=1)
+    check("[what-if EN low, QOD open] OLED + boost sleep current, datasheet max, 25 C", ua(r["by_cat"]["oled"]),
+          unit="µA", source="informational (architecture §8.2 claims 35–40 µA max)")
+    sim, r = simulate(main, base, u20_en_net="GND", u21_qod_open=True)
+    sim0, r0 = simulate(main, base)
+    check("[what-if EN low, QOD open] D21 reverse current (typ, 25 C)", ua(r["id21"]), unit="µA",
+          source=f"informational (schematic, U21 QOD tied to OLED_VIN: {ua(r0['id21']):.2f} µA)")
+    check("sleep current cost of the built SLP-1 fix (QOD tied) over the EN-low alternative (typ, 25 C)",
+          ua(r0["ibat"] - r["ibat"]), unit="µA", source="informational (D21 reverse leakage sunk by U21 QOD)")
+    check("[what-if EN low, QOD open] sleep battery current (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget),
           unit="µA", source="docs/architecture.md §8.2 sleep column (sum of lines)")
 
 
-OLED_MAX_ISSUE = ("DESIGN ISSUE: OLED sleep at datasheet maxima exceeds the architecture's '35-40 uA maximum', "
-                  "driven by the D21 back-feed (see D21 finding; typical-curve leakage, the diode has no low-VR max). "
-                  "With U20 EN held low it is 41.9 uA, but 2.7 uA of that is SSD1351 ISLP_VCC and TPS61040 switch "
-                  "leakage scaled linearly from their 16 V / 28 V test points (39.2 uA without them), so the "
-                  "post-fix residual is unconfirmed.")
+OLED_MAX_ISSUE = ("DESIGN ISSUE: at datasheet maxima the OLED sleep current exceeds the architecture's '35-40 uA "
+                  "maximum'. With the SLP-1/LSW-1 fix (U21 QOD tied to OLED_VIN) it is 45.4 uA at 25 C and 70.0 uA "
+                  "at 60 C. The cause is the D21 back-feed (see D21_ISSUE): typical-curve reverse leakage of 5.4 / "
+                  "29.9 uA, now sunk through U21 QOD (the diode has no low-VR max). 1.7 uA of the total is SSD1351 "
+                  "ISLP_VCC, scaled linearly from its 16 V test point; without it the total is still 43.7 uA at "
+                  "25 C. The excess therefore does not come from that scaling. The EN-low alternative with QOD open "
+                  "gives 41.9 uA at 25 C.")
 
 
-@pytest.mark.xfail(strict=True, reason=OLED_MAX_ISSUE)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=OLED_MAX_ISSUE)
 @pytest.mark.parametrize("temp", [25.0, 60.0])
 def test_oled_sleep_within_architecture_max(main, base, budget, temp, check):
     """architecture.md §8.2 / §6.3: OLED sleep 'maximum 35-40 µA' -- datasheet-max IC currents."""

@@ -264,9 +264,10 @@ def _vsys_only(main):
     return [r for r in main.comps if set(main.pins.get(r, {}).values()) <= {"VSYS", "GND"}]
 
 
-def oled_input(deck, main, boost=True, panel_esd=False):
+def oled_input(deck, main, boost=True, panel_esd=False, esd=None):
     """U21's load: C37/C41/C38/R25/L20/D21/output caps/FB divider from the netlist, TPS61040 averaged model
-    (boost=False leaves U20 out, for decks that only need the ON/OFF state of U21)."""
+    (boost=False leaves U20 out, for decks that only need the ON/OFF state of U21).
+    esd: None (generic panel ESD diode), or dict(is=..., rs=...) for the SSD1351 VCI/VDDIO -> VCC clamp."""
     deck.include(LIB_D21)
     deck += main.passives(nets={"OLED_VIN", "OLED_BST_SW", "+13V_OLED", "OLED_BST_FB", "GND", "VSYS",
                                 "OLED_LSW_CT", "OLED_VCC_EN"}, exclude=_vsys_only(main))
@@ -282,8 +283,9 @@ def oled_input(deck, main, boost=True, panel_esd=False):
         vci = next(n for p, n in j.items() if p == "27")
         vddio = next(n for p, n in j.items() if p == "4")
         vcc = next(n for p, n in j.items() if p == "2")
+        params = (" params: " + " ".join(f"{k}={v:.6g}" for k, v in esd.items())) if esd else ""
         deck += (f"XJ20 {spicelib.node_name(vci)} {spicelib.node_name(vddio)} {spicelib.node_name(vcc)} 0 "
-                 f"LSW_SSD1351_ESD")
+                 f"LSW_SSD1351_ESD{params}")
     return deck
 
 
@@ -601,13 +603,13 @@ def mpn_tol(main, ref):
     return main.tol(ref)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: from the 3.48 V "
-                   "firmware floor, with C8/C9 at the +20 % of their MPN (CL21A226MAQNNNE), the 48 x 100 nF at +10 % "
-                   "and R4 at +1 %, the QOD discharge through R4 + ~150 R still takes ~30.6 ms to 10 % WITH the Samsung "
-                   "DC-bias derating included (fix: R4 68 R, or a 35 ms firmware wait)")
 def test_u2_qod_discharge_tolerance_extremes(main, base, check):
-    """C8, C9, R4 at their tolerance corners (MPN tolerance) with the 48 x 100 nF (one reel) at +10 %, and every VLED
+    """Guards fix LSW-2 (R4 100 R -> 68 R): from the 3.48 V firmware floor, with C8/C9 at the +20 % of their MPN
+    (CL21A226MAQNNNE), the 48 x 100 nF at +10 % and R4 at +1 %, the QOD discharge through R4 + ~150 R now reaches
+    10 % in 26.6 ms (25.7 ms from 4.2 V) incl. the Samsung DC-bias derating, 3.4 ms inside the firmware's 30 ms
+    VLED-off allowance (it took ~30.6 ms with 100 R).
+
+    C8, C9, R4 at their tolerance corners (MPN tolerance) with the 48 x 100 nF (one reel) at +10 %, and every VLED
     capacitor at its Samsung DC-bias / TCC capacitance at 25 C (the slowest temperature: TCC < 0 at -10 and 60 C).
     Discharge from the lowest VSYS at which firmware still runs VLED (3.48 V rested, docs/firmware.md 12.4), where the
     DC-bias derating helps least; the 4.2 V start (most derating) is recorded for the all-plus corner.  The discharge
@@ -649,7 +651,7 @@ def test_u2_qod_discharge_monte_carlo(main, base, check):
 
 @pytest.mark.fault
 def test_fault_qod_resistor_wrong_value(main, base, check):
-    """R4 fitted as 1 k instead of 100 R (a one-digit BOM slip): the discharge must miss the 30 ms allowance."""
+    """R4 fitted as 1 k instead of 68 R (a BOM slip): the discharge must miss the 30 ms allowance."""
     main.override("R4", "1k")
     r = u2_turn_off(main, base, "bat4.2", stop=60e-3, ideal_vsys=4.2)
     detects(check, "VLED to 10 % with R4 = 1k", r["t_off10"], None, FW_LED_OFF, "s",
@@ -685,7 +687,9 @@ def test_on_pins_vs_gpio_levels(main, base, check, corner):
 
 
 def mcu_reset(main, base, stop=40e-3, t_rst=6e-3, leak=100e-9):
-    """Both rails on, then the MCU resets at t_rst (pads released, small sourcing leakage): do both switches open?"""
+    """Both rails on, then the MCU resets at t_rst (pads released, small sourcing leakage): do both switches open?
+    U20 is left out (boost=False): OLED_VIN then discharges through U21's QOD alone (QOD tied to OLED_VIN), the
+    slowest case, since a running TPS61040 would only pull it down faster."""
     d = Deck("MCU reset")
     vsys_network(d, main, base, "bat4.2")
     tps22917(d, main, "U2")
@@ -696,14 +700,19 @@ def mcu_reset(main, base, stop=40e-3, t_rst=6e-3, leak=100e-9):
     gpio(d, main, "LED_PWR_EN", "n_ctl", "n_oe", ileak=leak)
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe", ileak=leak)
     d.tran("20u", f"{stop}")
+    nin = main.node("OLED_VIN")
     d.meas(f"tran vled0 FIND v(n_vled) AT={t_rst * 0.99}")
+    d.meas(f"tran vin0 FIND v({nin}) AT={t_rst * 0.99}")
     d.meas(f"tran von2 FIND v({main.node('LED_PWR_EN')}) AT={stop}")
     d.meas(f"tran von21 FIND v({main.node('OLED_VCC_EN')}) AT={stop}")
-    d.wave("v(n_vled)")
-    r = run(d, need=("vled0", "von2", "von21"))
+    d.meas(f"tran vinend FIND v({nin}) AT={stop}")
+    d.wave("v(n_vled)", f"v({nin})")
+    r = run(d, need=("vled0", "vin0", "von2", "von21", "vinend"))
     t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
     t10 = first_cross(t, v, 0.1 * r["vled0"], rising=False, after=t_rst)
     r["t_off10"] = (t10 - t_rst) if t10 else float("inf")
+    tin = first_cross(t, r["waves"][f"v({nin})"], BST_EN_VIL, rising=False, after=t_rst)
+    r["t_vin_off"] = (tin - t_rst) if tin else float("inf")
     return r
 
 
@@ -715,6 +724,13 @@ def test_mcu_reset_turns_both_rails_off(main, base, check):
     check("U21 ON after MCU reset (100 nA leak, ASSUMED)", r["von21"], None, SW_VIL_MAX, "V", f"{DS_SW} Table 7.3 VIL max")
     check("VLED to 10 % after MCU reset", r["t_off10"], None, FW_LED_OFF, "s",
           "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+    # LSW-1 / SLP-1: with U21's QOD tied to OLED_VIN the boost input is pulled below the TPS61040 EN VIL (EN = VIN)
+    # after a reset as well, so U20 is guaranteed off: 0.8 mV at the end of the window, below 0.4 V 1.6 ms after the
+    # reset (before the fix, QOD open, OLED_VIN floated and was still 4.1 V at the end of the window)
+    check("OLED_VIN at the end of the window after MCU reset (boost EN = VIN)", r["vinend"], None, BST_EN_VIL, "V",
+          f"{DS_BST} Table 5.5 EN VIL max 0.4 V; {DS_SW} Table 9-2 ON=L + QOD: VOUT = GND")
+    check("OLED_VIN below EN VIL after MCU reset (record, QOD only, U20 not drawing)", r["t_vin_off"], None, None, "s",
+          f"informational: C38 + U21 QOD; OLED_VIN before reset {r['vin0']:.3f} V")
 
 
 @pytest.mark.fault
@@ -735,6 +751,8 @@ def test_fault_oled_on_pulldown_missing_in_reset(main, base, check):
     r = mcu_reset(main, base, stop=30e-3)
     detects(check, "U21 ON after MCU reset with R25 missing", r["von21"], None, SW_VIL_MAX, "V",
             f"{DS_SW} Table 7.3 VIL max")
+    detects(check, "OLED_VIN after MCU reset with R25 missing (boost EN = VIN)", r["vinend"], None, BST_EN_VIL, "V",
+            f"{DS_BST} Table 5.5 EN VIL max 0.4 V")
 
 
 # ======================================================================================== 5. phantom powering via LED_DIN
@@ -934,20 +952,22 @@ def test_bat_pin_vs_buvlo_at_firmware_floor(main, base, check, rail, temp):
 
 
 # ======================================================================================== 7. U21 off: back-powering
-def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13_0=0.0):
+def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13_0=0.0, esd=None):
     """U21 off (OLED_VCC_EN low), +3V3 up.  Paths into OLED_VIN / +13V_OLED: U21 off-state leakage (VIN->VOUT),
-    the SSD1351 VCI/VDDIO->VCC ESD path, then D21 reverse leakage from +13V_OLED back into OLED_VIN (QOD open)."""
+    the SSD1351 VCI/VDDIO->VCC ESD path, then D21 reverse leakage from +13V_OLED back into OLED_VIN, which U21's
+    QOD (tied to OLED_VIN in the netlist, fix LSW-1) returns to GND.  esd: panel clamp I-V (see oled_input)."""
     d = Deck(f"U21 off {temp}C")
     d += f".temp {temp}"
     vsys_network(d, main, base, "bat3.7", temp)
     isd = isd_out if isd_out is not None else (SW_ISD_MAX_85C if temp > 25 else 10e-9)
     tps22917(d, main, "U21", isd_out=isd)
-    oled_input(d, main, panel_esd=panel_esd)
+    oled_input(d, main, panel_esd=panel_esd, esd=esd)
     d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
     n13, nin, nfb = main.node("+13V_OLED"), main.node("OLED_VIN"), main.node("OLED_BST_FB")
     # start with OLED_VIN held at 0 V for the operating point (.ic, released at t = 0), as after a power-up with
-    # the OLED left off; at 60 C the boost would hiccup around its UVLO, so there is no free DC operating point
+    # the OLED left off; with QOD open (before fix LSW-1, or a lost QOD tie) the boost would hiccup around its
+    # UVLO at 60 C, so there is no free DC operating point, and from 0 V a rising OLED_VIN shows the fault
     d += f".ic v({nin})=0" + (f" v({n13})={v13_0}" if v13_0 else "")
     d.tran(f"{stop / 2000:.3g}", f"{stop}")
     d.meas(f"tran vin_end FIND v({nin}) AT={stop}")
@@ -964,21 +984,33 @@ def test_u21_off_leakage_alone_keeps_boost_off(main, base, check):
           f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN) / {DS_SW} Table 7.5 ISD 100 nA max")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: with OLED_VCC_EN low, the SSD1351 VCI->VCC ESD path holds "
-                   "+13V_OLED near +3V3 and D21's reverse leakage then charges the floating OLED_VIN (U21 QOD open) "
-                   "above the TPS61040 EN VIL max (EN tied to VIN): the boost is not guaranteed off and draws IQ "
-                   "from +3V3 (fix: tie U21 QOD to OLED_VIN, see design_findings)")
-@pytest.mark.parametrize("temp", [-10, 25, 60])
-def test_u21_off_backpower_via_panel_and_d21(main, base, check, temp):
-    # D21 leakage charges C38 at roughly 0.2 / 1 / 6 V/s at -10 / 25 / 60 C: simulate long enough to settle or to
-    # reach the boost UVLO region (where it would start hiccuping), not longer
-    r = u21_off_state(main, base, temp, panel_esd=True, stop={-10: 8.0, 25: 3.0, 60: 0.25}[temp])
-    check(f"+13V_OLED held by the panel ESD path (record) {temp}C", r["v13_end"], None, None, "V",
+# The SSD1351 datasheet gives no I-V for its VCI/VDDIO -> VCC ESD structure: the generic diode (IS 1e-14, RS 10) and
+# a strong (IS 1e-11) and very strong (IS 1e-9) clamp bracket it (verifier).  The stronger the clamp, the closer
+# +13V_OLED (and with it FB = VCC x R27/(R26 + R27)) sits to +3V3, so the FB check is tightest for the strongest one.
+PANEL_ESD = {"generic ESD": None, "strong ESD IS 1e-11": {"is": 1e-11, "rs": 1.0},
+             "very strong ESD IS 1e-9": {"is": 1e-9, "rs": 1.0}}
+U21_OFF_CASES = ([(t, "generic ESD") for t in (-10, 25, 60)] +
+                 [(t, e) for e in ("strong ESD IS 1e-11", "very strong ESD IS 1e-9") for t in (25, 60)])
+
+
+@pytest.mark.parametrize("temp,esd", U21_OFF_CASES)
+def test_u21_off_backpower_via_panel_and_d21(main, base, check, temp, esd):
+    """Guards fix LSW-1 / SLP-1 (U21 QOD tied to OLED_VIN): with OLED_VCC_EN low the SSD1351 VCI->VCC ESD path still
+    holds +13V_OLED near +3V3 and D21 leaks backwards into OLED_VIN, but U21's ~150 R QOD now holds OLED_VIN at
+    0.05 / 0.7 / 5.4 mV at -10 / 25 / 60 C (any clamp) against the TPS61040 EN VIL max 0.4 V, so the boost (EN tied
+    to VIN) is guaranteed off.  FB - OLED_VIN is 0.26 V with the generic clamp and up to 0.293 V with the very
+    strong one at 60 C against the 0.3 V abs max: thin, so bring-up measures FB.  Before the fix (QOD open)
+    OLED_VIN floated to 0.50 / 0.84 / 1.24 V.  Also carries the clamp bracketing of the former what-if test
+    (QOD tied by a 1 mOhm deck resistor), which the netlist now implements."""
+    # windows as before the fix: with QOD open D21's leakage charged C38 at roughly 0.2 / 1 / 6 V/s at -10 / 25 /
+    # 60 C and reached the 0.4 V EN VIL well inside them, so a lost QOD connection would still be caught
+    r = u21_off_state(main, base, temp, panel_esd=True, stop={-10: 8.0, 25: 3.0, 60: 0.25}[temp], esd=PANEL_ESD[esd])
+    tag = f"{temp}C {esd}"
+    check(f"+13V_OLED held by the panel ESD path (record) {tag}", r["v13_end"], None, None, "V",
           "SSD1351 Rev 1.3 8.9 Note (1)")
-    check(f"FB - OLED_VIN with OLED off {temp}C", r["vfb_end"] - r["vin_end"], None, BST_FB_OVER_VIN, "V",
+    check(f"FB - OLED_VIN with OLED off {tag}", r["vfb_end"] - r["vin_end"], None, BST_FB_OVER_VIN, "V",
           f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
-    check(f"OLED_VIN with OLED off (boost EN = VIN) {temp}C", r["vin_max"], None, BST_EN_VIL, "V",
+    check(f"OLED_VIN with OLED off (boost EN = VIN) {tag}", r["vin_max"], None, BST_EN_VIL, "V",
           f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN): boost guaranteed off")
 
 
@@ -1040,32 +1072,6 @@ def test_vled_at_firmware_led_floor(main, base, check, vbat, i_led, temp):
         CORNERS.pop("_floor")
     check(f"VLED at VBAT {vbat} V rested, {i_led * 1e3:.0f} mA, {temp} C", r["vled"], WS_VDD_MIN, None, "V",
           f"{DS_WS} p.2 VDD 3.3 V min; docs/firmware.md LED derating table; {DS_SW} Table 7.5 RON max")
-
-
-def test_u21_off_whatif_qod_tied_to_vout(main, base, check):
-    """WHAT-IF (not in the netlist): U21 pin 5 (QOD) tied to OLED_VIN, the fix proposed for the back-power issue.
-    The internal 150 R then holds OLED_VIN near 0 V while U21 is off, and FB stays within VIN + 0.3 V.
-    FB then sits at VCC x R27/(R26+R27) with VCC = +3V3 minus the panel's ESD-diode drop, whose I-V no datasheet
-    gives: the generic diode and a strong (IS 1e-11) and very strong (IS 1e-9) clamp bracket it (verifier)."""
-    for temp in (25, 60):
-        for tag, esd in (("generic ESD", ""), ("strong ESD IS 1e-11", " params: is=1e-11 rs=1"),
-                         ("very strong ESD IS 1e-9", " params: is=1e-9 rs=1")):
-            d = Deck(f"U21 off, QOD tied, {temp}C, {tag}")
-            d += f".temp {temp}"
-            vsys_network(d, main, base, "bat3.7", temp)
-            tps22917(d, main, "U21", isd_out=SW_ISD_MAX_85C if temp > 25 else 10e-9)
-            oled_input(d, main, panel_esd=True)
-            d.lines = [ln + esd if ln.startswith("XJ20 ") else ln for ln in d.lines]
-            d += f"RWHATIF_QOD {main.pin('U21', 'QOD')} {main.node('OLED_VIN')} 1m"
-            d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
-            gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
-            d.op()
-            d.print_op(f"v({main.node('OLED_VIN')})", f"v({main.node('OLED_BST_FB')})")
-            r = run(d, need=("op_0", "op_1"))
-            check(f"WHAT-IF QOD tied: OLED_VIN with OLED off {temp}C {tag}", r["op_0"], None, BST_EN_VIL, "V",
-                  f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN)")
-            check(f"WHAT-IF QOD tied: FB - OLED_VIN {temp}C {tag}", r["op_1"] - r["op_0"], None, BST_FB_OVER_VIN,
-                  "V", f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
 
 
 def test_phantom_clamp_sensitivity(main, base, check):

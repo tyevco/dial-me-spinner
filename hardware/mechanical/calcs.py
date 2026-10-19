@@ -41,6 +41,7 @@ GUIDE_A = (60.0, 180.0, 300.0)
 GUIDE_RS = (29.0, 30.0, 29.0)             # theta-180 guide at r 30 (DEV, clears the pack end)
 STOP_TRAVEL = 0.50
 CUP_TOP, FA_Z0, FA_Z1 = 14.3, 12.8, 14.3
+FA_BOSS_Z0 = 12.0                         # plate under-boss (overload stop face) at each guide
 BB_Z1 = 11.1
 HEAD_TOP = 14.8                           # stop-screw head top (base-fixed)
 ROT_HUB_TOP = 26.0                        # wave washer + 316 cap ring on the collar
@@ -398,6 +399,58 @@ def sdf_prim(X, pr):
 def chain_length(pr):
     pts = np.array(pr[2], float)
     return float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
+
+
+# wire chain -> the parts it is plugged into, per end ("first" = first chain point, "last" = last)
+WIRE_ENDS = {"harness": {"first": ("J3", "J3_plug"), "last": ("J1", "J1_plug")},
+             "coax": {"first": (), "last": ("U10", "U10_uFL")},
+             "battery_leads": {"first": (), "last": ("J2", "J2_plug")}}
+WIRE_TERM_MM = 3.0     # the last 3 mm of a wire into its own connector are its intended approach
+
+
+def trim_chain(pr, mm, end):
+    """the chain prim with `mm` of path length removed at its first or last end."""
+    pts = [np.array(q, float) for q in pr[2]]
+    if end == "first":
+        pts = pts[::-1]
+    left = mm
+    while len(pts) > 2 and np.linalg.norm(pts[-1] - pts[-2]) <= left:
+        left -= np.linalg.norm(pts[-1] - pts[-2])
+        pts.pop()
+    seg = pts[-1] - pts[-2]
+    pts[-1] = pts[-2] + seg * max(0.0, 1 - left / np.linalg.norm(seg))
+    if end == "first":
+        pts = pts[::-1]
+    return [pr[0], pr[1], [q.tolist() for q in pts]] + list(pr[3:])
+
+
+# wires that span base -> FA: (last base-fixed chain point, first FA-fixed chain point), as in dial_spinner.scad
+# HARN_PTS (J3 plug back .. bottom slot) and COAX_PTS (antenna riser foot .. bottom slot); the free span between
+# them sags linearly (in path length) by up to STOP_TRAVEL on a press
+WIRE_FLEX = {"harness": (0, 3), "coax": (2, 6)}
+
+
+def pressed_wire(pr, travel):
+    """the wire chain with its FA-borne part moved down by `travel` and the free span interpolated."""
+    if pr[1] not in WIRE_FLEX:
+        return pr
+    i0, i1 = WIRE_FLEX[pr[1]]
+    pts = np.array(pr[2], float)
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    f = np.clip((s - s[i0]) / (s[i1] - s[i0]), 0, 1)
+    pts[:, 2] -= travel * f
+    return [pr[0], pr[1], pts.tolist()] + list(pr[3:])
+
+
+def wires_for(ref, wires):
+    """the wire prims to test a part against: a wire's own end connector only sees the wire minus its approach."""
+    out = []
+    for w in wires:
+        for end, refs in WIRE_ENDS.get(w[1], {}).items():
+            if ref in refs:
+                w = trim_chain(w, WIRE_TERM_MM, end)
+        out.append(w)
+    return out
 
 
 def under_spider(x, y):
@@ -801,22 +854,24 @@ def main(plots=True):
         c_hub = float(min(sdf_prim(X, pr).min() for pr in hub_axi))
         c_ac, n_ac = nearest(X, act_click)
         c_af, n_af = nearest(X, act_free)
-        skip = ("harness",) if p["ref"].startswith("J1") else ()
-        skip += ("coax",) if p["ref"].startswith("U10") else ()
-        c_w, n_w = nearest(X, wires, skip)
+        c_w, n_w = nearest(X, wires_for(p["ref"], wires))
         vals = [c_rot, c_hub, c_ac, c_af, c_w]
         if min(vals) < 1.0:
             rmin, rmax, z0, z1 = part_rz(p)
             rows.append((p["ref"], p["value"][:16], f"r {rmin:.1f}-{rmax:.1f}", f"z {z0:.2f}-{z1:.2f}",
                          f"{c_rot:+.2f}", f"{c_hub:+.2f}", f"{c_ac:+.2f} {n_ac}", f"{c_af:+.2f} {n_af}",
                          f"{c_w:+.2f} {n_w}"))
-            if min(vals) < 0.3:
+            if min(c_rot, c_ac, c_af) < 0.3 or min(c_hub, c_w) < 0.0:
                 flagged.append(p["ref"])
     table(rows, ["ref", "value", "r", "z", "rotor", "hub/spacer", "actuator@click", "actuator@free", "harness/coax"])
-    print(f"Parts below 0.3 mm (action needed): {', '.join(flagged) if flagged else 'none'}")
+    print("Action needed: < 0.3 mm to a moving item (rotor, actuator), or any overlap with the hub or a wire (same body:")
+    print("contact is acceptable; a wire's own connector is tested without its last 3 mm of approach).")
+    print(f"Parts needing action: {', '.join(flagged) if flagged else 'none'}")
 
-    print("\nBase-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap).")
-    rows = []
+    print("\nBase-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap),")
+    print("wires (harness, coax, battery leads; at rest and pressed; sampled).")
+    base_wires = [P["harness"], P["coax"], P["battery_leads"]]
+    rows, base_flag = [], []
     for p in bp["base"]["parts"]:
         if p["side"] != "T":
             continue
@@ -830,12 +885,47 @@ def main(plots=True):
         rmin, rmax, z0, z1 = part_rz(p)
         if p["ref"] == "SW1":
             c_pl = c_pl0 = None
-        if min(c_rp, c_pl if c_pl is not None else 9) < 1.5:
+        c_w = {}
+        for w in wires_for(p["ref"], base_wires):      # rest, and pressed with the spindle end of the wire moved down
+            for k, wp in (("rest", w), ("pressed", pressed_wire(w, STOP_TRAVEL))):
+                d = float(sdf_prim(X, wp).min())
+                if d < c_w.get(k, (np.inf, ""))[0]:
+                    c_w[k] = (d, w[1])
+        if min(c_rp, c_pl if c_pl is not None else 9, c_w["pressed"][0]) < 1.5:
             rows.append((p["ref"], p["value"][:14], f"r {rmin:.1f}-{rmax:.1f}", f"top z {top:.2f}", f"{c_rr:+.2f}",
-                         f"{c_rp:+.2f}", "-" if c_pl0 is None else f"{c_pl0:+.2f}", "-" if c_pl is None else f"{c_pl:+.2f}"))
-    table(rows, ["ref", "value", "r", "height", "rotor rest", "rotor pressed", "plate rest", "plate pressed"])
+                         f"{c_rp:+.2f}", "-" if c_pl0 is None else f"{c_pl0:+.2f}", "-" if c_pl is None else f"{c_pl:+.2f}",
+                         f"{c_w['rest'][0]:+.2f} {c_w['rest'][1]}", f"{c_w['pressed'][0]:+.2f} {c_w['pressed'][1]}"))
+        if min(c_rp, c_pl if c_pl is not None else 9) < 0.3 or c_w["pressed"][0] < 0.0:
+            base_flag.append(p["ref"])
+    table(rows, ["ref", "value", "r", "height", "rotor rest", "rotor pressed", "plate rest", "plate pressed",
+                 "wires rest", "wires pressed"])
     print("SW1 is handled by the pre-gap (section 7).  Rule from SPEC: parts under a spoke/hub <= 1.0 mm tall "
           f"(gap {FA_Z0 - BB_Z1:.1f} rest, {FA_Z0 - BB_Z1 - STOP_TRAVEL:.1f} pressed).")
+    print("Wires pressed: the harness/coax end in the spindle slot moves down 0.50, the free span to its base anchor "
+          "(J3 plug / antenna riser) sags linearly.")
+    print(f"Base parts needing action (rotor/plate < 0.3 mm, wire overlap): {', '.join(base_flag) or 'none'}")
+    # battery leads (base-fixed) under the FA spider: plan footprint of the Ø1.8 chain vs the plate / under-bosses
+    lead = np.array(P["battery_leads"][2], float)
+    lr = P["battery_leads"][3]
+    worst = (np.inf, None)
+    for a, b in zip(lead[:-1], lead[1:]):
+        for t in np.linspace(0, 1, max(2, int(np.linalg.norm(b - a) / 0.1) + 1)):
+            q = a + t * (b - a)
+            ring = [(q[0] + lr * math.cos(k * math.pi / 4), q[1] + lr * math.sin(k * math.pi / 4)) for k in range(8)]
+            if not any(under_spider(x, y) for x, y in ring + [(q[0], q[1])]):
+                continue
+            near_boss = any(math.hypot(q[0] - rg * math.cos(math.radians(ga)), q[1] - rg * math.sin(math.radians(ga)))
+                            < 3.2 + lr for rg, ga in zip(GUIDE_RS, GUIDE_A))
+            gap = (FA_BOSS_Z0 if near_boss else FA_Z0) - STOP_TRAVEL - (q[2] + lr)
+            if gap < worst[0]:
+                worst = (gap, q)
+    if worst[1] is None:
+        print("Battery leads: never under the FA spider plate.")
+    else:
+        q = worst[1]
+        print(f"Battery leads under the FA spider: min gap to the plate pressed {worst[0]:+.2f} mm at "
+              f"r {math.hypot(q[0], q[1]):.1f}, theta {math.degrees(math.atan2(q[1], q[0])) % 360:.0f}, z {q[2]:.2f}"
+              f"{'  <- action needed' if worst[0] < 0.3 else ''}")
 
     print("\nMain-board TOP parts under the OLED bracket rim/spokes (z 31.8-32.8) and the glass (z 33.0):")
     top_rows = []

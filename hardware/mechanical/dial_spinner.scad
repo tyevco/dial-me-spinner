@@ -563,8 +563,10 @@ HARN_D = 1.8;     // 5x 28 AWG (OD 0.75) + 7x 32 AWG (OD 0.55): 2 x 6 ribbon, 4.
 HARN_PTS = [
     bp_point(J3P, 0, J3P[7] - 1.05, BB_Z1 + 1.5), bp_point(J3P, 0, J3P[7] - 2.5, 15.1),
     concat(pol(7.5, BOT_SLOT_A + 8), [15.3]), concat(pol(3.6, BOT_SLOT_A), [15.4]), [0, 0, 15.4],
-    [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]), [0, -9.4, 27.6],
-    [2.5, -9.6, 27.6], [5.5, -8.6, 27.6], [8.6, -7.0, 27.6],                 // between the hub flange and C1/R1
+    [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]),
+    // out of the hub C-gap past the flange (r 8.5), under C11/R12 (bottom z 28.55/28.7) and over the cap ring
+    // (top z 26.0), clear of U12 (r 11, theta 260); then between the hub flange and C1/R1
+    [0.3, -9.3, 27.35], [2.5, -10.0, 27.35], [5.5, -8.6, 27.35], [8.6, -7.0, 27.35],
     bp_point(J1P, 0, J1P[8] + 1.0, 27.6)];   // ends at the J1 plug back face (route for the current PCB)
 module harness() color(c_wire) chain(HARN_PTS, HARN_D);
 // antenna coax (Ø1.13): feed end -> riser outside the base board -> bottom slot -> bore -> top slot -> u.FL
@@ -572,9 +574,10 @@ COAX_PTS = [
     [ANT_FEED_X, ANT_YC, ANT_Z0 + 0.65], [ANT_FEED_X + 1.0, ANT_YC - 2.0, ANT_Z0 + 1.2],
     [-14.6, 19.9, 7.5], [-14.6, 19.9, 14.2], [-12.0, 17.0, 15.0],
     concat(pol(8.0, BOT_SLOT_A - 6), [15.3]), concat(pol(3.4, BOT_SLOT_A - 10), [15.4]), [0.6, 0.3, 16.2],
-    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.3]),
-    // above the rotating hub (top 26.0) while r < 12.5, then down to z 26.0 beside the module (u.FL faces outward)
-    concat(pol(13.0, 248), [27.0]), concat(pol(14.5, 246), [26.0]), concat(pol(23.5, 242), [26.0]),
+    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.0]),
+    // over the rotating hub (cap ring top 26.0) while r < 12.6, threading between U12 (r 11, theta 260, bottom
+    // z 27.65) and the module's inner corner, then down to z 26.0 beside the module (u.FL faces outward)
+    concat(pol(12.5, 244), [27.0]), concat(pol(14.5, 246), [26.0]), concat(pol(23.5, 242), [26.0]),
     [UFLP[2] + 1.9, UFLP[3] - 1.9, 26.2]];   // ends at the u.FL plug body face (plug box ±1.3)
 module coax() color(c_coax) chain(COAX_PTS, 1.13);
 
@@ -907,7 +910,7 @@ module board_bottom_labels() {
     label("SPEC keep-out θ60–120°", [-3, 30.5], 1.5);
     label("TMAG5273 r29 θ270", [0, -25.5]);
     label("MDBT50Q U10", [-17.5, -13.0]);
-    label("u.FL in hub zone", [-7.5, -2.0], 1.4, "right");
+    label("u.FL (outward end)", [UFLP[2] - 1.8, UFLP[3] - 1.0], 1.4, "right");
     label("J1 link", [16.5, -14.0], 1.6);
     label("piezo BZ1", [21.0, 8.0], 1.6);
     label("VSM08102 envelope", [-3, 10.5], 1.6);

@@ -13,5 +13,7 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `parts_plate.scad` | Overview of the STLs → `renders/parts.png` |
 | `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib, ~6 min) |
 
-Open items shown by the clash check come from the current PCB placement (MDBT50Q and its u.FL in the hub zone, J1 0.15 mm
-above the rotating hub, J2 too tall and its plug in the FA ring, R42 under the cover skirt); see docs/mechanical.md §3B.
+With the boards as placed (MDBT50Q at r 17.3 with its u.FL outward, J1 at r 19.5, SH J2, R42 inside r 25.3) the clash
+check shows only the intended contacts listed in `clash_legend.txt`. Re-run `extract_board_parts.py`, `check_clashes.sh`
+(margins 0 and 0.3, as in `render_all.sh`) and `calcs.py` after every placement change: the harness and coax paths
+(`HARN_PTS`, `COAX_PTS`) are hand-routed around the parts in the hub zone and must follow them.

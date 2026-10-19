@@ -19,7 +19,11 @@
 *   current fed into the floating OLED_VIN must leave through this part, so the sleep total does not depend on it).
 *   [verifier: section numbers corrected from 7.5 to 5.5 for revision L; values re-checked, unchanged]
 *
-* Why this model exists: in sleep the input switch U21 is off and OLED_VIN floats. Any current that reaches
+* Why this model exists: in sleep the input switch U21 is off. Since the SLP-1/LSW-1 fix its QOD (150 ohm) holds
+* OLED_VIN at about 0 V, so EN = VIN stays below VIL and this part draws ISD only; the leakage that reaches
+* OLED_VIN then leaves through QOD instead. The text below describes the pre-fix circuit (QOD open, EN = VIN).
+* The EN-low what-if keeps QOD open but holds EN low, so the part stays in ISD there too. With QOD open,
+* OLED_VIN floats, and any current that reaches
 * OLED_VIN (U21 off-state leakage, reverse leakage of the rectifier D21 from +13V_OLED) can only leave
 * through this part. With EN tied to VIN the part enables as soon as VIN > VUVLO and then draws IQ (and
 * switches), so in DC the node settles where this input current equals the leakage that feeds it. That DC

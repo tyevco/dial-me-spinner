@@ -9,8 +9,9 @@
 *         The test condition grounds VOUT, so the current is assumed to flow VIN -> VOUT (worst case for a
 *         floating VOUT such as OLED_VIN, where it can charge the node).
 *   RPD   smart ON pull-down 750 kohm typ while VON <= VIL (Table 7.5 RPD)
-*   RQOD  quick-output-discharge 150 ohm from QOD to GND while disabled (Table 7.5 QOD). On U21 QOD is
-*         unconnected in the schematic, so the test ties it to a dummy node.
+*   RQOD  quick-output-discharge 150 ohm from QOD to GND while disabled (Table 7.5 QOD). U2 QOD goes to VLED
+*         through R4; U21 QOD is tied to OLED_VIN (SLP-1/LSW-1 fix), so in sleep RQOD sinks the D21 reverse
+*         leakage. The EN-low what-if leaves U21 QOD on a dummy node (the pre-fix schematic).
 *   MAXC = 0 typical, 1 datasheet maximum (ISD only).
 *
 * Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).

@@ -1,7 +1,9 @@
 """USB input of the base board, simulated from the real netlists.
 
 Circuit: USB-C J1 VBUS -> SMF5.0A (D1) + USBLC6-2SC6 (U2, VBUS pin) -> BQ25180 IN (U1) with C1, and
-VBUS / D+ / D- on through the 12-way link harness to the nRF52840 module (main U10, C12 on VBUS).
+VBUS / D+ / D- on through the 12-way link harness to the nRF52840 module (main U10). On main, link VBUS ->
+R12 4.7 Ohm -> VBUS_NRF (U10 VBUS, C12) (fix USB-1), and a second USBLC6-2SC6 (U12) at the U10 D+/D- pads with
+its rail on VBUS_NRF (fix USB-2); both are read from the netlist (series part, main_esd2).
 CC: one 5.1 k Rd per CC pin (R1, R2).
 
 Angles covered
@@ -246,9 +248,17 @@ def unmodelled_parts(base: Design, main: Design, p: "Parts") -> list:
 
 
 def main_esd2(main: Design, p: "Parts") -> list:
-    """USBLC6-class second-stage arrays on the main board's USB nets (none in the schematic of 2026-10-19)."""
+    """USBLC6-class second-stage arrays on the main board's USB nets (U12 since the USB-2 fix)."""
     nets = {p.dp_m, p.dm_m, p.nrf_dp, p.nrf_dm}
     return [r for r in main.find("USBLC6") if main.fitted(r) and set(main.pins.get(r, {}).values()) & nets]
+
+
+def nrf_series_parts(main: Design, p: "Parts") -> list:
+    """Fitted R/L in series between the link VBUS and the nRF VBUS pin (R12 since the USB-1 fix)."""
+    if p.nrf_vbus == p.vbus_m:
+        return []
+    return [r for r in main.on_net(p.vbus_m) if r[0] in "RL" and main.fitted(r)
+            and set(main.pins[r].values()) <= p.main_vbus_nets]
 
 
 def caps_on(d: Design, nets) -> list:
@@ -857,10 +867,11 @@ def test_hotplug_grid(base, main, check, vsrc, cable, c_bulk):
           "steady state is checked in test_dc_operating_point")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: hot plug overshoots the nRF52840 VBUS abs max 5.8 V "
-                   "(link VBUS goes straight to U10 VBUS with only C12; no series R as in Nordic's reference)")
 def test_hotplug_nrf_vbus_abs_max(base, main, check):
+    """Guards fix USB-1 (R12 4.7 Ohm from link VBUS to the nRF VBUS pin, C12 behind it on VBUS_NRF): the nRF52840
+    VBUS peak over the whole hot-plug grid stays below the 5.8 V abs max. Measured 2026-10-19: worst 5.488 V at the
+    5.5 V source (0.31 V margin), 4.485 V lowest; the peak is the settled value, R12 x C12 (~20 us) passes none of
+    the ~8 us base-board ring (was 6.5-8.4 V with link VBUS straight to U10)."""
     worst = max((hotplug(base, main, v, c, b)["vnrf_max"], (v, c, b)) for v, c, b in GRID)
     lowest = min((hotplug(base, main, v, c, b)["vnrf_max"], (v, c, b)) for v, c, b in GRID)
     check(f"(info) lowest nRF VBUS peak of the grid {lowest[1]}", lowest[0], None, None, "V", NRF_VBUS_ABS[1])
@@ -893,20 +904,32 @@ NRF_SERIES_R = (1.8, 4.7)   # 4.7: Nordic reference R1 4R7; 1.8: keeps PS 5.3.8.
 @pytest.mark.parametrize("r_series", NRF_SERIES_R)
 @pytest.mark.parametrize("temp,tvs", [(-10, "clampmax"), (25, "typ"), (60, "clampmax")])
 def test_hotplug_fix_preview_nrf_series_r(base, main, check, temp, tvs, r_series):
-    """WHAT-IF (not in the schematic yet): a resistor in series with the nRF VBUS pin, C12 behind it, as in Nordic's
-    reference (nRF52840 PS v1.1 7.3, circuit configuration 1: R1 4R7, 'recommended for new designs'). Worst grid point,
-    temperature / TVS / C12 tolerance corners; plus the DC drop at the lowest VBUS with the charger at 1.1 A."""
+    """A resistor in series with the nRF VBUS pin, C12 behind it, as in Nordic's reference (nRF52840 PS v1.1 7.3,
+    circuit configuration 1: R1 4R7, 'recommended for new designs'). Worst grid point, temperature / TVS / C12
+    tolerance corners; plus the DC drop at the lowest VBUS with the charger at 1.1 A.
+
+    Re-targeted 2026-10-19: this was a WHAT-IF (a resistor added in the deck). USB-1 is now in the schematic exactly
+    as previewed (R12 4.7 Ohm, C12 on VBUS_NRF behind it), so the what-if resistor would duplicate it (the test used
+    to skip). The test now takes the netlist's series resistor and sets its value to r_series: 4.7 Ohm is the fitted
+    value, so this is the corner guard of the fix (test_hotplug_nrf_vbus_abs_max covers the grid at 25 C); 1.8 Ohm is
+    the alternative that keeps PS 5.3.8.6 RSOURCE,VBUS <= 2 Ohm incl. cable (see NRF_SERIES_R), checked on the real
+    topology so the value can be swapped without losing the overshoot margin. (The fitted 4.7 Ohm exceeds that 2 Ohm
+    figure; the PS itself recommends the 4R7 in 7.3, and no check in this file covers RSOURCE.) Without a series part
+    in the netlist the what-if resistor is used as before."""
     p = Parts(base, main)
-    if p.nrf_vbus != p.vbus_m:
-        pytest.skip("the schematic already has a series part in front of the nRF VBUS pin "
-                    "(test_hotplug_nrf_vbus_abs_max checks the real design)")
+    whatif = r_series
+    ser = nrf_series_parts(main, p)
+    if ser:
+        main = copy.deepcopy(main)
+        main.override(one([r for r in ser if r[0] == "R"], "series R in front of the nRF VBUS pin"), f"{r_series}")
+        whatif = None
     v, c, b = WORST
     for sm in main.extremes(caps_on(main, p.main_vbus_nets)):
         sm = {f"m:{k}": x for k, x in sm.items()}
-        r = hotplug(base, main, v, c, b, temp=temp, tvs=tvs, cscale=sm, series_r_nrf=r_series)
+        r = hotplug(base, main, v, c, b, temp=temp, tvs=tvs, cscale=sm, series_r_nrf=whatif)
         check(f"nRF VBUS peak with {r_series} Ohm ({temp} C, TVS {tvs}, {sm})", r["vnrf_max"], None,
               NRF_VBUS_ABS[0][1], "V", NRF_VBUS_ABS[1])
-    net = Net(base, main, iin=1.1, vusb=3.3, series_r_nrf=r_series)
+    net = Net(base, main, iin=1.1, vusb=3.3, series_r_nrf=whatif)
     dk = net.deck(f"DC with {r_series} Ohm")
     dk += ["Vsrc srcv 0 4.5", f"Rcab srcv vj1 {CABLES['2m_1uH_100m'][2]}"]
     dk.op()
@@ -964,15 +987,37 @@ def test_esd_data_lines_vbus_side(base, main, check, sig, kv, harness):
 NRF_PAD_LIMIT = (hbm_amps(NRF_ESD_HBM[0]), NRF_ESD_HBM[1] + " -> 1.33 A HBM peak (100 pF / 1.5 kOhm)")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: IEC 8 kV on D+/D- drives 2.6-3.7 A for ~100 ns into the nRF52840 USB pads "
-                   "through the ~145 nH link path (USBLC6 at J1 only); the nRF is rated HBM 2 kV (1.33 A)")
 @pytest.mark.parametrize("sig,kv", DATA, ids=[f"{s}{k:+.0f}kV" for s, k in DATA])
 def test_esd_data_lines_nrf_pad_current(base, main, check, sig, kv):
-    """Residual current into the nRF52840 D+/D- pad (assumed on-chip clamp 3 Ohm, U2 at its datasheet-max clamp,
-    100 mm harness) against the peak current of the HBM 2 kV test the pin is qualified to."""
+    """Guards fix USB-2 (U12, a second USBLC6-2SC6 at the U10 D+/D- pads, rail on VBUS_NRF): residual current into
+    the nRF52840 D+/D- pad (assumed on-chip clamp 3 Ohm, U2 and U12 at their datasheet-max clamps, 100 mm harness)
+    against the peak current of the HBM 2 kV test the pin is qualified to. Measured 2026-10-19: 1.27 A worst (+8 kV
+    on D+; 1.26 A on D-, 0.99 A at -8 kV) vs 1.33 A, 0.067 A margin (was 2.6-3.7 A with U2 at J1 only). The 50 mm
+    harness case is test_esd_data_lines_nrf_pad_current_short_harness (accepted risk at +8 kV)."""
     r = esd(base, main, f"{sig}j1", kv, **ESD_WORST)
     tag = f"{kv:+.0f} kV on {sig.upper()}"
+    check(f"(info) nRF {sig.upper()} pad voltage ({tag})", max(r[f"{sig}nrf_max"], -r[f"{sig}nrf_min"]), None, None,
+          "V", "nRF52840 PS v1.1 Table 173 I/O pin VDD + 0.3 V (DC rating, not an ESD limit)")
+    check(f"nRF {sig.upper()} pad current, on-chip clamp 3 Ohm ({tag})",
+          max(r[f"inrf{sig}_max"], -r[f"inrf{sig}_min"]), None, *NRF_PAD_LIMIT[:1], "A", NRF_PAD_LIMIT[1])
+
+
+USB2_ACCEPTED = ("DESIGN ISSUE (accepted risk, rev A): USB-2 residual. +8 kV IEC contact on D+/D- with U2 and U12 both "
+                 "at their datasheet-max clamps and the shortest (50 mm) harness puts ~1.6 A into the nRF52840 USB pad "
+                 "vs the 1.33 A HBM-2 kV class (typical clamps 0.84 A, -8 kV 1.26 A, 100 mm harness 1.27 A all pass)")
+SHORT_DATA = [pytest.param(s, k, id=f"{s}{k:+.0f}kV",
+                           marks=[pytest.mark.xfail(strict=True, raises=AssertionError, reason=USB2_ACCEPTED)]
+                           if k > 0 else []) for s, k in DATA]
+
+
+@pytest.mark.parametrize("sig,kv", SHORT_DATA)
+def test_esd_data_lines_nrf_pad_current_short_harness(base, main, check, sig, kv):
+    """The check of test_esd_data_lines_nrf_pad_current at the shortest documented harness (50 mm, HARNESS_MM): less
+    link inductance between U2 and U12 leaves more of the strike to U12 and the nRF pad, so this is the worst case of
+    the USB-2 fix. -8 kV passes (1.26 A vs 1.33 A, regression guard); +8 kV (~1.62 A) is the documented accepted risk
+    of rev A (strict xfail: it XPASSes, and must then become a guard, if a better second stage goes in)."""
+    r = esd(base, main, f"{sig}j1", kv, harness_mm=HARNESS_MM[0], **ESD_WORST)
+    tag = f"{kv:+.0f} kV on {sig.upper()}, harness {HARNESS_MM[0]:.0f} mm"
     check(f"(info) nRF {sig.upper()} pad voltage ({tag})", max(r[f"{sig}nrf_max"], -r[f"{sig}nrf_min"]), None, None,
           "V", "nRF52840 PS v1.1 Table 173 I/O pin VDD + 0.3 V (DC rating, not an ESD limit)")
     check(f"nRF {sig.upper()} pad current, on-chip clamp 3 Ohm ({tag})",
@@ -987,14 +1032,21 @@ SENS = [(kv, h, esdc, resd) for kv in (8.0, -8.0) for h in HARNESS_MM for esdc i
 def test_esd_data_lines_sensitivity(base, main, check):
     """Record (no limit) how the nRF D+ pad current depends on what is not known exactly: harness length,
     USBLC6 clamp corner (typical / datasheet max) and the nRF's on-chip clamp resistance (1 / 3 / 10 Ohm),
-    without and with the proposed second-stage USBLC6 at U10."""
-    if main_esd2(main, Parts(base, main)):
-        pytest.skip("the schematic already has a second-stage array (modelled by Net.lines)")
+    without and with the second-stage USBLC6 at U10.
+
+    Re-targeted 2026-10-19: the second stage is now in the schematic (U12, fix USB-2) and Net.lines models it, so the
+    'with' case is the netlist itself and the 'without' case is a copy of main with U12 removed (before, the 'with'
+    case added a what-if instance and the test skipped once U12 was in the netlist)."""
+    p = Parts(base, main)
+    esd2 = main_esd2(main, p)
+    main_wo = copy.deepcopy(main)
+    for ref in esd2:
+        main_wo.remove(ref)
     for kv, h, esdc, resd in SENS:
         for second in (False, True):
-            net = Net(base, main, harness_mm=h, tvs="clampmax", esd=esdc, resd=resd)
+            net = Net(base, main if second and esd2 else main_wo, harness_mm=h, tvs="clampmax", esd=esdc, resd=resd)
             dk = esd_deck(net, "dpj1", kv)
-            if second:
+            if second and not esd2:
                 dk += [f"Xesd2 dpnrf 0 dmnrf vnrf USBIN_USBLC6_2 {net.esd_params()}"]
             r = run(dk)
             check(f"(info) nRF D+ pad current, {kv:+.0f} kV, harness {h:.0f} mm, USBLC6 {esdc}, on-chip clamp "
@@ -1005,14 +1057,18 @@ def test_esd_data_lines_sensitivity(base, main, check):
 @pytest.mark.parametrize("harness", HARNESS_MM)
 @pytest.mark.parametrize("sig,kv", DATA, ids=[f"{s}{k:+.0f}kV" for s, k in DATA])
 def test_esd_fix_preview_second_stage(base, main, check, sig, kv, harness):
-    """WHAT-IF (not in the schematic yet): a second USBLC6-2SC6 next to U10 on the main board (I/O on USB_DP/USB_DM,
-    VBUS pin on VBUS). The link inductance then decouples the two stages. Typical clamp corners for both arrays
-    (the datasheet-max combination is recorded by test_esd_data_lines_sensitivity)."""
-    if main_esd2(main, Parts(base, main)):
-        pytest.skip("the schematic already has a second-stage array: test_esd_data_lines_nrf_pad_current checks it")
+    """A second USBLC6-2SC6 next to U10 on the main board (I/O on USB_DP/USB_DM, VBUS pin on the nRF VBUS net). The
+    link inductance then decouples the two stages. Typical clamp corners for both arrays, both harness lengths.
+
+    Re-targeted 2026-10-19: this was a WHAT-IF (a USBLC6 instance added in the deck). USB-2 is now in the schematic as
+    U12, which Net.lines models from the netlist, so the what-if instance is only added when the netlist has no second
+    stage (the test used to skip). The same check now guards the implemented fix at typical clamps (worst 0.84 A at
+    50 mm, +8 kV); the datasheet-max clamps are test_esd_data_lines_nrf_pad_current (100 mm) and
+    test_esd_data_lines_nrf_pad_current_short_harness (50 mm)."""
     net = Net(base, main, harness_mm=harness, tvs="clampmax", esd="typ")
     dk = esd_deck(net, f"{sig}j1", kv)
-    dk += [f"Xesd2 dpnrf 0 dmnrf vnrf USBIN_USBLC6_2 {net.esd_params()}"]
+    if not main_esd2(main, Parts(base, main)):
+        dk += [f"Xesd2 dpnrf 0 dmnrf vnrf USBIN_USBLC6_2 {net.esd_params()}"]
     r = run(dk)
     check(f"nRF {sig.upper()} pad current with 2nd-stage USBLC6 ({kv:+.0f} kV, harness {harness:.0f} mm)",
           max(r[f"inrf{sig}_max"], -r[f"inrf{sig}_min"]), None, *NRF_PAD_LIMIT[:1], "A", NRF_PAD_LIMIT[1])
@@ -1134,9 +1190,10 @@ def test_fault_u2_gnd_pin_on_vbus(base, main, parts, check):
 
 @pytest.mark.fault
 def test_fault_c12_left_off_esd(base, main, parts, check):
-    """Part left off: no C12 at the nRF VBUS pad. A +8 kV strike on VBUS then reaches the pad through the harness
-    unfiltered; the nRF VBUS check of test_esd_vbus must catch it (the model has no positive VBUS clamp, so the
-    value is an upper bound, but any value above 5.8 V is a violation)."""
+    """Part left off: no C12 at the nRF VBUS pad. A +8 kV strike on VBUS then reaches the pad through the harness and
+    R12 unfiltered; the nRF VBUS check of test_esd_vbus must catch it. The nRF model has no positive VBUS clamp; since
+    the USB-2 fix U12's rail Transil sits on VBUS_NRF and holds the pad at 6.69 V (6.47 V at typical clamps; 98 V
+    without U12), above 5.8 V at any clamp corner because the USBLC6 VBR is 6 V min (LC6_VBR_MIN); 0.85 V with C12."""
     c12 = one([r for r in caps_on(main, parts.main_vbus_nets)], "main VBUS capacitor")
     main.remove(c12)
     r = esd(base, main, "vj1", 8.0, **ESD_WORST)
@@ -1147,9 +1204,11 @@ def test_fault_c12_left_off_esd(base, main, parts, check):
 @pytest.mark.fault
 @pytest.mark.parametrize("sig,kv", [("dp", 8.0), ("dm", -8.0)])
 def test_fault_u2_left_off_with_second_stage(base, main, parts, check, sig, kv):
-    """Part left off: no U2 at J1. In today's design this is masked: test_esd_data_lines_nrf_pad_current already
-    fails (strict xfail, USB-2). With the recommended second-stage array at U10 in place (what-if, typical clamps, as in
-    test_esd_fix_preview_second_stage, which passes) the pad-current check must catch a missing U2."""
+    """Part left off: no U2 at J1. With the second-stage array U12 at U10 (fix USB-2, in the schematic and modelled from
+    the netlist) the pad-current check of test_esd_data_lines_nrf_pad_current / test_esd_fix_preview_second_stage must
+    catch a missing U2: U12 alone lets 4.2-5.5 A into the pad at typical clamps (6.9-7.3 A at datasheet max) vs
+    1.33 A. Typical clamps are used, so the detection does not rely on the clamp corner. (A netlist without a second
+    stage gets the what-if instance, as before the fix.)"""
     base.remove(parts.esd)
     net = Net(base, main, tvs="clampmax", esd="typ")
     dk = esd_deck(net, f"{sig}j1", kv)
