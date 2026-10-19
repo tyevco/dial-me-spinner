@@ -20,8 +20,6 @@ limits, the clamp diodes and the D21 leakage), component tolerances (extremes / 
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 import spicelib
@@ -39,7 +37,7 @@ DS_SW = "TPS22917 DS SLVSDW8B"
 DS_BQ = "BQ25180 DS SLUSE99C"
 DS_WS = "WS2812C-2020-V6 DS"
 DS_BST = "TPS61040 DS SLVS413L"
-DS_NRF = "nRF52840 PS v1.1 6.9.2"
+DS_NRF = "nRF52840 PS v1.1 6.9.3.1"
 
 # ---------------------------------------------------------------- datasheet limits (every one cited where used)
 SW_IMAX = 2.0           # A, Table 7.1 max continuous switch current
@@ -56,7 +54,7 @@ BQ_BATOCP = 1.5         # A, IBAT_OCP setting 10 (CHARGECTRL1 0x92, docs/archite
 WS_VDD_MIN, WS_VDD_MAX = 3.3, 5.3      # V, WS2812C-2020-V6 DS p.2 supply range
 WS_VI_OVER_VDD = 0.7    # V, WS2812C-2020-V6 DS p.2 abs max VI <= VDD + 0.7 V
 W25_VCC_MIN = 2.7       # V, W25Q128JV DS VCC min (lowest +3V3 consumer, docs/architecture.md section 7 table)
-POF_LIMIT = 2.9 * 1.05  # V, firmware POFWARN 2.9 V (docs/firmware.md fault table) + VPOFTOL +5 % (nRF52840 PS 5.3.7)
+POF_LIMIT = 2.9 * 1.05  # V, firmware POFWARN 2.9 V (docs/firmware.md fault table) + VPOFTOL +5 % (nRF52840 PS v1.1 5.3.8.4)
 BST_EN_VIL = 0.4        # V, TPS61040 Table 5.5 EN VIL max (EN is tied to VIN = OLED_VIN)
 BST_FB_OVER_VIN = 0.3   # V, TPS61040 Table 5.1 abs max FB <= VIN + 0.3 V
 FW_LED_WAIT = 5e-3      # s, docs/architecture.md section 7: "LEDs on: set LED_PWR_EN, wait >= 5 ms"
@@ -83,7 +81,8 @@ CORNERS = {
     "usb5.5": dict(usb=1, vbat=3.7, vbus=5.5),
 }
 
-# nRF52840 GPIO output resistance = 0.4 V / I(VDD-0.4 V)  (PS v1.1 IOH,SD 1/2/4 mA, IOH,HDH 6/9/14 mA)
+# nRF52840 GPIO output resistance = 0.4 V / I(VDD-0.4 V), keyed by the PS current column (PS v1.1 6.9.3.1:
+# IOH,SD 1/2/4 mA, IOH,HDH 6/9/14 mA min/typ/max): "sd_min" is the weakest pad (400 Ohm), "hd_max" the strongest
 ROUT = {"sd_min": 0.4 / 1e-3, "sd_typ": 0.4 / 2e-3, "sd_max": 0.4 / 4e-3,
         "hd_min": 0.4 / 6e-3, "hd_typ": 0.4 / 9e-3, "hd_max": 0.4 / 14e-3}
 
@@ -207,6 +206,11 @@ def scaled(main, scale):
     return main
 
 
+class SimulationError(RuntimeError):
+    """ngspice reported an error or a measurement is missing (kept distinct from check() failures, so an
+    xfail(raises=AssertionError) can only be satisfied by a violated limit, never by a broken simulation)."""
+
+
 def run(deck, *, need=()):
     res = deck.run()
     errors = list(res["_errors"])
@@ -218,9 +222,11 @@ def run(deck, *, need=()):
     for _ in range(benign):
         if "**** ERROR ****" in errors:
             errors.remove("**** ERROR ****")
-    assert not errors, errors[:5]
+    if errors:
+        raise SimulationError(errors[:5])
     missing = [n for n in need if n not in res]
-    assert not missing, (missing, res["_log"][-3000:])
+    if missing:
+        raise SimulationError((missing, res["_log"][-3000:]))
     return res
 
 
@@ -272,8 +278,8 @@ def test_model_ron_qod_and_on_threshold(check, vin):
     check(f"RON model @{vin} V 200 mA", ron, None, SW_RON_MAX[vin][25], "Ohm", f"{DS_SW} Table 7.5 RON max 25 C")
     check(f"QOD model @{vin} V", 1.0 / abs(r["iqod"]), 0.8 * SW_QOD, 1.2 * SW_QOD, "Ohm",
           f"{DS_SW} Table 7.5 QOD 150 Ohm typ (+-20 % correlation)")
-    # the rising-edge trip (VOUT starts after the CT ramp, so measure the comparator via CT release) must sit
-    # inside the guaranteed window VIL max .. VIH min
+    # comparator trips (rising: ON level when VOUT passes 0.5 V, ~15 mV late because of the CT-open ramp delay;
+    # falling: ON level when CT is released back to VIN) must sit inside the guaranteed window VIL max .. VIH min
     for nm, v in (("ON rising trip", r["vrise"]), ("ON falling trip", r["vfall"])):
         check(f"{nm} model @{vin} V", v, SW_VIL_MAX, SW_VIH_MIN, "V", f"{DS_SW} Table 7.3 VIL max / VIH min")
 
@@ -290,19 +296,13 @@ def first_cross(t, v, level, rising=True, after=0.0):
     return None
 
 
-def at(t, v, when):
-    for i in range(1, len(t)):
-        if t[i] >= when:
-            return v[i - 1] + (v[i] - v[i - 1]) * (when - t[i - 1]) / (t[i] - t[i - 1])
-    return v[-1]
-
-
 # ======================================================================================== 2. U2 LED rail turn-on
 U2_CASES = [(c, 25) for c in CORNERS] + [("bat3.0", -10), ("bat4.2", 60)]
 
 
 def u2_turn_on(main, base, corner, temp=25, t_on=0.5e-3, stop=8e-3):
     d = Deck(f"U2 turn-on {corner} {temp}C")
+    d += f".temp {temp}"
     vsys_network(d, main, base, corner, temp)
     sense(d, "n_vsys", "n_u2_vin", "n_iu2")               # U2 VIN pin current -> V(n_iu2)
     tps22917(d, main, "U2", vin_node="n_u2_vin")
@@ -310,7 +310,7 @@ def u2_turn_on(main, base, corner, temp=25, t_on=0.5e-3, stop=8e-3):
     d += f"VCTL n_ctl_led 0 PWL(0 0 {t_on} 0 {t_on + 1e-7} 1)"
     d += "VOE n_oe_led 0 1"
     gpio(d, main, "LED_PWR_EN", "n_ctl_led", "n_oe_led")
-    d.tran("2u", f"{stop}")
+    d.tran("5u", f"{stop}")
     d.meas(f"tran vsys0 FIND v(n_vsys) AT={t_on * 0.9}")
     d.meas(f"tran vsysmin MIN v(n_vsys) FROM={t_on} TO={stop}")
     d.meas(f"tran iinrush MAX v(n_iu2) FROM={t_on} TO={stop}")
@@ -383,7 +383,7 @@ def u2_turn_off(main, base, corner="bat4.2", temp=25, t_off=5e-3, stop=50e-3, id
     if ideal_vsys is None:
         vsys_network(d, main, base, corner, temp)
     else:                                                  # fast variant for Monte Carlo
-        d += [f"VSYSI n_vsys 0 {ideal_vsys}", "B3V3 n_p3v3 0 V = min(3.3, V(n_vsys) - 0.044)"]
+        d += [f"VSYSI n_vsys 0 {ideal_vsys}", f"B3V3 n_p3v3 0 V = min(3.3, V(n_vsys) - {I_3V3 * LDO_RDO:.6g})"]
     tps22917(d, main, "U2")
     led_rail(d, main)
     d += f"VCTL n_ctl_led 0 PWL(0 0 0.1m 0 0.1001m 1 {t_off} 1 {t_off + 1e-7} 0)"
@@ -416,6 +416,10 @@ def test_u2_qod_discharge(main, base, check, corner):
           f"{DS_SW} 9.3.3 Eq. 4 tFALL = 2.2 (R4 + QOD 150 Ohm) CL (+-15 % model correlation)")
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: with C8/C9 at +10 % "
+                   "(netlist tolerance; the CL21A226MAQNNNE is really +-20 %) the QOD discharge through R4 + 150 R "
+                   "takes just over 30 ms to 10 % (fix: R4 68 R, or a 35 ms firmware wait)")
 def test_u2_qod_discharge_tolerance_extremes(main, base, check):
     """C8, C9, R4 at their tolerance corners (the 48 x 100 nF at nominal): slowest VLED discharge."""
     worst = 0.0
@@ -555,9 +559,10 @@ def test_phantom_vled_and_din_current(main, base, check, corner, temp):
           "informational: (V(P0.06) - V(LED_DIN_R))/R40 - V(LED_DIN_R)/R41")
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with P0.06 high and VLED off, R40 = 220 R lets ~6 mA into "
-                   "D101's DIN clamp, which then sits more than 0.7 V above VLED (WS2812C abs max VI <= VDD + 0.7 V); "
-                   "only firmware prevents it (fit U43 SN74LV1T34 / raise R40, see design_findings)")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE: with P0.06 high and VLED off, R40 = 220 R lets ~5 mA into D101's DIN clamp, "
+                   "which then sits more than 0.7 V above VLED (WS2812C abs max VI <= VDD + 0.7 V); only firmware "
+                   "prevents it (fit U43 SN74LV1T34 / raise R40, see design_findings)")
 @pytest.mark.parametrize("corner,temp", [("bat4.2", 25), ("bat3.0", -10)])
 def test_phantom_din_abs_max(main, base, check, corner, temp):
     r = phantom_op(main, base, corner, temp)
@@ -608,6 +613,7 @@ def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
     w = r["waves"]
     t, v = w["time"], w[f"v({main.node('OLED_VIN')})"]
     r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
+    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on)
     r["t_on"] = t_on
     # energy dissipated in U21 during the ramp: (VIN - VOUT) * I
     e = 0.0
@@ -628,6 +634,11 @@ def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
     c = CORNERS[corner]
     check(f"U21 tON (ON -> OLED_VIN 90 %) {tag}", r["t90"] - r["t_on"], None, FW_OLED_WAIT, "s",
           "docs/architecture.md 7: 'set OLED_VCC_EN, wait >= 200 ms, then AFh'")
+    c37 = main.value("C37")
+    vin_k = 3.6 if r["vsys0"] < 4.3 else 5.0
+    check(f"U21 tR vs Table 7.6 x C37 {tag}", r["t90"] - r["t10"], 0.8 * SW_TR_K[vin_k] * c37 / 1e-12,
+          1.2 * SW_TR_K[vin_k] * c37 / 1e-12, "s",
+          f"{DS_SW} Table 7.6 tR {SW_TR_K[vin_k] * 1e6:.1f} us/pF x C37 (+-20 %, VIN {vin_k} V row)")
     check(f"U21 inrush peak (boost soft start) {tag}", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
     check(f"U21 energy during the ramp (record) {tag}", r["e_u21"], None, None, "J",
           "informational: no SOA / transient thermal data in SLVSDW8B")
@@ -656,10 +667,9 @@ def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13
     d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
     n13, nin, nfb = main.node("+13V_OLED"), main.node("OLED_VIN"), main.node("OLED_BST_FB")
-    # start with OLED_VIN and +13V_OLED held at 0 V for the operating point (.ic, released at t = 0), as after a
-    # power-up with the OLED left off; at 60 C the boost would hiccup around its UVLO, so there is no free DC
-    # operating point to start from
-    d += f".ic v({n13})={v13_0} v({nin})=0"
+    # start with OLED_VIN held at 0 V for the operating point (.ic, released at t = 0), as after a power-up with
+    # the OLED left off; at 60 C the boost would hiccup around its UVLO, so there is no free DC operating point
+    d += f".ic v({nin})=0" + (f" v({n13})={v13_0}" if v13_0 else "")
     d.tran(f"{stop / 2000:.3g}", f"{stop}")
     d.meas(f"tran vin_end FIND v({nin}) AT={stop}")
     d.meas(f"tran vin_max MAX v({nin})")
@@ -675,7 +685,8 @@ def test_u21_off_leakage_alone_keeps_boost_off(main, base, check):
           f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN) / {DS_SW} Table 7.5 ISD 100 nA max")
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with OLED_VCC_EN low, the SSD1351 VCI->VCC ESD path holds "
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE: with OLED_VCC_EN low, the SSD1351 VCI->VCC ESD path holds "
                    "+13V_OLED near +3V3 and D21's reverse leakage then charges the floating OLED_VIN (U21 QOD open) "
                    "above the TPS61040 EN VIL max (EN tied to VIN): the boost is not guaranteed off and draws IQ "
                    "from +3V3 (fix: tie U21 QOD to OLED_VIN, see design_findings)")
@@ -750,3 +761,24 @@ def test_vled_at_firmware_led_floor(main, base, check, vbat, i_led, temp):
         CORNERS.pop("_floor")
     check(f"VLED at VBAT {vbat} V rested, {i_led * 1e3:.0f} mA, {temp} C", r["vled"], WS_VDD_MIN, None, "V",
           f"{DS_WS} p.2 VDD 3.3 V min; docs/firmware.md LED derating table; {DS_SW} Table 7.5 RON max")
+
+
+def test_u21_off_whatif_qod_tied_to_vout(main, base, check):
+    """WHAT-IF (not in the netlist): U21 pin 5 (QOD) tied to OLED_VIN, the fix proposed for the back-power issue.
+    The internal 150 R then holds OLED_VIN near 0 V while U21 is off, and FB stays within VIN + 0.3 V."""
+    for temp in (25, 60):
+        d = Deck(f"U21 off, QOD tied, {temp}C")
+        d += f".temp {temp}"
+        vsys_network(d, main, base, "bat3.7", temp)
+        tps22917(d, main, "U21", isd_out=SW_ISD_MAX_85C if temp > 25 else 10e-9)
+        oled_input(d, main, panel_esd=True)
+        d += f"RWHATIF_QOD {main.pin('U21', 'QOD')} {main.node('OLED_VIN')} 1m"
+        d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
+        gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
+        d.op()
+        d.print_op(f"v({main.node('OLED_VIN')})", f"v({main.node('OLED_BST_FB')})")
+        r = run(d, need=("op_0", "op_1"))
+        check(f"WHAT-IF QOD tied: OLED_VIN with OLED off {temp}C", r["op_0"], None, BST_EN_VIL, "V",
+              f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN)")
+        check(f"WHAT-IF QOD tied: FB - OLED_VIN {temp}C", r["op_1"] - r["op_0"], None, BST_FB_OVER_VIN, "V",
+              f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
