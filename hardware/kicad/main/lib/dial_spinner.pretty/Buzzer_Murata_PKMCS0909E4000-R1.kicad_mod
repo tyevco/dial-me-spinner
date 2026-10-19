@@ -1,0 +1,272 @@
+(footprint "Buzzer_Murata_PKMCS0909E4000-R1"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Murata PKMCS0909E4000-R1 magnet-free SMD piezo sounder 9.0x9.0x1.9 mm, Murata recommended land pattern (10.0/7.4 x 3.4 mm); sound-emitting slots on the bottom face at the non-terminal edges. https://www.murata.com/en-us/products/productdetail?partno=PKMCS0909E4000-R1")
+	(tags "Murata piezo sounder buzzer PKMCS0909E")
+	(property "Reference" ""
+		(at 0 -5.775 0)
+		(layer "F.SilkS")
+		(uuid "b1c77785-c463-41d6-8859-ef3f94f14d38")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 5.775 0)
+		(layer "F.Fab")
+		(uuid "a68b15fa-1736-422d-8a3e-cbe815eb19e8")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "b85d1db0-05cf-49da-a017-c3e893abbdab")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "99958688-e06c-4d9e-8731-d0876cb0b73a")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -4.61 -4.61)
+		(end -4.61 -1.96)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "a3f27171-dfc0-4a71-a8b7-f4cffc7ffdbf")
+	)
+	(fp_line
+		(start -4.61 -4.61)
+		(end 4.61 -4.61)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "462cdd4e-fc87-472f-ac30-7b0440297977")
+	)
+	(fp_line
+		(start -4.61 -1.96)
+		(end -4.94 -1.96)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "9e9c5a9b-db53-48ca-84a2-ac2f24e4efff")
+	)
+	(fp_line
+		(start -4.61 1.96)
+		(end -4.61 4.61)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "063a1e5d-646c-466e-baa7-f500d2d2e4fb")
+	)
+	(fp_line
+		(start -4.61 4.61)
+		(end 4.61 4.61)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "fa72a670-b39c-4e51-a2d9-fc168c21f4a1")
+	)
+	(fp_line
+		(start 4.61 -4.61)
+		(end 4.61 -1.96)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "c09bc059-de3d-4dbd-baea-7a2fdd185241")
+	)
+	(fp_line
+		(start 4.61 1.96)
+		(end 4.61 4.61)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "0afbf0ea-7803-44bb-8ee8-8156d2a16d17")
+	)
+	(fp_rect
+		(start -5.25 -4.75)
+		(end 5.25 4.75)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "2f4ab187-edd1-4f52-8f08-7e1076ad4ee3")
+	)
+	(fp_line
+		(start -4.5 -3.5)
+		(end -3.5 -4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "548fae20-d868-4c11-9115-71f55c833538")
+	)
+	(fp_line
+		(start -4.5 4.5)
+		(end -4.5 -3.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "df7393fb-fb0d-4ec2-ad5e-cf20be39ebb6")
+	)
+	(fp_line
+		(start -3.5 -4.5)
+		(end 4.5 -4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "f840cc9e-676b-4285-81ac-0ec548d12073")
+	)
+	(fp_line
+		(start -1 -4.5)
+		(end -1 -3)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "91943287-0257-4631-abd8-7791f7c398e6")
+	)
+	(fp_line
+		(start -1 -3)
+		(end 1 -3)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "ade8d813-9f1f-44e7-8af9-bebb2f7eac3e")
+	)
+	(fp_line
+		(start -1 3)
+		(end 1 3)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "d43efe67-2703-4725-b02f-b7eec81903d3")
+	)
+	(fp_line
+		(start -1 4.5)
+		(end -1 3)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "694e9a3f-a9df-4576-b0cc-bd87a28e0396")
+	)
+	(fp_line
+		(start 1 -3)
+		(end 1 -4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "cffa774d-9303-41c2-bf7e-8e5ba32654a1")
+	)
+	(fp_line
+		(start 1 3)
+		(end 1 4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "41d089dd-8fbc-4652-a4af-8bb0858177fd")
+	)
+	(fp_line
+		(start 4.5 -4.5)
+		(end 4.5 4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "9adbfebb-048b-4144-883c-cb90e83670a5")
+	)
+	(fp_line
+		(start 4.5 4.5)
+		(end -4.5 4.5)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "b7149673-1609-41a7-b76b-cc3444f48679")
+	)
+	(pad "1" smd rect
+		(at -4.35 0)
+		(size 1.3 3.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "b44628cc-6987-4ab5-84d0-928d2586e114")
+	)
+	(pad "2" smd rect
+		(at 4.35 0)
+		(size 1.3 3.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "d27ae91b-1e24-4506-8a1d-9a6dda640937")
+	)
+	(embedded_fonts no)
+	(model "${KICAD9_3DMODEL_DIR}/Buzzer_Beeper.3dshapes/Buzzer_Murata_PKMCS0909E.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

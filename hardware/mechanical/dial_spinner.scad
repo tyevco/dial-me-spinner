@@ -87,16 +87,17 @@ FA_Z1       = 14.3;
 FA_R        = 30.0;
 GUIDE_R     = 29.0;
 GUIDE_A     = [60, 180, 300];
-PREGAP      = 0.15;                  // boss to switch actuator
+PREGAP      = 0.15;                  // dot on boss to switch actuator
 SW_TRAVEL   = 0.25;                  // TS-1187A travel to actuation (to verify)
-STOP_TRAVEL = 0.55;                  // overload stop: plate boss lands on cup ear
+STOP_TRAVEL = 0.60;                  // overload stop: plate boss lands on cup ear
+DOT_T       = 0.5;                   // TPU/silicone dot on the boss absorbs switch-travel tolerance
 FA_BOSS_Z0  = 12.0;                  // plate underside boss (overload-stop face)
-EAR_Z1      = FA_BOSS_Z0 - STOP_TRAVEL;   // 11.45 cup ear top
+EAR_Z1      = FA_BOSS_Z0 - STOP_TRAVEL;   // 11.40 cup ear top
 EAR_Z0      = 9.05;                  // above the battery corner (z <= 8.8)
 SPRING_D    = 4.4;                   // spring pockets
 EAR_POCKET_Z = EAR_Z1 - 1.2;         // 10.25 spring seat in the ear
-PLATE_POCKET_TOP = 13.0;             // spring seat in the plate
-CBORE_FLOOR = 13.5;                  // stop-screw head seat (head top 14.8)
+PLATE_POCKET_TOP = 12.9;             // spring seat in the plate (installed length 2.7)
+CBORE_FLOOR = 13.3;                  // stop-screw head seat (head top 14.6)
 PIN_D       = 3.0;                   // brass guide pin
 // spindle Ø8 x 1.0 wall, bore Ø6
 SP_OD       = 8.0;
@@ -288,8 +289,6 @@ module base_cup()
             translate([0, 0, EAR_POCKET_Z]) cylinder(d = SPRING_D, h = 5, $fn = fn_small);
             translate([0, 0, EAR_Z0 - 0.1]) cylinder(d = PIN_D + 0.02, h = 5, $fn = fn_small);
         }
-        // drain/vent + ship-mode/reset access hole under the switch (Ø2)
-        translate([0, 0, CUP_Z0 - 0.1]) cylinder(d = 2.0, h = 2, $fn = fn_small);
     }
 
 module antenna() {
@@ -343,16 +342,19 @@ module base_board_parts() {
     color(c_ic) translate([16, -2.5, BB_Z1]) cube([3, 5, 0.6]);
 }
 
-// guide pins (brass Ø3, bonded into the cup ear), springs, stop screws
-module guide_hw()
+// guide pins (brass Ø3, bonded into the cup ear), stop screws, springs
+module guide_pins()
     for (a = GUIDE_A) rotate(a) translate([GUIDE_R, 0, 0]) {
         color(c_brass) translate([0, 0, EAR_Z0]) cylinder(d = PIN_D, h = CBORE_FLOOR - EAR_Z0, $fn = fn_small);
         color(c_brass) translate([0, 0, CBORE_FLOOR]) cylinder(d = 3.8, h = 1.3, $fn = fn_small); // M2 pan head
-        // spring 0.35 wire, OD 4.0, between ear seat and plate seat
+    }
+module guide_springs()   // 0.35 wire, OD 4.0, between ear seat and plate seat
+    for (a = GUIDE_A) rotate(a) translate([GUIDE_R, 0, 0]) {
         sz0 = EAR_POCKET_Z; sz1 = PLATE_POCKET_TOP - press * STOP_TRAVEL;
         color(c_spring) for (k = [0:5]) translate([0, 0, sz0 + 0.2 + k * (sz1 - sz0 - 0.4) / 5])
             rotate_extrude($fn = 20) translate([1.82, 0]) circle(d = 0.35, $fn = 8);
     }
+module guide_hw() { guide_pins(); guide_springs(); }
 
 // ==================================================================
 //  FLOATING ASSEMBLY (non-rotating part): plate, spindle, spacers, hub
@@ -372,7 +374,7 @@ module fa_lower_plate()
             translate([0, 0, FA_Z0]) linear_extrude(FA_Z1 - FA_Z0) fa_outline();
             for (a = GUIDE_A) rotate(a) translate([GUIDE_R, 0, FA_BOSS_Z0])
                 cylinder(d = 6.6, h = FA_Z0 - FA_BOSS_Z0 + 0.01, $fn = fn_mid);
-            // centre boss over the switch, pre-gap 0.15 (trim/shim per unit)
+            // centre boss over the switch (the 0.5 mm TPU dot is modelled as part of it)
             translate([0, 0, SW_Z1 + PREGAP]) cylinder(d = 3.0, h = FA_Z0 - SW_Z1 - PREGAP + 0.01, $fn = fn_small);
         }
         for (a = GUIDE_A) rotate(a) translate([GUIDE_R, 0, 0]) {
@@ -587,7 +589,7 @@ module stepper(off) {
     }
     color("#b0b0b0") translate([ST_SCREW_X[0], ST_Y, ST_ZA]) rotate([0, 90, 0]) cylinder(d = 2, h = ST_SCREW_X[1] - ST_SCREW_X[0], $fn = 12);
     color("#d9d9d9") translate([xs - 2.5, ST_Y - 2, ST_ZA - 2]) cube([5, 4, 4]);           // slider nut
-    color(c_brass) translate([xs, ST_Y, ST_ZA + 2]) cylinder(d = 1.5, h = 3.3, $fn = 12);   // drive pin
+    color(c_brass) translate([xs, ST_Y, ST_ZA + 2]) cylinder(d = 1.5, h = 1.4, $fn = 12);   // drive pin into the slot
 }
 // printed saddle: bonded to the can, M2 into the board hole at (r 17, theta 60)
 module stepper_saddle()
@@ -620,7 +622,7 @@ module light_box()
             translate([LB_RI - 0.1, -0.5, LB_Z1 - 0.8]) cube([LB_RO - LB_RI + 0.2, 1.0, 1]);
     }
 
-module diffuser() color(c_diff) tube(DIF_RO, DIF_RI, COV_Z0, COV_Z1);
+module diffuser() color(c_diff) tube(DIF_RO - 0.02, DIF_RI + 0.02, COV_Z0 + 0.02, COV_Z1 - 0.02);   // 0.02 reliefs avoid coplanar faces
 
 module oled_bracket()
     color("#4d4d4d") difference() {
@@ -692,53 +694,84 @@ module assembly() {
 // ---------- exploded ----------
 module exploded() {
     e = explode;
-    translate([0, 0, -12 * e]) feet();
+    translate([0, 0, -14 * e]) feet();
     base_cup();
-    translate([0, 0, 4 * e]) antenna();
-    translate([0, 0, 10 * e]) battery();
-    translate([0, 0, 22 * e]) base_board();
-    translate([0, 0, 32 * e]) guide_hw();
-    translate([0, 0, 42 * e]) fa_lower_plate();
+    translate([0, 0, 3 * e]) antenna();
+    translate([0, 0, 8 * e]) battery();
+    translate([0, 0, 20 * e]) base_board();
+    translate([0, 0, 30 * e]) guide_hw();
+    translate([0, 0, 40 * e]) fa_lower_plate();
     translate([0, 0, 52 * e]) { spindle(); lower_spacer(); }
-    translate([0, 0, 64 * e]) { rotor_carrier(); rotor_ring(); track_magnets(); }
-    translate([0, 0, 78 * e]) bearing608();
-    translate([0, 0, 86 * e]) { wave_spring(); bearing_retainer(); }
-    translate([0, 0, 94 * e]) spindle_hub();
-    translate([0, 0, 104 * e]) detent_assembly(det_offset);
-    translate([0, 0, 114 * e]) main_board();
-    translate([0, 0, 124 * e]) { light_box(); oled_bracket(); }
-    translate([0, 0, 134 * e]) oled_glass();
-    translate([0, 0, 142 * e]) diffuser();
-    translate([0, 0, 152 * e]) { top_cover(); window_lens(); }
+    translate([0, 0, 80 * e]) { rotor_carrier(); rotor_ring(); track_magnets(); }
+    translate([0, 0, 92 * e]) bearing608();
+    translate([0, 0, 98 * e]) { wave_spring(); bearing_retainer(); }
+    translate([0, 0, 106 * e]) spindle_hub();
+    translate([0, 0, 116 * e]) detent_assembly(det_offset);
+    translate([0, 0, 128 * e]) main_board();
+    translate([0, 0, 138 * e]) { light_box(); oled_bracket(); }
+    translate([0, 0, 146 * e]) oled_glass();
+    translate([0, 0, 154 * e]) diffuser();
+    translate([0, 0, 164 * e]) { top_cover(); window_lens(); }
 }
 
+EXPL_LABELS = [
+    [-13.5, "3x micro-suction arc pads"], [6, "base cup (PA12)"], [13, "LiPo 603450 (+2.4 mm in x)"],
+    [30.5, "base board + SW1 + USB-C"], [41, "guide pins, springs, stop screws"],
+    [53.5, "FA lower plate (PA12-GF)"], [68, "spindle Ø8x1 + POM spacer"],
+    [100, "316L ring + 48 magnets + carrier"], [113.5, "608-2Z (re-oiled)"],
+    [124, "wave spring + retainer"], [133.5, "spindle hub (M2 inserts)"],
+    [143, "detent carriage + stepper"], [158.5, "main board Ø64"],
+    [170, "light box + OLED bracket"], [180, "OLED 1.5in SSD1351"], [189.5, "opal diffuser ring"],
+    [199.5, "top cover + window lens"]];
+module exploded_labels()
+    for (l = EXPL_LABELS) translate([40 * 0.744, 40 * 0.668, l[0] * explode]) rotate([0, 0, 41.9]) rotate([90, 0, 0])
+        color("#202020") linear_extrude(0.2) text(l[1], size = 3.2, halign = "left", valign = "center", font = "DejaVu Sans");
+
 // ---------- sections (per-part cut keeps colours in preview) ----------
-module cut_keep(plane) {
-    if (plane == "yz") intersection() { children(); translate([-100, -100, -50]) cube([100, 200, 200]); }
-    else intersection() { children(); translate([-100, -100, -50]) cube([200, 100, 200]); }
+module cut_keep(plane, c, k) {
+    // colour applied outside the intersection so the cut faces carry the part colour;
+    // k makes each cutting box unique (identical boxes share one cached colour in preview)
+    if (plane == "yz") color(c) render(convexity = 6) intersection() { children(); translate([-100 - k, -100, -50]) cube([100 + k, 200, 200]); }
+    else color(c) render(convexity = 6) intersection() { children(); translate([-100, -100 - k, -50]) cube([200, 100 + k, 200]); }
 }
 module section(plane) {
-    cut_keep(plane) feet();      cut_keep(plane) base_cup();   cut_keep(plane) antenna();
-    cut_keep(plane) battery();   cut_keep(plane) base_board(); cut_keep(plane) guide_hw();
-    cut_keep(plane) fa_lower_plate(); cut_keep(plane) spindle(); cut_keep(plane) lower_spacer();
-    cut_keep(plane) spindle_hub(); cut_keep(plane) coax();
-    cut_keep(plane) rotor_ring(); cut_keep(plane) track_magnets(); cut_keep(plane) rotor_carrier();
-    cut_keep(plane) wave_spring(); cut_keep(plane) bearing_retainer(); cut_keep(plane) bearing608();
-    cut_keep(plane) main_board(); cut_keep(plane) detent_assembly(det_offset);
-    cut_keep(plane) light_box(); cut_keep(plane) oled_bracket(); cut_keep(plane) oled_glass();
-    cut_keep(plane) diffuser(); cut_keep(plane) top_cover(); cut_keep(plane) window_lens();
+    cut_keep(plane, c_rubber, 0) feet();
+    cut_keep(plane, c_cup, 1) base_cup();
+    cut_keep(plane, c_kapton, 2) antenna();
+    cut_keep(plane, c_battery, 3) battery();
+    cut_keep(plane, c_pcb, 4) base_board();
+    cut_keep(plane, c_brass, 5) guide_hw();
+    cut_keep(plane, c_plate, 6) fa_lower_plate();
+    cut_keep(plane, c_steel2, 7) spindle();
+    cut_keep(plane, c_pom, 8) lower_spacer();
+    cut_keep(plane, c_hub, 9) spindle_hub();
+    cut_keep(plane, c_coax, 10) coax();
+    cut_keep(plane, c_steel, 11) rotor_ring();
+    cut_keep(plane, c_magbody, 12) track_magnets();
+    cut_keep(plane, c_carrier, 13) rotor_carrier();
+    cut_keep(plane, c_spring, 14) wave_spring();
+    cut_keep(plane, c_carrier, 15) bearing_retainer();
+    cut_keep(plane, c_bear, 16) bearing608();
+    cut_keep(plane, c_pcb_m, 17) main_board();
+    cut_keep(plane, "#e2e2e2", 18) detent_assembly(det_offset);
+    cut_keep(plane, c_lightbx, 19) light_box();
+    cut_keep(plane, "#4d4d4d", 20) oled_bracket();
+    cut_keep(plane, c_glass, 21) oled_glass();
+    cut_keep(plane, c_diff, 22) diffuser();
+    cut_keep(plane, c_cover, 23) top_cover();
+    cut_keep(plane, c_lens, 24) window_lens();
 }
 
 // ---------- clash checks ----------
-STATIONARY_NAMES = ["base_cup", "base_board", "battery", "antenna+coax", "guide_hw", "fa_lower_plate",
+STATIONARY_NAMES = ["base_cup", "base_board", "battery", "antenna", "guide_pins", "fa_lower_plate",
                     "spindle", "lower_spacer", "spindle_hub", "main_board", "detent@click", "detent@free",
                     "light_box", "oled_bracket", "oled_glass", "top_cover"];
 module stationary_item(i) {
     if (i == 0) base_cup();
     else if (i == 1) base_board();
     else if (i == 2) battery();
-    else if (i == 3) { antenna(); coax(); }
-    else if (i == 4) guide_hw();
+    else if (i == 3) antenna();
+    else if (i == 4) guide_pins();
     else if (i == 5) fa_lower_plate();
     else if (i == 6) spindle();
     else if (i == 7) lower_spacer();
@@ -783,21 +816,85 @@ module print_part(p) {
     else if (p == "carriage_rail") translate([0, 0, MB_Z0]) mirror([0, 0, 1]) carriage_rails();
 }
 
+// labels readable from below (mirror Y), placed under everything at z = 14
+module label(t, p, sz = 1.9, ha = "center")
+    color("#111111") translate([p[0], p[1], 14]) mirror([0, 1, 0]) linear_extrude(0.2)
+        text(t, size = sz, halign = ha, valign = "center", font = "DejaVu Sans:style=Bold");
+// keep-out sector drawn on the board underside (SPEC: theta 60-120, r 12-32)
+module spec_keepout_overlay()
+    color("#f2c200") translate([0, 0, MB_Z0 - 0.08]) linear_extrude(0.06)
+        difference() {
+            intersection() { circle(r = 32, $fn = fn_big); polygon([[0, 0], pol(40, 60), pol(40, 120)]); }
+            circle(r = 12, $fn = fn_big);
+            intersection() { circle(r = 31.0, $fn = fn_big); polygon([[0, 0], pol(40, 62.5), pol(40, 117.5)]); }
+        }
+module board_bottom_labels() {
+    label("SPEC keep-out θ60–120°", [-3, 30.0], 1.5);
+    label("TMAG5273 r29 θ270", [0, -24.5]);
+    label("MDBT50Q (θ215)", [-15.5, -16.0]);
+    label("u.FL plug: CLASH", [-9.5, -3.5], 1.6, "right");
+    label("J1 vertical: CLASH", [9.5, -16.5], 1.6);
+    label("piezo", [15.6, -9.0]);
+    label("VSM08102 envelope", [-1, 10.0]);
+    label("detent carriage", [7.5, 27.5], 1.6, "left");
+    label("Ø3×2 N52 @ r29 (click)", [7.5, 25.0], 1.6, "left");
+    label("inclined-slot link", [-15.0, 21.0], 1.6);
+    label("rotor envelope (ghost)", [0, -33.8], 1.6);
+}
+
+// labels for the YZ section (seen from +X: screen right = +Y)
+SEC_LABELS = [
+    // text, anchor [y, z], label [y, z], halign
+    ["top cover + Ø30 window lens", [8, 35.7], [14, 44], "left"],
+    ["opal diffuser r27-30 / light box", [28.5, 35.0], [30, 41], "left"],
+    ["OLED glass on printed bracket", [-8, 33.8], [-12, 44], "right"],
+    ["main board Ø64, 4-layer", [-31, 30.0], [-38, 38], "right"],
+    ["J1 vertical (SPEC) hits rotor hub", [-11, 25.5], [-38, 31.5], "right"],
+    ["TMAG5273 (bottom), 3.1 mm to track", [-29, 28.5], [-38, 27], "right"],
+    ["316L ring, 48 magnets on top face", [-33, 22], [-38, 22.5], "right"],
+    ["PA12-GF carrier web", [-20, 18.0], [-38, 18], "right"],
+    ["FA lower plate (floats 0.6 mm)", [-26, 13.6], [-38, 13.5], "right"],
+    ["base board + TS-1187A press switch", [-14, 10.3], [-38, 9.0], "right"],
+    ["LiPo 603450 (bay z 2.5-9.0)", [-10, 5.5], [-38, 4.5], "right"],
+    ["base cup + micro-suction arc pads", [-30, 1.2], [-38, 0.0], "right"],
+    ["detent carriage, Ø3x2 N52 1.0 above track", [29, 27.8], [38, 31.5], "left"],
+    ["stepper slider + drive pin", [15.5, 24.4], [38, 27], "left"],
+    ["608-2Z on stationary Ø8 spindle", [7.6, 21.5], [38, 22.5], "left"],
+    ["POM spacer / drop stop", [5, 16.6], [38, 18], "left"],
+    ["FA plate rim (guide pins at θ 60/180/300)", [29, 13.6], [38, 13.5], "left"],
+    ["link J3 (vertical SH) through plate window", [-9, 13.0], [38, 9.0], "left"],
+];
+module section_labels()
+    for (l = SEC_LABELS) {
+        a = l[1]; b = l[2];
+        color("#555555") hull() {
+            translate([2, a[0], a[1]]) cube(0.12, center = true);
+            translate([2, b[0] + (l[3] == "left" ? -0.6 : 0.6), b[1]]) cube(0.12, center = true);
+        }
+        color("#e03131") translate([2, a[0], a[1]]) sphere(d = 0.7, $fn = 8);
+        color("#111111") translate([2, b[0], b[1]]) rotate([90, 0, 90]) linear_extrude(0.1)
+            text(l[0], size = 1.55, halign = l[3], valign = "center", font = "DejaVu Sans");
+    }
+
 // ==================================================================
 //  VIEW DISPATCH
 // ==================================================================
 if (view == "assembly") assembly();
-else if (view == "section") section("yz");
+else if (view == "section") { section("yz"); section_labels(); }
 else if (view == "section_xz") section("xz");
-else if (view == "exploded") exploded();
+else if (view == "exploded") { exploded(); exploded_labels(); }
 else if (view == "board_bottom") {
-    main_board(); detent_assembly(det_offset); spindle_hub(); coax();
-    color([0.75, 0.78, 0.82, 0.25]) rotor_envelope();
+    main_board(); detent_assembly(det_offset); spindle_hub();
+    spec_keepout_overlay();
+    color([0.75, 0.78, 0.82, 0.15]) rotor_envelope();
+    board_bottom_labels();
 }
 else if (view == "clash") {
-    %assembly();
-    for (i = [0:len(STATIONARY_NAMES) - 1]) color("red") clash_rotor(i);
-    for (i = BASE_ITEMS) color("orange") clash_press(i);
+    // board underside + hub + transparent rotor envelope; red = interference
+    main_board(); detent_assembly(det_offset); spindle_hub();
+    // nudged 0.08 mm toward the render camera so coplanar faces do not z-fight
+    for (i = [0:len(STATIONARY_NAMES) - 1]) color("red") translate([0.036, -0.069, -0.036]) render(convexity = 4) clash_rotor(i);
+    color([0.75, 0.78, 0.82, 0.18]) rotor_envelope();
 }
 else if (view == "clash_geom") {
     if (clash_mode == "rotor") { if (clash_item < 0) for (i = [0:len(STATIONARY_NAMES) - 1]) clash_rotor(i); else clash_rotor(clash_item); }

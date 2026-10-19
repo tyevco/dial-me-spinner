@@ -9,8 +9,13 @@ the risks, the open decisions and a rough cost.
   The pin map and net names are in [`hardware/design/nets.py`](../hardware/design/nets.py).
   Where this document and SPEC disagree, SPEC wins. Problems found in SPEC while
   writing this are listed in [§13](#13-issues-found-in-spec-during-this-review).
-* **Mechanical detail:** [`docs/mechanical.md`](mechanical.md).
-* **Charger register settings and power firmware:** [`docs/power.md`](power.md).
+* **Mechanical detail:** [`docs/mechanical.md`](mechanical.md) (in progress, not
+  yet in the repository).
+* **Charger register settings and power firmware:** [`docs/power.md`](power.md)
+  (in progress, not yet in the repository; the verified register values are
+  in [§6.5](#65-power-and-charger)).
+* **Fabrication, hand assembly and bring-up:** [`docs/assembly.md`](assembly.md)
+  and [`docs/bringup.md`](bringup.md).
 * **Where the numbers come from:** each subsystem was researched, and an
   independent reviewer then checked the research against datasheets. This
   document uses the reviewer's **corrected** values. Values marked
@@ -75,8 +80,8 @@ It serves three use cases with the same hardware:
 | LEDs | 48 × WS2812C-2020-V6 at r = 28.5 mm (7.5° pitch, 2 LEDs per detent) | SPEC §5.4 |
 | Inputs | Press (0.3–0.5 mm travel), rotation, IMU tap and pick-up | SPEC §1, §5.5 |
 | Audio | Magnet-free piezo, about 72 dB(A) at 10 cm | LED research |
-| Radio | nRF52840 module MDBT50Q-U1MV2 with u.FL, and an off-board flex antenna in the base | SPEC §5.2, §8 |
-| Battery | 1S LiPo, about 1000 mAh with protection board. BQ25180 charger, 400 mA charge (about 3 h) | SPEC §3, power research |
+| Radio | nRF52840 module MDBT50Q-U1MV2 with u.FL, and an off-board flex antenna in the base. TX at +8 dBm by default | SPEC §5.2, §8, [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) |
+| Battery | 1S LiPo, about 1000 mAh with protection board, thickness limited by the swelling gap (D8). BQ25180 charger, 400 mA charge (about 3 h) | SPEC §3, power research |
 | Runtime (estimates, [§8](#8-power-budget-and-battery-life)) | Game about 9 h continuous. Desk use about 4 weeks per charge. Sleep about 32 µA | this document |
 
 ---
@@ -94,7 +99,7 @@ cases, and rows **D** requirements derived from them.
 | R4 | Ring of addressable RGB LEDs | 48 × WS2812C-2020-V6 on the stationary main board under an opal diffuser. Animations follow the measured ring angle in software | SPEC §5.4, [§6.4](#64-led-ring-and-audio) | Smoothness and colour checks at VBAT 3.4–4.2 V |
 | R5 | Free spin vs click spin, switched electronically with magnetic detents | An alternating 48-magnet track on the ring plus a stationary detent magnet on a sliding carriage. The carriage moves 7.5 mm radially inward to go free. The actuator is a micro stepper with a self-locking screw, so holding a position takes zero power | SPEC §1, [§6.2](#62-detents-mechanism-and-actuator) | Residual cogging below the threshold of feel. 0 µA hold, measured |
 | R6 | Balanced flywheel | Turned 316L ring, concentricity ≤ 0.02 mm TIR, balanced to ISO G2.5 at 15 rev/s (≤ 3.9 g·mm). Magnets are bought in matched lots. The IMU can measure 1×/rev vibration for an optional balancing assistant | [§5](#5-mechanical-concept-summary), docs/mechanical.md | Static balance, then IMU vibration at 10 rev/s |
-| R7 | Long free spins | One low-friction 608 (instead of a large-bore thin-section bearing, about 10× less drag), non-magnetic ring, no copper pours facing the track, ferrous keep-outs | SPEC §7, §8 | Spin-down from 10 rev/s (target ≥ 30 s, *to verify on prototype*) |
+| R7 | Long free spins | One low-friction 608 (instead of a large-bore thin-section bearing, about 10× less drag), non-magnetic ring, no copper pours facing the track, ferrous keep-outs | SPEC §7, §8 | Spin-down from 10 rev/s: verified acceptance **≥ 45–60 s** (mechanical verifier). SPEC's ≥ 2.5–3 N bearing preload is predicted to give only 20–65 s, so it may miss; the preload is the tuning variable (D3, [§13](#13-issues-found-in-spec-during-this-review) item 9). *To verify on prototype* |
 | R8 | Press-down click | The whole FA (with the rotor) floats on 3 springs (≈ 4 N preload) and presses a centre tact switch on the base board. Pressing also wakes the device from ship mode | SPEC §3, §8 | Click force map (rim vs centre), no rocking |
 | U1 | Game / decision spinner | Free or click spin, an LED wheel plus a 30–60 fps OLED wheel, piezo ticks synced to detent crossings, stop prediction from the measured spin-down, phone app over the custom GATT | [§6](#6-subsystem-design-decisions) | Game demo firmware |
 | U2 | Surface-Dial-like controller | Composite HID: Windows Radial Controller (0.1° units, 150 units per detent), Consumer Control and Mouse wheel, over BLE and USB. Press = button | [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) | Windows Wheel settings, Linux `evtest`, Android |
@@ -212,36 +217,58 @@ Electrical notes:
 
 * **Current.** JST SH is rated 1 A per contact (for 28 AWG wire, so check the
   rating for the gauge you use), and VSYS has two contacts. The worst draw
-  that firmware allows at the same moment is about 0.55 A
-  ([§8.4](#84-peak-current)). The hardware worst case without the firmware caps
-  is about 1.3 A with the 5 mA LEDs and about 2.3 A with the 12 mA
-  WS2812B-2020-V6 drop-in. **The LED brightness cap is therefore a hardware
-  protection function, not a styling choice.**
-* **IR drop.** A 60 mm harness in 28 AWG (0.21 Ω/m) gives about 6 mΩ for the
-  two VSYS wires and 4 mΩ for the three GND wires, so about 5 mV at 0.5 A. In
-  32 AWG it is about 14 mV. Either is negligible.
-* **USB.** Full speed (12 Mbit/s) tolerates about 60 mm of unshielded,
+  that firmware allows at the same moment is about 0.7 A (a detent stroke
+  during an LED chase at the sustained cap, [§8.4](#84-peak-current)). The
+  hardware worst case without the firmware caps is about 1.35 A with the 5 mA
+  LEDs and about 2.35 A with the 12 mA WS2812B-2020-V6 drop-in. **The LED
+  brightness cap is therefore a hardware protection function, not a styling
+  choice.**
+* **IR drop.** The real route (side slots, [§13](#13-issues-found-in-spec-during-this-review)
+  item 2) makes the harness about 50–80 mm long. At 80 mm in 28 AWG
+  (0.21 Ω/m) the two VSYS wires give about 8.5 mΩ and the three GND wires
+  about 5.7 mΩ, so about 10 mV at 0.7 A. In 32 AWG it is about 25 mV. Either is
+  negligible.
+* **USB.** Full speed (12 Mbit/s) tolerates 50–80 mm of unshielded,
   uncontrolled-impedance wire. Twist D+ and D− together in the harness.
 * **Ship mode.** In ship mode SYS is off, so the main board is unpowered. The
   base drives only open-drain lines (CHG_INT_N, BTN_N, I2C), so nothing
   back-powers the main board.
-* **Mechanical.** The harness and the antenna coax cross from the stationary
-  base to the floating FA. They need a service loop of about 5 mm or more to
-  absorb the 0.3–0.5 mm press travel (up to about 0.75 mm at the rim) without
-  pre-loading the click.
+* **Mechanical: SPEC §8 has no workable path at the base end** (details and
+  required changes in [§13](#13-issues-found-in-spec-during-this-review)
+  item 2, risk R26):
+  * The spindle bore cannot open downward on the axis: the spindle ends at the
+    FA lower plate (z 12.8), exactly where the centre boss presses the
+    TS-1187A (switch z 11.1–12.6, pre-gap 0.15). The harness and coax need a
+    **side exit in the spindle wall above the lower plate** and an **off-axis
+    hole or window in the lower plate**.
+  * A vertical BM12B-SRSS-TB J3 on the base board has only about 1.7 mm to the
+    lower plate above it (z 11.1 to 12.8) and about 0.5–0.7 mm to the LiPo
+    below the board. It needs a lower-plate window, and with the FA pressed
+    0.5 mm the plug and its wire bend reach toward the rotor carrier web
+    (z 17, 16.5 when pressed). *To verify in CAD.* Alternatives: a low-profile
+    right-angle header, or wires soldered to base-board pads.
+  * The harness and coax cross from the stationary base to the floating FA.
+    They need a **service loop of about 5 mm or more** to absorb the 0.3–0.5 mm
+    press travel (up to about 0.75 mm at the rim) without pre-loading the
+    click, and SPEC defines no volume for it.
+  * Threading pre-crimped leads through the Ø6 bore is described in
+    [docs/assembly.md §6](assembly.md#6-link-harness-12-way-jst-sh-through-the-spindle).
 
 ---
 
 ## 5. Mechanical concept (summary)
 
-Full detail, drawings and tolerances are in [docs/mechanical.md](mechanical.md).
+Full detail, drawings and tolerances will be in [docs/mechanical.md](mechanical.md)
+(in progress); hand assembly is in [docs/assembly.md](assembly.md).
 The essentials:
 
 * **Topology: a mushroom on a spindle.** A stationary hollow Ø8 × 1.0 mm spindle
   is clamped to the FA lower plate and to the main board. The rotor spins
   around it on **one 608 bearing**. The OLED, LED ring, diffuser and top cover
   sit on top and never rotate. All wiring, and the antenna coax, pass through
-  the spindle bore.
+  the spindle bore. They must enter and leave it through side slots, because
+  neither end of the bore is open on the axis
+  ([§13](#13-issues-found-in-spec-during-this-review) item 2).
 * **Why a 608 and not a large-bore bearing.** In the SKF friction model, drag
   scales roughly with the bearing's mean diameter to the power 1.96. For the
   same rotor, an oiled 61808 (40×52) gives about 1.6 N·mm at 10 rev/s and a
@@ -265,10 +292,12 @@ The essentials:
   light box, OLED glass (33.0–34.7), diffuser and top cover (to 36.0).
 * **Press.** Three springs push the FA up against stops with about 4 N of
   preload. A centre boss on the FA lower plate presses the TS-1187A
-  (1.6 N, 100k cycles) on the base board. With this geometry the research
-  predicts a click force of about **2.0–2.3 N at the rim and 4.1–4.7 N at the
-  centre**, the same all the way round the circumference, with no rocking
-  (mechanical research, verified, with corrected preload 3.9–4.15 N).
+  (1.6 N, 100k cycles) on the base board. With this geometry and the TS-1187A
+  the research predicts a click force of about **2.0–2.1 N at the rim and
+  4.1–4.3 N at the centre** for a preload of 3.9–4.15 N (the verifier
+  corrected the spring preload to 4.15 N at the specified installed length).
+  The force is the same all the way round the circumference, with no rocking.
+  The higher KSC2xx figures from the research apply only to option D9.
 * **Bearing preload vs spin time.** The off-axis detent force (±0.7 N at
   R = 29 mm, about ±20 N·mm, reversing 24 times per turn) would rock a single
   608, because gravity alone only holds alignment up to about 11 N·mm. SPEC
@@ -276,8 +305,12 @@ The essentials:
   rolling-friction term roughly by (4.4 N / 1.44 N)^0.54 ≈ 1.8×, and the
   sliding term by more. The verified spin-down estimate without preload is
   **40–120 s from 10 rev/s** (the model may under-predict friction). With the
-  preload expect roughly **20–65 s**. This is a model estimate and must be
-  verified on the prototype ([§11](#11-open-decisions), D3).
+  preload expect roughly **20–65 s**. The verified acceptance test is
+  **≥ 45–60 s from 10 rev/s**, so SPEC's preload is predicted to miss it at
+  the low end. Keep 45 s as the acceptance and treat the preload as the
+  variable: measure spin-down and click-mode rocking against preload
+  ([§11](#11-open-decisions), D3). These are model estimates and must be
+  verified on the prototype.
 * **Balance.** ISO G2.5 at 15 rev/s allows a residual imbalance of about
   3.9 g·mm for the rotor. A ring eccentricity of 0.02 mm TIR contributes about
   1.2 g·mm. Correct the rest with drilled holes or brass set screws.
@@ -352,7 +385,7 @@ from atan2 of the tangential (X) and axial (Z) field components.
 
 | Option | Why rejected |
 |---|---|
-| Dedicated 32-pole Ø4×2 track on the ring underside (sensing research's primary) | It would need a second set of pockets, and click and encoder phase would not be tied together. SPEC merged the tracks as the sensing verifier allowed ("valid if the detent ring alternates and has ≥ 20 magnets"). |
+| Dedicated 32-pole Ø4×2 track on the ring underside (sensing research's primary) | It would need a second set of pockets, and click and encoder phase would not be tied together. SPEC merged the tracks under the condition the sensing research gives in its alternatives: merging is valid, and better, if the detent ring alternates polarity and has at least 20 magnets. |
 | TMAG5170 (SPI 10 MHz) | 4× the price, 2.3 V minimum supply, 3.4 mA, 5 MCU pins. Its extra bandwidth is not needed. Kept as a re-spin fallback. |
 | Two analog Halls (DRV5055) in sin/cos | About 5.3 mA with the SAADC, no µA wake, and two parts to calibrate. |
 | Hall latches in quadrature (DRV5012 ×2) | Only 4 counts per pole pair (96 CPR here), and counts are lost at speed. Kept only as the DNP wake fallback. |
@@ -456,7 +489,7 @@ controller:
   **bottom-contact** ZIF (AFC01-S30FCA-00) on the main-board top side.
 * Interface: write-only 4-wire SPI.
 * Panel VCC: 13.0 V from a **TPS61040** boost (499 kΩ / 52.3 kΩ divider,
-  0.5 %/0.1 % parts) behind an **AO3401A** input disconnect. With the boost
+  both 0.5 %, SPEC §5.3) behind an **AO3401A** input disconnect. With the boost
   off, the panel's VCC floats and draws nothing from the boost.
 
 **Why.**
@@ -526,9 +559,11 @@ controller:
   θ = 0°.
 * **Supply:** VSYS directly, through a **TPS22917** load switch (CT 1 nF,
   QOD tied to VOUT, 2 × 22 µF bulk). No 5 V boost.
-* **Data:** nRF **I2S0 SDOUT** at 3.3 V logic, through 33 Ω, with no level
-  shifter. 100 kΩ pull-downs on the first DI and on the last DO, because V6
-  DI/DO pins are auto-swappable.
+* **Data:** nRF **I2S0 SDOUT** (P0.06) at 3.3 V logic, through 220 Ω (R40,
+  SPEC §5.4; it limits DIN clamp current if P0.06 is ever high while VLED is
+  off), with no level shifter. 100 kΩ pull-downs on the first DI and on the
+  last DO, because V6 DI/DO pins are auto-swappable. The DC drop across
+  220 Ω into the DI pull-down is about 6 mV.
 * **Optics:** a white-interior, opaque-exterior light box, about 2.7 mm of air,
   then an opal PMMA diffuser ring (r 27–30).
 * **Audio:** a magnet-free Murata **PKMCS0909E4000-R1** piezo, driven
@@ -553,9 +588,17 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
   T0H 312 ns and T1H 625 ns, inside the V6 windows. Use a reset delay of
   ≥ 300 µs and the HFXO clock source. A frame of 48 LEDs takes about 1.74 ms
   (575 fps maximum at line rate).
-* Logic margin: at VSYS 4.5 V (on USB) the input threshold is 2.48–2.7 V,
-  against the nRF's guaranteed VOH of 2.9 V. The margin is 0.2 V, which is why
-  the nRF runs at 3.3 V ([§6.5](#65-power-and-charger)).
+* Logic margin: at VSYS 4.5 V (on USB) the input threshold VIH is
+  0.55–0.6 × VDD = 2.48–2.7 V. The nRF's guaranteed VOH is VDD − 0.4 V
+  (nRF52840 PS, standard drive). With the RT9080 at its −2 % limit
+  (3.23 V, [DS9080-09](https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf))
+  that is about 2.83 V, so the **worst-case margin is about 0.1–0.2 V** at
+  VSYS 4.5 V, before any SYS-regulation tolerance (each +1 % on VSYS costs
+  about 27 mV). On battery (VSYS ≤ 4.2 V, VIH ≤ 2.52 V) it is ≥ 0.3 V. The DI
+  input draws only µA, so the real VOH sits close to VDD and the typical margin
+  is about 0.6 V or more; the guaranteed figure is what is thin. This is why the
+  nRF runs at 3.3 V ([§6.5](#65-power-and-charger)), and it is listed as risk
+  R27.
 * Diffuser uniformity: at 3.73 mm pitch and about 2.7 mm gap (pitch/height
   about 1.4), an ideal Lambertian diffuser gives roughly 0.75–0.8 min/max
   brightness along the ring. Expect slight beading; *to verify on prototype*.
@@ -604,11 +647,16 @@ mode (VDDH = SYS, REG0 DC/DC → 3.0 V)?** SPEC chose normal mode, and the
 reasons are sound:
 
 1. **LED logic margin.** At VLED up to 4.5 V the WS2812-V6 needs a data high of
-   up to 2.7 V. A 3.0 V REG0 rail (−10 % tolerance, so 2.7 V worst case) leaves
-   0–0.2 V of margin; 3.3 V leaves about 0.6 V.
+   up to 2.7 V. A 3.0 V REG0 rail can be as low as 2.7 V (−10 % tolerance),
+   where the guaranteed VOH is VDD − 0.4 ≈ 2.3 V: a **negative margin of about
+   −0.4 V, so high-voltage mode fails outright** without a level shifter. At
+   3.3 V (RT9080 ±2 %) the worst-case VOH is about 2.83 V, a margin of about
+   0.1–0.2 V ([§6.4](#64-led-ring-and-audio)).
 2. **No REG0 load limits.** In high-voltage mode, external loads on VDD are
    limited to 25 mA with TX ≤ +4 dBm, 5 mA above +4 dBm, and 1 mA in System OFF.
-   The RF environment may force TX to +8 dBm ([§9](#9-rf-strategy-and-its-risk)).
+   Rev A transmits at **+8 dBm by default** ([§6.6](#66-mcu-module-rfantenna-and-firmware-platform),
+   [§9](#9-rf-strategy-and-its-risk)), which would leave only 5 mA for the
+   flash, TMAG, IMU, OLED logic and pull-ups on VDD.
 3. **No dependence on REG0 silicon behaviour.** REG0 DC/DC is broken on Rev 1
    silicon (anomaly 197), and the reviewer flagged the high-voltage-mode
    active-current efficiency as unverified.
@@ -622,7 +670,8 @@ The cost is small (recomputed in [§8](#8-power-budget-and-battery-life)):
   the floor);
 * the free VDDHDIV5 battery measurement is lost, hence the divider.
 
-**Charger settings.** Full register list in [docs/power.md](power.md),
+**Charger settings.** The full register list will be in [docs/power.md](power.md)
+(in progress). Until then these are the
 values from the verified research:
 
 | Register | Value | Setting |
@@ -667,6 +716,8 @@ values from the verified research:
 
 * **Module:** **Raytac MDBT50Q-U1MV2** (nRF52840, u.FL), on the main-board
   bottom at r 8–22 mm, θ ≈ 180–250°, with the u.FL end toward the spindle.
+  At r ≈ 9 the mated u.FL plug hangs down to about z 24.5, over the rotating
+  608; moving the u.FL end to r ≥ 13 is the likely fix (risk R25).
   * It exposes all 48 GPIO plus USB, VDDH and DCCH.
   * The 32 MHz crystal and the REG1 inductor are inside. The 32.768 kHz crystal
     (SC-20S, 2 × 12 pF) is on the board.
@@ -674,6 +725,14 @@ values from the verified research:
     footprint.
 * **Antenna:** an off-board **Molex 146153** balanced flex (34.9 × 9 mm) on the
   base-cup floor ([§9](#9-rf-strategy-and-its-risk)).
+* **TX power: +8 dBm by default in rev A.** The link budget in [§9](#9-rf-strategy-and-its-risk)
+  assumes it, and at 0 dBm the severely-detuned case would have only about
+  1.5 dB of margin at desk distance. It costs about +10 mA while transmitting
+  (14.8 mA vs 4.8 mA, nRF52840 PS), which averages to about +3 µA in connected
+  idle and about +0.2 mA in desk-active use (*estimate*, included in
+  [§8](#8-power-budget-and-battery-life)). Normal-voltage mode puts no VDD
+  load limit on it. Backing the power off on strong links is a later firmware
+  optimisation, to be decided from the RSSI tests.
 * **Flash:** **W25Q128JV** 16 MB QSPI for the MCUboot secondary slot and the
   UI assets.
 * **Firmware:** nRF Connect SDK (Zephyr) with the SoftDevice Controller.
@@ -736,7 +795,7 @@ VSYS ─┬─ RT9080-33 LDO ───────── +3V3 (always on): nRF V
 | VBAT | cell | 3.0–4.2 V | PCM / BQ25180 BATFET | 1.5 A (BATOCP) | Firmware enters ship mode at ≥ 3.45 V rested: the BQ25180 needs VBAT > 3.15 V to wake by button. |
 | VSYS | BQ25180 SYS | 3.0–4.5 V | ship / shutdown | 1.5 A DC, 2.5 A for < 20 ms | Unswitched capacitance is about 72 µF, against the ≤ 100 µF guideline. |
 | +3V3 | RT9080-33 | 3.3 V; tracks VSYS minus dropout below about 3.35 V | always on | about 50 mA peak (TX + CPU + QSPI erase) | W25Q128 needs ≥ 2.7 V. With BUVLO at 3.0 V the rail stays ≥ 2.9 V. |
-| VLED | TPS22917 | = VSYS | LED_PWR_EN (100 kΩ pull-down) | 0.73 A hardware max; firmware cap 0.3 A burst, 0.15 A sustained | CT 1 nF gives about 1.6 ms rise and about 50 mA inrush. Allow about 10 ms for QOD discharge. |
+| VLED | TPS22917 | = VSYS | LED_PWR_EN (100 kΩ pull-down) | 0.73 A hardware max; firmware cap 0.3 A burst, 0.15 A sustained | Load is about 49 µF nominal (2 × 22 µF + 48 × 100 nF). CT 1 nF gives a slew of about 1.9 V/ms, so about 90 mA of inrush, a 1.6 ms rise and a turn-on time tON of about 4 ms (3.8 µs/pF at 3.6 V, [SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.6). QOD fall time is 2.2 × 150 Ω × 49 µF ≈ 16 ms: allow ≥ 20 ms. DC-bias derating of the 22 µF parts makes the real inrush lower and the fall faster. |
 | OLED_VIN | AO3401A | = VSYS | OLED_VCC_EN (100 kΩ pull-down) | ≤ 0.2 A inrush | Boost off means the panel VCC floats and draws 0 µA from the boost. |
 | +13V_OLED | TPS61040 | 13.0 V (12.5–13.5 V window) | as above | ≤ 40 mA | Measure VCC on the first boards. The FB bias current can push VCC high. |
 | VM | VSYS | = VSYS | MOT_NSLEEP | 0.36–0.42 A for ≤ 0.9 s | Move the motor only when VBAT ≥ 3.3 V under load. |
@@ -745,7 +804,11 @@ VSYS ─┬─ RT9080-33 LDO ───────── +3V3 (always on): nRF V
 * **OLED on:** +3V3 is already up. Pulse RES#, initialise, clear RAM, set
   OLED_VCC_EN, wait ≥ 200 ms, then send AFh.
 * **OLED off:** send AEh, then clear OLED_VCC_EN.
+* **LEDs on:** keep DIN (P0.06) low, set LED_PWR_EN, wait ≥ 5 ms (tON about
+  4 ms), then send the first frame.
 * **LEDs off:** send an all-zero frame, drive DIN low, then clear LED_PWR_EN.
+  Allow ≥ 20 ms for the QOD discharge before treating VLED as off. Never drive
+  DIN high while VLED is off (SPEC §5.4).
 * **Charger:** write the BQ25180 registers before the first 160 s of I2C
   activity end. The watchdog starts at the first I2C transaction.
 
@@ -774,6 +837,11 @@ VSYS ─┬─ RT9080-33 LDO ───────── +3V3 (always on): nRF V
   | System ON idle | 2.35 µA in the PS; budget about 3 µA under Zephyr |
   | System OFF | 0.4 µA |
 
+  The radio transmits at **+8 dBm** (rev-A default, [§6.6](#66-mcu-module-rfantenna-and-firmware-platform)),
+  so TX costs about 10 mA more than at 0 dBm. The budget assumes about 150 µs
+  of TX per empty connection event and about 300 µs per event that carries an
+  HID report (*estimate*).
+
   Duty cycles are *estimates*. **Measure every mode with a PPK2 before
   trusting runtimes.**
 * **Modes:**
@@ -796,7 +864,7 @@ VSYS ─┬─ RT9080-33 LDO ───────── +3V3 (always on): nRF V
 
 | Subsystem | Sleep (µA) | Desk idle (µA) | Desk active (mA) | Game (mA) | Fidget dim (mA) | Basis |
 |---|---|---|---|---|---|---|
-| nRF52840 module (CPU, radio, peripherals) | 3.0 | 7.3 | 2.0 | 3.5 | 1.5 | Idle about 3 µA. 15 ms interval with latency 30 adds about 4.3 µA. Active: CPU about 15 % (desk) or 60 % (game), plus HFXO, TWIM/SPIM/I2S/PPI and radio. *Estimate.* |
+| nRF52840 module (CPU, radio, peripherals) | 3.0 | 10.3 | 2.2 | 3.7 | 1.5 | Idle about 3 µA. 15 ms interval with latency 30 adds about 4.3 µA at 0 dBm, plus about 3 µA for TX at +8 dBm (10 mA × 150 µs every 465 ms). Active: CPU about 15 % (desk) or 60 % (game), plus HFXO, TWIM/SPIM/I2S/PPI and radio; +8 dBm adds about 0.2 mA (10 mA × 300 µs every 15 ms). *Estimate.* |
 | RT9080 LDO quiescent | 2.0 | 2.0 | ~0 | ~0 | ~0 | 2 µA typical. TPS7A02: 0.025 µA |
 | VSYS_SENSE divider | 1.2 | 1.2 | ~0 | ~0 | ~0 | 3.7 V / 3.2 MΩ |
 | BQ25180, battery only | 4.0 | 4.0 | ~0 | ~0 | ~0 | 3 µA, 4 µA with the TS/MR button function |
@@ -809,7 +877,7 @@ VSYS ─┬─ RT9080-33 LDO ───────── +3V3 (always on): nRF V
 | W25Q128 QSPI flash | 1.0 | 1.0 | 0.1 | 1.0 | 0.05 | About 1 µA in deep power-down (tens of µA in standby if deep power-down is not entered). Reads are an *estimate* |
 | LED ring (48× V6 + TPS22917) | 0.01 | 0.01 | 7.3 | 60 | 0 | Desk: 6 × 5 mA × 20 % = 6 mA, plus 6 × 0.2 mA per-IC operating current (*assumption from the PCN, to verify*). Game: 48 LEDs at 3 % white (22 mA), a 6-LED comet at 50 % on 2 channels (30 mA), plus about 10 mA operating current |
 | Piezo | 0 | 0 | 0.02 | 0.1 | 0.05 | About 0.5 mA while sounding, low duty |
-| **Total** | **≈ 32 µA** | **≈ 54 µA** | **≈ 29 mA** | **≈ 104 mA** | **≈ 12 mA** | |
+| **Total** | **≈ 32 µA** | **≈ 57 µA** | **≈ 29.4 mA** | **≈ 104 mA** | **≈ 12 mA** | |
 
 Other states:
 * **Ship mode:** the BQ25180 BATFET is off, so the main board is unpowered.
@@ -831,12 +899,12 @@ What dominates:
 |---|---|---|
 | Game, continuous | 104 mA | **≈ 8.6 h**. Range 4–14 h for LED averages of 30–150 mA and OLED 25–60 mA |
 | Fidget with a dim spin counter | 12 mA | ≈ 76 h |
-| Fidget "dark" (counting only; display and LEDs off) | 3.7 mA | ≈ 245 h |
-| Desk, typical day: 1 h turning, 7 h connected idle, 16 h asleep, 20 detent strokes | 31 mAh/day | **≈ 4 weeks (28–29 days)** |
+| Fidget "dark" (counting only; display and LEDs off) | 4.2 mA (the fidget-dim column minus the 7.7 mA OLED) | ≈ 215 h |
+| Desk, typical day: 1 h turning, 7 h connected idle, 16 h asleep, 20 detent strokes | 31.5 mAh/day | **≈ 4 weeks (28–29 days)** |
 | Desk, heavy: 2 h turning, 40 strokes | 62 mAh/day | ≈ 2 weeks |
 | Desk, light: 0.5 h turning, 10 strokes | 16 mAh/day | ≈ 8 weeks |
 | Desk, display left on as a dim clock face for 7 h/day (about +7 mA) | 80 mAh/day | ≈ 11 days |
-| Connected idle 24/7, never touched | 54 µA | about 1.9 years on electronics alone; in practice limited by the cell |
+| Connected idle 24/7, never touched | 57 µA | about 1.8 years on electronics alone; in practice limited by the cell |
 | Sleep | 32 µA | about 0.8 mAh/day. With 2–3 %/month LiPo self-discharge, a full cell reaches cutoff after roughly 1.5 years |
 | Ship mode | 6.2 µA | Limited by the cell's self-discharge |
 
@@ -844,7 +912,8 @@ Comparison with the research (high-voltage mode): game 11.9 h (on 24 LEDs, no
 actuator) and desk 22–39 days. The verifier's corrected expectation was game
 8–12 h. The numbers here are lower mainly because SPEC has **48** LEDs and
 because the corrected OLED master-current scaling is used. The SPEC choices of
-normal-voltage mode and an LDO cost about 3 % of desk runtime.
+normal-voltage mode and an LDO cost about 3 % of desk runtime, and TX at
++8 dBm costs under 1 %.
 
 **Levers, in order of payoff.**
 1. Display auto-off (30 s) and C7 master current.
@@ -861,9 +930,16 @@ normal-voltage mode and an LDO cost about 3 % of desk runtime.
 |---|---|---|
 | LED ring, full white | 730 mA (C variant); 1738 mA (B variant) | 300 mA burst |
 | OLED, full white | 146 mA | about 60 mA (master-current cap, no full-white screens below 3.4 V) |
-| Detent stepper | 420 mA | 420 mA, never during an LED burst |
+| LED ring during a detent stroke | (as above) | ≤ 150 mA: the sustained cap; no bursts while the stepper moves |
+| Detent stepper | 420 mA | 420 mA |
 | nRF + QSPI erase | ~50 mA | ~50 mA |
-| **Coincident** | **≈ 1.35 A (C), ≈ 2.35 A (B)** | **≈ 0.55 A** |
+| **Coincident** | **≈ 1.35 A (C), ≈ 2.35 A (B)** | **≈ 0.7 A**: a stroke during an LED chase, 420 + 150 + 60 + 50 = 680 mA. An LED burst without a stroke is about 0.41 A |
+
+* Game mode makes about 30 strokes per hour while an LED chase runs, so the
+  stroke-plus-LEDs case is the normal capped peak, not a corner case.
+  **Firmware rule:** no LED burst above the 150 mA sustained cap while the
+  stepper is energised. Holding the LEDs at ≤ 60 mA during strokes would bring
+  the peak down to about 0.59 A if that is ever needed.
 
 * The BQ25180 limits are 1.5 A SYS DC (2.5 A for < 20 ms), with BATOCP set to
   1.5 A. **The C-variant LEDs keep the hardware worst case just inside the
@@ -876,7 +952,11 @@ normal-voltage mode and an LDO cost about 3 % of desk runtime.
 * ICHG 400 mA, input limit 475 mA typical: about **2.8–3 h** from empty.
 * Charger dissipation is (VSYS − VBAT) × ICHG + (VBUS − VSYS) × IIN: about
   0.8 W at VBAT 3.0 V and 0.54 W at 3.7 V. The BQ25180 sits on the base board,
-  away from the magnets, and its NTC (JEITA 0/10/45/60 °C) touches the cell.
+  away from the magnets. Its NTC (JEITA 0/10/45/60 °C) must be thermally
+  coupled to the cell. If it sits on the base-board underside over the pack,
+  it must be the only part there, and it must touch the pouch through a soft
+  thermal pad, never as a hard point, because the swelling gap is already
+  short ([§13](#13-issues-found-in-spec-during-this-review) item 6, risk R28).
 * Playing the game while charging takes about 100 mA of the 475 mA input, so
   the charge time stretches to about 3.3 h.
 
@@ -907,18 +987,22 @@ RF window on the floating hub above the ring) does not exist in SPEC's stack.
 
 **Link budget** (MCU research, verified arithmetic). Allowed path loss is
 8 dBm TX + G_dev − 3 + 90 − 15 dB fade margin, with an indoor exponent of 3
-from 40.2 dB at 1 m.
+from 40.2 dB at 1 m. **+8 dBm is the rev-A default TX power**
+([§6.6](#66-mcu-module-rfantenna-and-firmware-platform); its current is in
+[§8](#8-power-budget-and-battery-life)). The last column shows what would be
+left at 0 dBm: every margin is 8 dB lower.
 
-| Case | Device antenna gain | Allowed path loss | Indoor range | Margin at 1.5 m desk distance (needs 45.5 dB) |
-|---|---|---|---|---|
-| A: antenna in a clear window | about −2 dBi | 78 dB | about 18 m (13 m at +4 dBm) | 32 dB |
-| B: heavily shadowed | about −15 dBi | 65 dB | about 6.7 m | 19 dB |
-| C: severely detuned | about −25 dBi | 55 dB | about 3.1 m | 9.5 dB |
+| Case | Device antenna gain | Allowed path loss (+8 dBm) | Indoor range (+8 dBm) | Margin at 1.5 m desk distance (needs 45.5 dB), +8 dBm | Same margin at 0 dBm |
+|---|---|---|---|---|---|
+| A: antenna in a clear window | about −2 dBi | 78 dB | about 18 m (13 m at +4 dBm) | 32 dB | 24 dB |
+| B: heavily shadowed | about −15 dBi | 65 dB | about 6.7 m | 19 dB | 11.5 dB |
+| C: severely detuned | about −25 dBi | 55 dB | about 3.1 m | 9.5 dB | 1.5 dB (marginal) |
 
 The base-floor placement is expected to fall between A and B on a wooden or
-plastic desk (*to verify on prototype*). Desk use at 1–2 m works even in
-case C. Range, robustness against hand blocking and Wi-Fi coexistence are what
-is at stake.
+plastic desk (*to verify on prototype*). At the default +8 dBm, desk use at
+1–2 m works even in case C; at 0 dBm case C would be marginal, which is why
++8 dBm is the default and not a fallback. Range, robustness against hand
+blocking and Wi-Fi coexistence are what is at stake.
 
 **Specific risks of this placement.**
 
@@ -932,13 +1016,28 @@ is at stake.
 2. **LiPo pouch.** It is only about 2–4.5 mm away in-plane. The RF research
    asked for ≥ 5 mm (preferably ≥ 10 mm). See [§13](#13-issues-found-in-spec-during-this-review)
    for the geometric conflict.
-3. **Coax.** The route from the floor, to the spindle, up the bore, to the u.FL
-   is about 60–65 mm, so the **50 mm cable of the -0050 is too short**. Use the
-   146153-0100 (100 mm). The coax also crosses the floating boundary: it flexes
-   by 0.3–0.5 mm on every click, so give it a strain-relieved service loop
-   (minimum bend radius about 5 mm). u.FL is rated for about 30 mating cycles.
+3. **Coax.** The bore cannot be entered from below on the axis (the press
+   boss is there), so the real route is: antenna feed (r ≈ 21–24, z ≈ 2), up
+   beside the pack and the base-board edge, through an off-axis hole in the FA
+   lower plate, along a groove on the plate top, into a side slot in the
+   spindle wall just above the plate (z ≈ 14.5–16), up the bore, out of an
+   upper side slot above the bearing, and to the u.FL at r ≈ 9. That is about
+   53 mm of straight segments and **about 60–75 mm** with 5 mm bend radii and
+   the service loop ([§13](#13-issues-found-in-spec-during-this-review)
+   items 2–3). The **50 mm cable of the -0050 is too short**; use the
+   146153-0100 (100 mm) and store the excess as a gentle loop on the base side,
+   away from the antenna. The coax also crosses the floating boundary: it
+   flexes by 0.3–0.5 mm on every click, so give it a strain-relieved service
+   loop (minimum bend radius about 5 mm). u.FL is rated for about 30 mating
+   cycles.
 4. **Self-interference.**
-   * The 32 MHz SPI's 75th harmonic is 2.40 GHz.
+   * Harmonics of the 32 MHz clocks (the HFXO inside the module, and the QSPI
+     clock if run at 32 MHz) land in band: 75 × 32 MHz = 2.400 GHz,
+     76 × = 2.432 GHz, 77 × = 2.464 GHz.
+   * The OLED's SPIM2 at 8 MHz (D6) puts a harmonic every 8 MHz across the band
+     (the 300th is 2.400 GHz), and the I2S LED clock at 3.2 MHz does the same
+     every 3.2 MHz. These high harmonics are weak, but the OLED FPC is a long
+     unshielded run, so test sensitivity with the display animating.
    * The WS2812 data line, the 13 V boost and the 25 kHz motor PWM also
      radiate.
    * All of them are on the main board, more than 20 mm from the antenna, with
@@ -959,17 +1058,20 @@ ring, battery and base board).**
 2. Load the nRF Connect SDK Radio Test sample (constant carrier) or a BLE
    peripheral on a dev kit wired to the antenna. Measure RSSI at 1, 3 and 5 m
    against a reference (an nRF52840 dongle at the same spot).
-3. Repeat with TX at +8 dBm. Normal-voltage mode makes this free of VDD-budget
-   limits; it costs about +10 mA during TX.
+3. Measure at the default +8 dBm and again at 0 dBm, to know how much of the
+   margin the TX power is buying. Normal-voltage mode puts no VDD-budget limit
+   on +8 dBm; it costs about +10 mA during TX.
 
 **Fallback ladder if the floor placement fails.**
 1. Raise the antenna onto the inside of the cup wall (z about 3–12 mm, curved
    to the wall at r ≈ 33). That gives more height above the desk at some cost
    in clearance to the ring.
 2. Use a different flex antenna (Molex 204281, 35 × 11 mm; Taoglas FXP73).
-3. Use TX at +8 dBm.
-4. Use a non-conductive flywheel with ZrO2 balls in a PA12 carrier. This is the
+3. Use a non-conductive flywheel with ZrO2 balls in a PA12 carrier. This is the
    last resort: about 40 % of the inertia and about 0.58× the spin time.
+
+TX power is not on this ladder: rev A already runs at the module's maximum of
++8 dBm, so there is no power headroom left to fall back on.
 
 ---
 
@@ -979,9 +1081,9 @@ L = likelihood, I = impact (H / M / L).
 
 | ID | Risk | L | I | Mitigation / next action |
 |---|---|---|---|---|
-| R1 | Antenna on the base floor detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before PCB release. Wall-mount fallback, TX +8 dBm. |
-| R2 | Antenna coax too short (-0050 is 50 mm, the route is about 60–65 mm) and flexes on every click | H | M | Specify 146153-0100. Service loop and strain relief. |
-| R3 | Spin time below expectation (bearing preload ≥ 2.5–3 N, oil migration, shield rub; the model may under-predict friction) | M | H | Measure spin-down with 3–5 bearings of each type. Tune the preload against click-mode rocking. Acceptance ≥ 30 s from 10 rev/s (*to verify*). Bearing prep step in assembly. |
+| R1 | Antenna on the base floor detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before PCB release. Wall-mount fallback. TX is already +8 dBm by default, so there is no power headroom left. |
+| R2 | Antenna coax too short (-0050 is 50 mm, the real side-slot route is about 60–75 mm) and flexes on every click | H | M | Specify 146153-0100. Service loop and strain relief. |
+| R3 | Spin time below expectation (bearing preload ≥ 2.5–3 N, oil migration, shield rub; the model may under-predict friction). The verified acceptance is ≥ 45–60 s from 10 rev/s, and SPEC's preload is predicted to give 20–65 s | M | H | Measure spin-down with 3–5 bearings of each type. Keep **≥ 45 s from 10 rev/s** as the acceptance and treat the preload as the variable (D3): the lowest preload that stops click-mode rocking. Bearing prep step in assembly. |
 | R4 | Detent actuator under-powered (needs 0.8–1.15 N, the 8 mm motor is rated ≥ 0.78 N at 500 PPS), or does not fit: a radial lead screw from r 21.5 inward hits the hub | M | H | Prefer the 10 mm sibling after the vendor confirms it. Lower preloads. Slow PPS in the loaded zone. Resolve the linkage or chord path inside the θ 60–120° keep-out in CAD. N20 fallback. |
 | R5 | Detent ringing: 5–10 s of rocking after capture | M | M | Optional felt/UHMW shoe (about 1.6 mN·m). Firmware predicts the landing detent. |
 | R6 | Eddy drag or cogging from copper or ferrous parts near the track (pours, screws, inductors, tact-switch frames, the stepper can and lead screw) | M | M | SPEC §7/§8 keep-outs. Non-magnetic fasteners. Acceptance test: no preferred rest angle over 50 free-spin rests. |
@@ -1003,7 +1105,16 @@ L = likelihood, I = impact (H / M / L).
 | R22 | OLED burn-in in desk use | M | L | Dark theme, ≤ 40 % grey static elements, auto-dim and sleep, pixel orbit. |
 | R23 | Detent torque spread: about −10 % per +0.1 mm of gap, ±10 % from magnet grade | M | L | Face runout ≤ 0.05 mm. Per-unit self-calibration from the measured in-well frequency. |
 | R24 | 48-magnet hand assembly: a magnet flips or is reversed, giving a missing detent and an encoder phase jump | M | L | Polarity jig plus viewing film. A firmware self-test checks for 24 uniform periods per turn. |
-| R25 | J1 (vertical JST SH, about 4.25 mm body plus the mated plug) on the main-board bottom next to the centre hole hangs down to z ≈ 24.5 mm, near the rotating hub, bearing and wave spring | M | M | Place J1 at r ≥ 14 mm, clear of the rotor hub, or use a right-angle SH header. Check in CAD. |
+| R25 | Stationary parts hanging from the main-board bottom over the rotating hub, 608 (top at z 25, r ≤ 11) and wave spring. (a) J1 (vertical JST SH, about 4.25 mm body plus the mated plug) next to the centre hole reaches z ≈ 24.5. (b) The module's mated u.FL: the MDBT50Q is about 2.05–2.2 mm thick and a mated u.FL adds about 2.4–2.5 mm (*to verify*), so at r ≈ 9 the plug also reaches z ≈ 24.5, over the bearing. The coax must then turn into the bore with a 5 mm bend radius in the same space | M | M | J1 at r ≥ 14 mm, clear of the rotor hub, or a right-angle SH header. u.FL end moved to r ≥ 13 (over the bowl, where nothing rotates above the web at z 19), with the coax routed inward along the board underside above the bearing and wave spring to the upper spindle slot. Otherwise verify the clearance in CAD, including the rotor's axial play and wave-spring travel. (Press travel does not matter here: the rotor rides on the FA.) |
+| R26 | Harness and coax have no workable path at the base end in SPEC §8: the bore cannot open on the axis over the press switch, J3 has 1.7 mm to the lower plate and 0.5–0.7 mm to the LiPo, and no volume is defined for the service loop ([§13](#13-issues-found-in-spec-during-this-review) item 2) | H | H | Side exit in the spindle wall above the lower plate, off-axis hole and groove in the lower plate, lower-plate window over J3 with a rotor-web clearance check at 0.5 mm press travel (or a right-angle header, or wires soldered to the base board), and a defined service-loop volume. Resolve in CAD before the base-board layout is released. |
+| R27 | LED data errors on USB power: guaranteed WS2812-V6 data-high margin is only about 0.1–0.2 V at VSYS 4.5 V (VOH ≥ VDD − 0.4 with the RT9080 at −2 %, against VIH ≤ 0.6 × VSYS), before any SYS-regulation tolerance | L | M | Bench test at VSYS 4.6 V with the worst LED of 5–10. Set P0.06 to H0H1 high drive. Consider SYS_REG = 4.4 V (the lowest fixed setting; check the BQ25180 table) on USB. The DNP level-shifter fallback (SN74LV1T34 from the LED research) needs a SPEC change, because SPEC §5.4 forbids the footprint ([§13](#13-issues-found-in-spec-during-this-review) item 11). |
+| R28 | LiPo swelling or puncture: SPEC's bay leaves about 0.7 mm between a 6.3 mm pack and the base-board underside (less under any bottom-side part); the verified correction needs ≥ 0.8–1.0 mm including swelling | M | H | Pack ≤ about 6.0 mm with a bare board underside, or ≤ about 5.3 mm if 0402/0603 parts sit there, or a deeper bay. No parts on the underside over the pack except a deliberately padded NTC ([§13](#13-issues-found-in-spec-during-this-review) item 6, D8). |
+| R29 | Hot NTC on TS/MR reads as a press: below about 2.37 kΩ on USB (38 µA bias, about 68 °C) or 1.5 kΩ on battery (about 84 °C), e.g. in a parked car. Causes hardware-reset loops every ~21 s or a wake from ship mode (power verifier) | L | M | Firmware sets PB_LPRESS_ACTION = 00 (no action) while the NTC reads hot, and detects the condition from the charger status. Otherwise accept it as outside the cell's −20 to 60 °C rating. |
+| R30 | P0.09 is NFC1, used here for CHG_INT_N. Until UICR NFCPINS is set to GPIO the pin does not work as a GPIO, and the NFC protection clamp is active at first boot (MCU verifier) | M | M | Set `nfct-pins-as-gpios` on the `&uicr` node (`CONFIG_NFCT_PINS_AS_GPIOS` in older SDKs) in every image, including MCUboot. Check at bring-up that CHG_INT_N interrupts arrive. P0.10 (NFC2) is a no-connect, so there is no NFC-pair leakage path. |
+| R31 | With the boost off, the panel's VCI→VCC ESD path puts about 0.26–0.27 V on the TPS61040 FB pin through the divider while its VIN is about 0 V, close to the FB absolute maximum of VIN + 0.3 V (display verifier) | M | L | Check the FB absolute maximum in the TPS61040 datasheet. If needed, add a small series resistor in front of FB or a bleed on OLED_VIN or +13V_OLED. Measure FB with the boost off on the first board. |
+| R32 | No TE line on the SSD1351 FPC, so 30–60 fps full-screen wheel updates cannot sync to the panel scan and will tear (display verifier) | H | L | Partial-window updates; frame pacing tuned to the B3h/B1h scan rate; accept slight tearing in the game wheel. |
+| R33 | Audible whine: TPS61040 PFM falls to about 15 kHz at near-black loads (about 1.5 mA), and 13 V MLCCs can sing (display research) | M | L | Put the panel to sleep (VCC off) instead of showing black. Keep a minimum C7 or lit content when dim. Bench listening check. If it whines: raise CFF, add a 0.5–1 mA preload, or use a fixed-frequency boost. Shielded inductor, 0805 MLCCs on 13 V. |
+| R34 | Knurling cold-works the 316L ring OD (about 6 mm from the track) and can magnetise it locally, causing free-mode cogging (mechanical verifier) | M | M | Anneal the ring after knurling, or check it with an N52 magnet. Run the 50-rest cogging test (R6) after knurling and again after assembly. |
 
 ---
 
@@ -1013,13 +1124,13 @@ L = likelihood, I = impact (H / M / L).
 |---|---|---|---|---|
 | D1 | Final antenna location | Base floor (SPEC), base wall, a different antenna | Keep the floor for rev A, but make the cup accept a wall-mounted antenna too, and decide on mock-up VNA/RSSI data | Before PCB release |
 | D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 10 mm sibling if the vendor datasheet confirms ≥ 1.2 N; design the mount for both. Lever or chord path in CAD | Before mechanical CAD freeze |
-| D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N | First rotor prototype |
+| D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N. Pick the lowest preload that stops rocking; it must meet the verified ≥ 45 s acceptance (R3). If no preload does both, the conflict goes back to SPEC | First rotor prototype |
 | D4 | Detent damping shoe | None, felt, UHMW | Make it removable and decide by feel | First rotor prototype |
 | D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the firmware cap verified | Before the PCBA order |
 | D6 | OLED SPI instance | SPIM2 at 8 MHz, SPIM3 at 16 MHz | SPIM2 (no errata). The pins are the same | Firmware bring-up |
 | D7 | 3V3 LDO | RT9080-33 (2 µA), TPS7A0233 (25 nA) | TPS7A0233 if stocked: −2 µA sleep. Pin-compatible SOT-23-5, so check the EN/NC pins | Before the PCBA order |
-| D8 | Battery pack | Protected 603450-class (≤ 6.3 mm), something smaller | Get the vendor drawing with PCM and leads. Must fit inside Ø66.8 and clear the bosses and antenna | Before the base CAD freeze |
-| D9 | Press switch | TS-1187A (1.6 N, 100k cycles), KSC2xx (2 N, 0.5–5M cycles, 3.5 mm tall) | TS-1187A for rev A (fits the 1.5 mm zone). KSC2 needs a 3.6 mm zone | Mechanical CAD |
+| D8 | Battery pack | Protected 603450-class (≤ 6.3 mm), a thinner 503450-class (5.0 mm), a deeper bay | Get the vendor drawing with PCM and leads. Must fit inside Ø66.8 and clear the bosses and antenna. **The pack's maximum drawing thickness must leave ≥ 1 mm to the base-board underside as the swelling allowance:** ≤ about 6.0 mm with a bare underside, ≤ about 5.3 mm if parts sit over the pack. A 6.3 mm pack does not meet this in SPEC's stack. A 5.0 mm pouch holds roughly 15–20 % less (*estimate* by volume) | Before the base CAD freeze |
+| D9 | Press switch | TS-1187A (1.6 N, 100k cycles), KSC2xx (2 N, 0.5–5M cycles, 3.5 mm tall) | TS-1187A for rev A (fits the 1.5 mm zone; about 2.0–2.1 N at the rim, 4.1–4.3 N at the centre). KSC2 needs a 3.6 mm zone and gives about 2.3 N at the rim and 4.7–4.95 N at the centre | Mechanical CAD |
 | D10 | Fast charge | 400 mA fixed, add CC sensing for 500 mA | 400 mA for rev A | Rev B |
 | D11 | Fuel gauge | Voltage table, MAX17048 | Voltage table | Rev B |
 | D12 | Phone app concurrency | Exclusive game slot, concurrent second identity | Concurrent, with 2 extended-advertising sets | Firmware |
@@ -1064,11 +1175,51 @@ reference.
      to GND. A swap therefore also needs the capacitor moved.
    * SPEC §4 labels the LED_PWR_EN pin "TPS22918 ON" while §5.1 uses the
      TPS22917.
-2. **Antenna cable length.** SPEC §5.2 and §8 name the Molex 146153-0050
-   (50 mm coax). The route from the floor at x ≈ −24…−26, to the spindle, up
-   the bore (z 12.8–29.1), to the u.FL at r ≈ 9 is about 60–65 mm. Use the
-   146153-0100.
-3. **Antenna vs battery vs cup geometry.**
+2. **No workable harness and coax path at the base end** (risk R26, L H / I H).
+   SPEC §8 says the harness and coax run "through the spindle bore", but its
+   geometry gives them no way in or out at the bottom:
+   * **The bore cannot exit downward on the axis.** The spindle (z 12.8–29.1)
+     ends at the FA lower plate on the axis, exactly where the centre boss
+     presses the TS-1187A (switch z 11.1–12.6, pre-gap 0.15). The boss has to
+     be solid there.
+   * **J3 has no height.** A vertical BM12B-SRSS-TB on the base-board top has
+     about 1.7 mm to the lower plate above it (z 11.1 to 12.8); on the board
+     underside it would have about 0.5–0.7 mm to the LiPo. The header is about
+     4.25 mm tall before the plug and the wire bend, so it must poke through
+     the plate, and with the FA pressed 0.5 mm the plug and wires reach toward
+     the rotor carrier web (z 17, about 16.5 when pressed). *To verify in CAD.*
+   * **The service loop has no volume.** The ≥ 5 mm loop needed between the
+     stationary base and the floating FA is not allocated anywhere, and the
+     base-board-to-plate gap closes from 1.7 to about 1.2 mm on a press, which
+     would pinch a 1.13 mm coax or a wire bundle lying in it.
+
+   Required changes:
+   * a **side exit in the spindle wall just above the lower plate**
+     (z ≈ 14.5–16, below the carrier web at z 17) and an **off-axis hole plus
+     a groove in the lower plate** for the coax and harness, with the wires
+     fixed to the plate so they cannot touch the rotating web;
+   * for J3, one of: a **lower-plate window** over a vertical header, with a
+     rotor-web clearance check that includes the 0.5 mm press travel; a
+     **low-profile right-angle SH header** (about 3 mm tall, *to verify*) under
+     a window; or **wires soldered to base-board pads**;
+   * a **defined service-loop volume** for both, outside the base-board-to-plate
+     gap: for example the free annulus beside the pack at r ≈ 20–30 under the
+     plate, where the coax already rises;
+   * an **upper side slot** above the bearing and wave spring for the exit to
+     J1 and the u.FL (see R25).
+
+   The in-progress CAD model (`hardware/mechanical/dial_spinner.scad`) already
+   sketches a bottom side slot at z ≈ 14.4–16.3, a coax hole and groove in the
+   plate and a J3 window; none of it is verified yet. The method for threading
+   pre-crimped leads through the Ø6 bore is in
+   [docs/assembly.md §6](assembly.md#6-link-harness-12-way-jst-sh-through-the-spindle).
+3. **Antenna cable length.** SPEC §5.2 and §8 name the Molex 146153-0050
+   (50 mm coax). On the real route of item 2 (antenna feed at r ≈ 21–24, up
+   beside the pack, through the lower-plate hole, along the plate groove, into
+   the bottom side slot, up the bore, out of the upper slot, to the u.FL at
+   r ≈ 9) the coax needs about 53 mm of straight segments and **about
+   60–75 mm** with 5 mm bend radii and the service loop. Use the 146153-0100.
+4. **Antenna vs battery vs cup geometry.**
    * The antenna is 34.9 × 9 mm and lies flat along the chord x = −26 inside a
      cup with an inner radius of 33.4 mm. Its outer corners would sit at
      r ≈ 35.1 mm, outside the cup wall.
@@ -1077,30 +1228,54 @@ reference.
      specified ≥ 4.5 mm.
    * Something has to give: a smaller or curved antenna, a narrower cell, or a
      wall mount.
-4. **Base-board bosses inside the battery footprint.** SPEC §8 puts 3 × M2 base
+5. **Base-board bosses inside the battery footprint.** SPEC §8 puts 3 × M2 base
    bosses at r = 15 (θ 60/180/300°), rising from the floor through the battery
    bay (z 2.5–9.0). A 603450 pack (about 34.5 × 50–55 mm, long axis along
    θ 90/270°) covers |x| ≤ 17.25, |y| ≤ 27.5, which contains all three boss
    positions. The guide springs at r = 29 θ 60/300° also sit above the pack
    corners (r ≈ 32.5 at θ ≈ ±58°).
-5. **Antenna 1–2 mm above the desk.** SPEC puts the antenna at z 1.0–2.0, which
+6. **LiPo swelling gap** (risk R28). SPEC's bay is z 2.5–9.0 for a pack "≤ 6.3
+   thick" under the base board at z 9.5. A 6.3 mm pack leaves about 0.7 mm to
+   the board underside, and less under any bottom-side part. The verified
+   mechanical correction asks for ≥ 0.8–1.0 mm, including swelling, or a pouch
+   ≤ 5.0 mm. A swelling pouch pressing on solder joints or part corners is a
+   puncture hazard. Required:
+   * pack ≤ about 6.0 mm (maximum drawing thickness) if the base-board
+     underside over the pack is bare, ≤ about 5.3 mm if 0402/0603 parts sit
+     there, or a deeper bay (for example a thinner floor under the pack, away
+     from the antenna recess);
+   * no components on the base-board underside over the pack except a
+     deliberately padded NTC;
+   * the thickness limit added to the D8 pack criteria.
+7. **Antenna 1–2 mm above the desk.** SPEC puts the antenna at z 1.0–2.0, which
    is effectively on the desk surface. This is the main RF risk on metal
    surfaces ([§9](#9-rf-strategy-and-its-risk)). Consider raising it, and
    validate before PCB release.
-6. **Actuator path wording.** SPEC §1/§8 say the carriage "slides radially …
+8. **Actuator path wording.** SPEC §1/§8 say the carriage "slides radially …
    along θ = 90°" with a "chord placement" actuator in the θ 60–120° keep-out.
    A radial lead screw driving the carriage from r 21.5 to 29 cannot fit,
    because the about 33 mm stepper would cross the hub at r < 13.5. A chord path
    from r 29 to r 21.5 spans about 30–45° of θ and may leave the 60–120° sector.
    The linkage needs to be defined in docs/mechanical.md and the keep-out sized
    to it.
-7. **Bearing preload vs spin time.** The ≥ 2.5–3 N wave-spring preload
+9. **Bearing preload vs spin time.** The ≥ 2.5–3 N wave-spring preload
    (needed against click-mode rocking) roughly halves the predicted free-spin
-   time, to about 20–65 s from 10 rev/s. The trade-off should be recorded as an
-   explicit tuning parameter (D3).
-8. **RT9080 datasheet link.** The URL in the `main_power` sheet
-   (`…/RT9080/DS9080-07.pdf`) returns 404. The current one is
-   `https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf`.
+   time, to about 20–65 s from 10 rev/s. The verified acceptance test is
+   ≥ 45–60 s from 10 rev/s, so SPEC's preload is predicted to miss it at the
+   low end. This is a conflict between a verified requirement and a SPEC
+   value. It should be recorded as an explicit tuning parameter (D3), with
+   45 s as the acceptance and the preload as the variable.
+10. **RT9080 datasheet link.** The URL in the `main_power` sheet
+    (`…/RT9080/DS9080-07.pdf`) returns 404. The current one is
+    `https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf`.
+11. **No fallback for a thin LED data margin** (risk R27). On USB the
+    guaranteed data-high margin at the first WS2812-V6 is only about
+    0.1–0.2 V ([§6.4](#64-led-ring-and-audio)). SPEC §5.4 says "A
+    level-shifter footprint is not needed at 3.3 V logic. Do not add one", so
+    if the bench test at VSYS 4.6 V fails, the only remedies are firmware ones
+    (H0H1 drive, a lower SYS_REG). Consider allowing a DNP SN74LV1T34
+    footprint, powered from VLED, as the LED research proposed. This is a
+    suggestion, not a defect.
 
 ---
 

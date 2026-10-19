@@ -1,0 +1,114 @@
+(footprint "Crystal_SII_SC-20S_2.0x1.2mm"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "SII SC-20S 32.768 kHz crystal, 2.05x1.2 mm, vendor recommended land pattern (no copper pattern under the part)")
+	(tags "crystal 32.768kHz SC-20S")
+	(property "Reference" ""
+		(at 0 -1.975 0)
+		(layer "F.SilkS")
+		(uuid "47c3fdde-f7dd-47cd-9f30-f849ad7ec5ff")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 1.975 0)
+		(layer "F.Fab")
+		(uuid "8c9c550c-2cd4-40a1-bc08-8713a8c5f46c")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "eaf00c1c-73fe-4201-b269-bccd4373b270")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c3d3c357-5f6b-4510-9b7c-782ede609a69")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -0.25 -0.85)
+		(end 0.25 -0.85)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "bd90ee06-6aed-439e-bb61-fb891b1e2ebc")
+	)
+	(fp_line
+		(start -0.25 0.85)
+		(end 0.25 0.85)
+		(stroke
+			(width 0.12)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "e364f19e-b8b0-40b9-bb96-cb1c83527b6a")
+	)
+	(fp_rect
+		(start -1.35 -0.95)
+		(end 1.35 0.95)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "25690003-c332-4a6d-8c9c-4613ccc55830")
+	)
+	(fp_rect
+		(start -1.024999 -0.6)
+		(end 1.024999 0.6)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "e17721d6-519c-40e8-85f8-14c266442a15")
+	)
+	(pad "1" smd roundrect
+		(at -0.75 0)
+		(size 0.7 1.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.25)
+		(thermal_bridge_angle 45)
+		(uuid "e3b01e68-9fe1-47e9-bc23-c5b5aea579c9")
+	)
+	(pad "2" smd roundrect
+		(at 0.75 0)
+		(size 0.7 1.4)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.25)
+		(thermal_bridge_angle 45)
+		(uuid "e04a8e07-dfff-4add-bb34-1bf19f250418")
+	)
+	(embedded_fonts no)
+)

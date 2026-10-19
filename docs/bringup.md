@@ -23,8 +23,10 @@ ones passed. Record every measured number in a per-unit log (the checklist in B-
 | Oscilloscope, ≥ 100 MHz, 2–4 channels | Rise times, SPI/LED timing, boost SW node | |
 | SWD probe: SEGGER J-Link (EDU Mini fits the 10-pin 1.27 mm header) **or** an nRF52840 DK's "Debug out" header | Programming | |
 | Tag-Connect **TC2030-CTX-NL** cable (+ optional TC2030-CLIP) | SWD to the TC2030-IDC-NL footprint (no legs) | [TC2030-CTX](https://www.tag-connect.com/wp-content/uploads/bsk-pdf-manager/TC2030-CTX_1.pdf) |
-| Nordic **PPK2** | Sleep and mode currents | Source mode 0.8–5 V |
-| VNA reaching 2.5 GHz: **NanoVNA V2 / V2 Plus4 or LiteVNA** + SMA SOL kit + SMA-to-u.FL-receptacle adapter + u.FL extraction tool | Antenna S11 | The original NanoVNA-H/H4 does not usefully reach 2.4 GHz |
+| Nordic **PPK2** | Sleep and mode currents | Source mode 0.8–5 V. After Stage C it connects through the battery breakout tail (assembly §7.2), because J2 is buried |
+| JST-PH battery breakout lead with jumper (assembly §4.3, §7.2) | Battery disconnect and PPK2/bench tap on an assembled unit | One per unit that gets B-9.9b, B-9.8f or B-10 after Stage C |
+| USB-C plug breakout | Feeding the USB-C receptacle from the current-limited bench supply once the base TPs are buried (Stage D) | |
+| VNA reaching 2.5 GHz: **NanoVNA V2 / V2 Plus4 or LiteVNA** + SMA SOL kit + **RF test pigtail** (1.13 mm coax, u.FL receptacle to SMA, 150–200 mm, assembly §4.3) + 1–2 clip-on ferrites + u.FL extraction tool | Antenna S11 | The original NanoVNA-H/H4 does not usefully reach 2.4 GHz |
 | Thermocouple or IR thermometer | Charger and LED thermal checks | |
 | Gram force gauge, or small masses + thread | Detent torque, click force | |
 | Magnet pole identifier or analog Hall probe | Magnet polarity | |
@@ -43,10 +45,22 @@ ones passed. Record every measured number in a per-unit log (the checklist in B-
    | B-4a base, USB only | 5 V → base VBUS TP (or USB-C via meter) | 5.00 V | 100 mA | < 5 mA |
    | B-4b base, battery only | bench → base J2 / VBAT TP | 3.70 V | 20 mA | < 0.1 mA (µA level) |
    | B-5 main alone | bench → main TP1 VSYS / TP4 GND | 3.70 V | 50 mA | < 10 mA unprogrammed **[TVP]** |
-   | B-6 linked, USB, no battery | USB charger via meter | 5 V | source-limited | < 20 mA |
-   | B-9.8 LEDs | bench → base J2 (no USB) | 3.7 V (also 3.4 / 4.2) | 300 mA (1 A only for B-9.8e) | see B-9.8 |
-   | B-9.9 OLED | bench → J2 | 3.7 V | 200 mA | see B-9.9 |
-   | B-9.10 actuator | bench → J2 | 3.7 V | 600 mA | ≤ 0.45 A peak |
+   | B-6 linked, no battery (first power-up) | 5 V bench → base VBUS TP | 5.00 V | **100–150 mA** | < 20 mA |
+   | B-6, after it passes | USB charger via meter | 5 V | source-limited | < 20 mA |
+   | B-9.8 LEDs | bench → base J2 (no USB) | **start at 3.7 V**; 4.2 V; 3.4 V only by lowering while running | 300 mA (1 A only for B-9.8e) | see B-9.8 |
+   | B-9.9a bare boost (Stage A) | bench → J2 | 3.7 V | 100 mA | see B-9.9 |
+   | B-9.9b OLED panel (Stage F) | bench → **breakout tail**, board side (jumper open) | 3.7 V | 200 mA | see B-9.9 |
+   | B-9.10 actuator | bench → J2 (Stage A8); real pack or breakout (Stage E) | 3.7 V | 600 mA | ≤ 0.45 A peak |
+   | First power-up on the final harness (assembly D5) | 5 V bench → USB-C plug breakout, breakout jumper open | 5.00 V | 100–150 mA | < 20 mA |
+
+   **Cold start on a bench "battery":** the BQ25180 powers SYS from BAT alone only above VBATPOR = 3.08 / 3.21 /
+   3.46 V (min/typ/max, [BQ25180 SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)). A start at 3.4 V can
+   leave SYS off on some units and look like a fault. Always power up at **3.7 V**, then lower the voltage while
+   the unit runs. Once running, SYS stays up down to BUVLO (3.0 V).
+
+   **J2 and the base TPs are unreachable after assembly Stage C.** Every later step that names J2 uses the
+   battery breakout tail instead (assembly §7.2): jumper open plus supply on the board side, or the PPK2 in
+   ammeter mode in series with the real pack.
 
 3. **A bench "battery" plus USB at the same time.** The BQ25180 will try to charge the bench supply, which cannot
    sink current, so its voltage creeps up. Either use a real cell, or put a dummy load across the bench supply
@@ -96,7 +110,7 @@ from the first good board and compare later boards against them (±20 %).
 | +3V3 (TP2) | > 10 kΩ after charging (record) | < 1 kΩ | Supply pins of nRF, flash, TMAG, IMU, OLED logic, DRV VCC, DRV5032 |
 | VLED (TP3) | > 10 kΩ | < 1 kΩ | 48 LEDs, 48× 100 nF, 2× 22 µF |
 | +13V_OLED (boost output cap) | **520–580 kΩ** (499 k + 52.3 k FB divider), panel not fitted | outside range | Confirms the divider |
-| OLED_VIN (boost input cap) | > 1 MΩ | < 10 kΩ | Behind the AO3401A |
+| OLED_VIN (boost input cap) | **≈ 0.55–0.9 MΩ**: about the +13V_OLED reading plus a diode drop (record) | < 10 kΩ | Behind the AO3401A, but OLED_VIN reaches GND through L20 → D21 (forward-biased from OLED_VIN toward +13V_OLED) → the 499 k + 52.3 k divider. The exact value depends on the meter's test current and the B5819W drop. The Q20 body diode into VSYS is a parallel path |
 | VBUS (J1 pin 5 / nRF VBUS cap) | > 100 kΩ | < 10 kΩ | |
 | VSYS↔+3V3, VSYS↔VLED, VSYS↔OLED_VIN | > 10 kΩ | < 100 Ω | A short here means a damaged LDO, load switch or P-FET |
 
@@ -110,9 +124,17 @@ from the first good board and compare later boards against them (±20 %).
 | BTN_N | +3V3 | ≈ 100 kΩ |
 | QSPI_CS | +3V3 | ≈ 10 kΩ |
 | OLED_RES_N | GND | ≈ 1 MΩ |
-| OLED_VCC_EN, LED_PWR_EN, MOT_NSLEEP, LED_DIN, D48 DOUT test pad | GND | ≈ 100 kΩ (MOT_NSLEEP may read lower because of the DRV8837 internal pull-downs) |
-| VSYS_SENSE | GND | ≈ 0.7–1.0 MΩ |
+| OLED_VCC_EN (R25) | GND | ≈ 100 kΩ |
+| LED_PWR_EN (R3) | GND | ≈ 88–100 kΩ (TPS22917 750 kΩ smart pull-down in parallel) |
+| **MOT_NSLEEP** (R70) | GND | **≈ 33 kΩ**: 100 k external in parallel with each DRV8837's internal pull-down (RPD = 100 kΩ typ, [DRV8837](https://www.ti.com/lit/ds/symlink/drv8837.pdf); `detent.py`) |
+| LED_DIN (R41) | GND | ≈ 100 kΩ; may read lower through D101's DIN ESD diode into VLED |
+| LED_D48 at TP40 (R42, chain end) | GND | ≈ 100 kΩ |
+| VSYS_SENSE | GND | ≈ 0.7–1.0 MΩ (1 M in parallel with 2.2 M plus the VSYS-to-GND path) |
 | ZIF pin 22 (IREF) | GND | ≈ 560 kΩ |
+
+Pass: each net within ±10 % of the value in this table, not of the bare resistor value. Where the table gives a
+range (LED_PWR_EN, VSYS_SENSE) or says "may read lower" (LED_DIN), pass inside the range, or within ±20 % of the
+first good board's reading.
 
 ### B-3c Base board
 
@@ -141,7 +163,7 @@ Apply 5.00 V, 100 mA limit.
 | Input current | < 5 mA | BQ input quiescent + TVS leakage |
 | VBUS TP | 4.75–5.25 V | |
 | VSYS TP | **4.4–4.6 V** (SYS_REG default 4.5 V) | [BQ25180 datasheet](https://www.ti.com/lit/ds/symlink/bq25180.pdf) |
-| TS/MR | ≈ 0.38 V at 25 °C (38 µA bias × 10 kΩ) | > 1.1 V means NTC open or cold fault; < 0.19 V means hot (≈ 45 °C) ([power research]) |
+| TS/MR | ≈ 0.38 V at 25 °C (38 µA bias × 10 kΩ) | Default thresholds ([BQ25180 SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf), §7.5): **> 1.0 V** (cold entry 0.96–1.06 V) means cold (≈ 0 °C) or NTC open (an open TS clamps at 2.2–3.3 V); **< 0.185 V** (0.173–0.198 V) means warm (≈ 45 °C); **< 0.115 V** (0.105–0.125 V) means hot (≈ 60 °C) |
 | VBAT TP | Undefined, may sawtooth | With no battery the charger cycles its detection. Do not judge it |
 
 ### B-4b Battery only (bench 3.70 V into J2, 20 mA limit, USB unplugged)
@@ -151,7 +173,8 @@ Apply 5.00 V, 100 mA limit.
 | VSYS TP | ≈ VBAT (within 50 mV; BATFET 55 mΩ) |
 | Current | Below the bench meter's resolution (BQ IQ ≈ 3–4 µA; measured properly in B-10) |
 
-If VSYS stays at 0 V, the BQ25180 is in ship mode. Plug USB or hold the press switch for about 2 s.
+If VSYS stays at 0 V, the BQ25180 is in ship mode. Plug USB or hold the press switch for about 2 s. Start this
+test at 3.70 V, never at 3.4 V: battery-only power-up needs VBAT above VBATPOR (3.08–3.46 V, B-1).
 
 ---
 
@@ -176,17 +199,21 @@ until VSYS is roughly 3.3 V plus dropout, then follow VSYS down. Note where it d
 
 ## B-6. Both boards linked, USB power, no battery
 
-Connect the tested harness (assembly §6), then plug USB through the meter.
+Connect the tested **bench harness** (assembly §6). For the **first** linked power-up, do not use a charger: a
+harness mis-pin (VSYS or VBUS onto GND) would get amps from it. Feed **5.00 V at a 100–150 mA limit into the base
+VBUS TP** (GND to the base GND TP). Switch to a 5 V charger behind the USB meter only after every row below
+passes.
 
 | Measure | Expected |
 |---|---|
-| USB input current | < 20 mA |
+| Supply / USB input current | < 20 mA. Hitting the 100–150 mA limit means a short: switch off and check the harness |
 | Base VSYS TP / main TP1 VSYS | 4.4–4.6 V; difference < 20 mV at this load |
 | Main TP2 +3V3 | 3.30 V |
 | Main J1 pin 5 (VBUS) | ≈ 5 V |
 
 Known limitation: the press network is referenced to VBAT (SPEC §3), so **the dial press may not work on USB
-power without a battery**. Test it in B-9.5d.
+power without a battery**. Test it in B-9.5d. Serial recovery is therefore always tested with a battery fitted
+(B-8.7).
 
 ---
 
@@ -294,16 +321,31 @@ On USB this reads SYS (4.5 V), not the battery. Use the BQ25180 CHG_STAT field w
 D+/D− pass through the base ESD, about 70 mm of harness and the module. Full Speed tolerates that, but watch for
 retries.
 
-### B-8.7 MCUboot and recovery (do it after B-9.1 QSPI and B-9.5 battery)
+### B-8.7 MCUboot and recovery (a gate of its own: assembly A9, after B-9.1 QSPI and B-9.5 battery)
 
-MCUboot uses signed images, with the secondary slot on the QSPI flash ([mcu verifier]). Check:
+MCUboot uses signed images, with the secondary slot on the QSPI flash ([mcu verifier]). **Do every check below
+with the TC2030 cable removed** and a battery (bench pack or real cell) on J2. That is the only state a closed unit
+can be recovered from: after Stage F the TC2030 pads, and with them NRESET, are under the glass.
 
-* Image upload over USB CDC with mcumgr, swap, confirm.
-* The same over BLE SMP (nRF Connect Device Manager).
-* **Serial recovery:** hold the dial press while resetting or plugging USB. This needs the battery connected
-  (B-6 note).
+1. Image upload over USB CDC with mcumgr, test swap, confirm. Also upload an image and reset *without* confirming:
+   MCUboot must revert.
+2. The same over BLE SMP (nRF Connect Device Manager).
+3. **Serial recovery.** Try every route below and record which work. Recovery is entered when the bootloader
+   answers `mcumgr --conntype serial --connstring dev=<CDC port> image list`.
 
-**All three must pass before the OLED is fitted.** After that, SWD is under the glass.
+| Route | Procedure | Why it works (or may not) |
+|---|---|---|
+| **(a) Long-press hardware reset** | With the app's BQ25180 init set written (TMR_ILIM 0x08 = 0xCD: MR_LPRESS = 20 s, MR_RESET_VIN = 0; SHIP_RST 0x09 = 0x09: PB_LPRESS_ACTION = 01 = hardware reset), hold the dial press. At **18–22 s** the BQ25180 switches SYS off and restarts it about 1 s later (AUTOWAKE = 1 s). **Keep holding through the restart** so MCUboot sees BTN_N low, then release 1–3 s after the recovery port appears. Do **not** keep holding for long: after the hardware reset the BQ25180 is back at its power-on defaults, where a 9–11 s press means **ship mode** | Plugging USB does not reset the nRF when a battery is fitted, because the power path keeps SYS up, so this long press is the only reset that needs no SWD. SLUSE99C: MR_RESET_VIN = 0 is "Reset sent when long press duration is met", with no VIN condition, but EN_PUSH is described as "Enable Push Button and Reset Function on Battery Only". **Test it on battery alone (then plug USB to reach the port) and with USB present**, and record both |
+| **(b) From ship mode or shutdown** | Enter ship (0x09 = 0x49) or shutdown (0x09 = 0x29). Hold the press, plug in USB, keep holding ≈ 2 s after the recovery port appears, release. Also try it from ship mode with the press alone: hold ≥ 2 s (ship wake), keep holding, then plug USB | USB insertion exits ship or shutdown at once. SYS and +3V3 come up with BTN_N already held low by the VBAT-referenced press network, so MCUboot starts in recovery |
+| (a′) App never ran since power-on | Hold the press: at 9–11 s the BQ25180 defaults (MR_LPRESS 10 s, PB_LPRESS_ACTION = ship) put it in ship mode. Keep holding and continue with (b) | Covers a unit whose app crashes before writing the BQ registers |
+| **(c) App request** | Firmware command 0x08 ("reboot to serial recovery", [`firmware.md`](firmware.md) §11.2), or the shell, writes the retained boot-mode word and reboots | Needs a running app and a BLE or USB connection |
+
+**Pass (needed before the OLED is fitted):** USB and BLE DFU with revert work, route (c) works, and at least one of
+(a) or (b) works with no SWD attached. Write the working routes into the unit log and into assembly §11.7 step 4.
+If neither (a) nor (b) works, do not close the unit. Fix it first. Options: a detect delay before MCUboot samples
+BTN_N (`CONFIG_BOOT_SERIAL_DETECT_DELAY`), a short recovery window at every boot (`CONFIG_BOOT_SERIAL_WAIT_FOR_DFU`)
+**[TVP: check the option names in the NCS version used]**, or, for rev B, an NRESET pad that can be reached from
+outside.
 
 ---
 
@@ -365,7 +407,7 @@ Reference: [AN5038](https://www.st.com/resource/en/application_note/an5038-lis2d
 | 0x04 | ICHG_CTRL | **0x43** | 400 mA (40 + (code − 31) × 10 mA) |
 | 0x05 | CHARGECTRL0 | 0x20 | IPRECHG 2× term, ITERM 10 %, VINDPM 4.2 V, TREG 100 °C |
 | 0x06 | CHARGECTRL1 | 0x92 | BATOCP 1.5 A, BUVLO 3.0 V, charge-status INT on, ILIM INT masked |
-| 0x08 | TMR_ILIM | **0xCD** | Long press 20 s, autowake 1 s, ILIM code 500 mA (≈ 475 mA typ) |
+| 0x08 | TMR_ILIM | **0xCD** | Long press 20 s, MR_RESET_VIN 0 (reset on long press regardless of VIN), autowake 1 s, ILIM code 500 mA (≈ 475 mA typ) |
 | 0x09 | SHIP_RST | 0x09 | Long press = hardware reset, WAKE1 300 ms, WAKE2 2 s, push-button enabled |
 | 0x0A | SYS_REG | 0x40 | SYS 4.5 V on USB |
 
@@ -408,7 +450,8 @@ USB unplugged.
 |---|---|
 | Write 0x09 = **0x49** (ship) | SYS off within ms. Wake by holding the press ≈ 2 s, or by plugging USB |
 | Write 0x09 = **0x29** (shutdown) | SYS off. Wake **only** by USB |
-| Hold the press 20 s (after the init writes) | Hardware reset: SYS power-cycles |
+| Hold the press 20 s (after the init writes) | Hardware reset at 18–22 s: SYS off, back on ≈ 1 s later. Test on battery alone **and** with USB present, and record both (EN_PUSH is described as "on battery only"; B-8.7 route a depends on this) |
+| Hold the press > 11 s with the BQ25180 at power-on defaults (no init writes since POR) | Ship mode (default MR_LPRESS 10 s, PB_LPRESS_ACTION = ship) |
 
 The currents for these modes are measured in B-10.
 
@@ -446,8 +489,8 @@ That can cause reset loops in a hot car. It is outside the cell's rating; log it
 
 The part powers up in standby (≈ 0.45 mA). Firmware must put it to sleep or Wake-up&Sleep mode (checked in B-10).
 
-**B-9.6c With the rotor installed** (after assembly Stage C). Turn the ring slowly by hand through one full
-revolution while logging X (tangential) and Z.
+**B-9.6c With the rotor installed** (assembly Stage E, after the main board is seated in Stage D). Turn the ring
+slowly by hand through one full revolution while logging X (tangential) and Z.
 
 Expected element-to-magnet gap: the board underside is at z = 29.1 and the track face at z = 25.6. The Hall
 element is 0.73 mm below the package top, and the SOT-23-6 body height varies 0.9–1.45 mm, so the gap is
@@ -491,19 +534,25 @@ assert LED_PWR_EN and scope VLED and VSYS together.
 
 | Check | Pass |
 |---|---|
-| VLED rise time (10–90 %) | **≈ 1.5–2.5 ms** (CT = 1 nF) |
+| VLED rise time (10–90 %) | **≈ 1.5–2.5 ms** (CT = 1 nF to VIN: tR = 1.6 µs/pF at 3.6 V) |
+| Turn-on time, LED_PWR_EN high to VLED at 90 % | ≈ 3.8 ms (tON = 3.8 µs/pF at 3.6 V); record it |
 | Inrush | ≤ ~100 mA |
 | VSYS dip during enable | ≤ 100 mV |
-| VLED steady | VSYS − I × RON (RON ≈ 80 mΩ) |
+| VLED steady | VSYS − I × RON (RON = 90 mΩ typ, 110 mΩ max at 3.6 V and 25 °C; 80 mΩ is the 5 V figure) |
 | VLED fall after LED_PWR_EN low | Discharged by QOD in about 10–20 ms ([power verifier]) |
 
-If VLED rises in tens of µs and VSYS dips hard, the CT capacitor is not doing its job. Check its return node
-(assembly §2.4: TPS22917 CT to VIN, TPS22918 CT to GND) before running any LED test.
+Timing and RON are from [TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.5–7.6. This
+assumes the pre-fab sheet fix: C7 from CT to **VSYS** (the switch's VIN), not to GND (assembly §2.4 item 3). If
+VLED rises in tens of µs and VSYS dips hard, the CT capacitor is not doing its job; check how C7 is fitted before
+running any LED test. (Only the TPS22918 alternate takes CT to GND.)
 
 **B-9.8b Data timing.** Use Zephyr `worldsemi,ws2812-i2s` on i2s0 with `clock-source = "PCLK32M_HFXO"`,
 `chain-length = <48>`, GRB, `lrck-period = <10>` (3.2 MHz), `nibble-zero = <0x8>`, `nibble-one = <0xC>` and
 `reset-delay = <300>` ([leds verifier](https://docs.zephyrproject.org/latest/build/dts/api/bindings/led_strip/worldsemi,ws2812-i2s.html)).
-The driver default nibble 0xE violates T1L, so it must be overridden. Scope LED_DIN after the 33 Ω resistor:
+The driver default nibble 0xE violates T1L, so it must be overridden. Scope LED_DIN after **R40 (220 Ω)**, at
+D101's DIN. R40 is deliberately larger than a typical 33 Ω damping resistor: it limits the current into the DIN
+clamp diode if P0.06 is ever high while VLED is off (SPEC §5.4). With the DIN input capacitance it also slows the
+edges a little, so check the edges as well as the timing:
 
 | Parameter | Expected | V6 spec ([datasheet](https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf)) |
 |---|---|---|
@@ -515,15 +564,16 @@ The driver default nibble 0xE violates T1L, so it must be overridden. Scope LED_
 | Reset gap | ≥ 280 µs | |
 | Ringing | < 0.5 V | |
 
-**Sequencing:** enable VLED, wait ≥ 5 ms, then send the first frame. To turn off: send an all-zero frame, drive
+**Sequencing:** enable VLED, wait ≥ 5 ms (tON ≈ 3.8 ms, so check the measured tON leaves ≥ 1 ms), then send the
+first frame. To turn off: send an all-zero frame, drive
 DIN low, then release LED_PWR_EN. **Never drive DIN high with VLED off**; the input limit is VDD + 0.7 V.
 
-**B-9.8c Walk test.** Light one LED at a time at 10 % red, starting from **D1 at θ = 0° (the USB-C side)** and
-stepping **CCW seen from the top** through D48. Repeat in green and blue. Each step must light exactly one LED in
-the right place. A dead LED blanks everything after it.
+**B-9.8c Walk test.** Light one LED at a time at 10 % red, starting from **D101 (pixel 1) at θ = 0° (the USB-C
+side)** and stepping **CCW seen from the top** through D148. Repeat in green and blue. Each step must light
+exactly one LED in the right place. A dead LED blanks everything after it.
 
-**B-9.8d End of chain.** Send 49 pixel words. The 49th word must appear on the D48 DOUT test pad on the scope,
-which proves every LED passes data.
+**B-9.8d End of chain.** Send 49 pixel words. The 49th word must appear on **TP40** (LED_D48, D148's DOUT, pulled
+down by R42) on the scope, which proves every LED passes data.
 
 **B-9.8e Current** (VSYS 3.7 V):
 
@@ -538,8 +588,9 @@ which proves every LED passes data.
 Firmware cap: **300 mA burst / 150 mA sustained** ([leds research]). If the WS2812**B**-2020-V6 (12 mA/ch) was
 fitted instead, full white is 1.73 A: never test it, and the cap must be active from first boot.
 
-**B-9.8f Logic margin.** Run the walk test for 10 min with VSYS at 4.6 V (bench), then at 3.4 V. There must be no
-glitches. At VLED 4.5 V, VIH = 0.55–0.6 × VLED = 2.48–2.70 V, against the nRF's VOH ≥ 2.9 V at VDD 3.3 V. The
+**B-9.8f Logic margin.** Run the walk test for 10 min with VSYS at 4.6 V (bench), then at 3.4 V. Reach 3.4 V by
+starting at 3.7 V and lowering the supply while the unit runs: a cold start at 3.4 V on BAT may stay off
+(VBATPOR, B-1). There must be no glitches. At VLED 4.5 V, VIH = 0.55–0.6 × VLED = 2.48–2.70 V, against the nRF's VOH ≥ 2.9 V at VDD 3.3 V. The
 margin is small and has to be measured, not assumed ([leds research]).
 
 **B-9.8g Low battery.** At VSYS 3.4–3.5 V with white at 25 %, record the colour shift. Firmware derates below
@@ -566,7 +617,8 @@ resistors is about 12.6–13.4 V before the FB bias-current term ([display verif
 Turn the boost off and **discharge +13V_OLED with 1 kΩ** before fitting the panel. It only decays through
 551 kΩ (τ ≈ 6–7 s).
 
-**B-9.9b Panel** (after B-7 and B-8, fitted per assembly §7.4). Bench limit 200 mA.
+**B-9.9b Panel** (after B-7 and B-8.7, fitted per assembly §7.4, Stage F). Bench supply at 3.7 V with a 200 mA
+limit on the breakout tail's board side, jumper open (J2 is buried by then, B-1).
 
 With VCC_EN low, +13V_OLED floats at about VCI − Vf (≈ 2.5–3 V) through the panel's internal ESD path. That is
 expected ([display verifier]).
@@ -584,8 +636,10 @@ Bring-up sequence ([NHD datasheet](https://newhavendisplay.com/content/specs/NHD
 SPI settings: SPIM3 (SPEC §4), mode 0. Start at 8 MHz, then go to 16 MHz. **Never above 20 MHz** (SSD1351
 t_cycle ≥ 50 ns). SPIM3 errata:
 
-* Anomaly 198: TX buffers must be in dedicated RAM blocks RAM6/RAM7 (0x2000C000–0x2000FFFF), with
-  `CONFIG_NRF52_ANOMALY_198_WORKAROUND`.
+* Anomaly 198: SPIM3 TX buffers must sit in a dedicated RAM AHB slave that the CPU does not access during the
+  transfer, with `CONFIG_NRF52_ANOMALY_198_WORKAROUND`. Any dedicated 8 KB slave works. **This project uses
+  slaves 0 and 1, 0x20000000–0x20003FFF**, with sram0 moved up to 0x20004000 ([`firmware.md`](firmware.md) §7.1).
+  Check in `zephyr.map` that the SPIM3/LVGL buffers land there and nothing else does.
 * Anomaly 195: after disabling SPIM3, write 1 to 0x4002F004, otherwise the peripheral keeps drawing about 900 µA
   ([errata 198](http://docs.nordicsemi.com/r/bundle/errata_nrf52840_rev3/page/err/nrf52840/rev3/latest/anomaly_840_198.html)).
 
@@ -604,6 +658,10 @@ t_cycle ≥ 50 ns). SPIM3 errata:
 | Listen at near-black | No audible PFM whine (about 15 kHz at 1.5 mA). If present, see the CFF note above |
 
 ### B-9.10 Detent driver (2× DRV8837), home sensor, actuator
+
+Run B-9.10a–c on the bench at assembly Stage A8, with the actuator, carriage and detent magnet mounted on the main
+board and the motor lead in J40, and finish at PARK with all IN low and nSLEEP low. J40 and the carriage cannot be
+reached once the board is seated. Repeat B-9.10c and run B-9.10d on the rotor in Stage E.
 
 **B-9.10a Drivers, motor disconnected.** Pins: driver A IN1/IN2 = P0.26/P0.05, driver B = P0.07/P0.11, shared
 nSLEEP = P1.15 (SPEC §4).
@@ -635,14 +693,18 @@ sampling at 13–37 Hz. Wait ≥ 75 ms before reading after a move. Log HOME_N a
 
 | Position | Expected |
 |---|---|
-| Within ≈ 4–5 mm of PARK | HOME_N low ([detent research]) |
-| At the CLICK end | HOME_N **high** |
+| Within ≈ 4–5 mm of PARK | HOME_N low ([detent research]). **Required** |
+| At the CLICK end | HOME_N high on most units, but not guaranteed. **Record it**; it is not a pass/fail item |
 
-**Check this on every unit.** SPEC puts the DRV5032 on the **top** side, so the die sits only ≈ 2.3–2.8 mm from
-the magnet (stack-up estimate). The research placed it at 3.0–3.5 mm. At 2.5 mm the field at the click position
-is about 1.3 mT, close to the sensor's 1.5 mT minimum operate point ([detent research](https://www.ti.com/lit/ds/symlink/drv5032.pdf)).
-If a unit reads "home" at click, use only the HOME *assertion* near park as the lost-step check
-([detent verifier]) and log it for rev B.
+**Why release at click is not guaranteed.** Coming from PARK, the sensor is already asserted. It releases only
+when |B| falls below its **release point BRP**, which is 0.5 / 1.5 / 3.0 mT (min/typ/max) for the DRV5032FA
+([DRV5032 SLVSDC7H](https://www.ti.com/lit/ds/symlink/drv5032.pdf), confirmed by the detent verifier). SPEC puts
+the DRV5032 on the **top** side, so the die sits only ≈ 2.3–2.8 mm from the magnet (stack-up estimate), against the
+research's 3.0–3.5 mm. At 2.5 mm the field at the click position is about 1.3 mT (0.47 mT at 3.5 mm). A unit whose
+BRP is below ≈ 1.3 mT therefore stays asserted at click, and with the typical 1.5 mT BRP the margin is small.
+Firmware already treats only the HOME *assertion* near park as the lost-step check ([detent verifier]), so a unit
+that reads "home" at click still passes. Log it for rev B (sensor further from the magnet, or a higher-BRP
+variant).
 
 **B-9.10d Homing and stroke.**
 
@@ -661,14 +723,20 @@ If a unit reads "home" at click, use only the HOME *assertion* near park as the 
 
 ### Setup
 
-1. Remove the pack and connect the **PPK2 in source mode to J2** (pin 1 +, pin 2 GND). Use 3.7 V, and repeat
-   the key modes at 4.2 V and 3.4 V.
+1. J2 is buried in an assembled unit, so connect the PPK2 to the **battery breakout tail** (assembly §7.2):
+   * **Source mode** (preferred for targets): jumper open, PPK2 output to the board-side BAT+ wire, GND to GND.
+     Power up at **3.7 V**, then repeat the key modes at 4.2 V and at 3.4 V, reaching 3.4 V by lowering the
+     voltage while the unit runs (a cold start below VBATPOR = 3.08–3.46 V may stay off, B-1).
+   * **Ammeter mode**, in series with the real pack: VIN to the pack-side wire, VOUT to the board-side wire,
+     GND to GND, jumper open.
+
+   On the bench (Stage A/B), the PPK2 can go straight onto J2 (pin 1 +, pin 2 GND) with the pack removed.
 2. **Unplug USB.** Remove the TC2030 cable: the probe back-powers the chip through VTref and SWDIO. Disable RTT
    and UART logging.
 3. Enter the mode, wait 10 s, then average over a ≥ 10 s window. TMAG wake samples, the BQ25180 TS bias pulses
    (every 200 ms), DRV5032 sampling (about 20 Hz) and BLE events are all periodic.
 
-The PPK2 replaces the pack, so the pack's own protection circuit (PCM) is not included. Real battery drain is the
+In both modes the pack's own protection circuit (PCM) is outside the measurement. Real battery drain is the
 reading plus about 3–6 µA. Readings below about 1 µA are at the instrument floor.
 
 ### Targets per mode
@@ -715,7 +783,7 @@ The targets are derived from datasheet typicals ([TVP]). Tighten them after the 
 | ≈ +70 µA | TMAG_INT_N latched low through its 47 kΩ pull-up | Read CONV_STATUS to clear it |
 | +10–50 µA | QSPI flash not in deep power-down | Send B9h; enable the driver's power management |
 | +60–170 µA | LIS2DW12 SA0 grounded (address 0x18) | Assembly/schematic fault |
-| ≈ +33 µA (+4 µA on base) | BTN_N held low: switch pre-gap is 0 | Mechanical, assembly §11.4 |
+| ≈ +33 µA (+4 µA on base) | BTN_N held low: switch pre-gap is 0 | Mechanical, assembly §11.3 step 6 |
 | ≈ +5 mA | OLED VCC left on (black screen) | `AE` + VCC_EN low |
 | mA level | VLED left on, logging backend active, CPU not sleeping | Check LED_PWR_EN, disable UART/RTT |
 | Constant ≈ 1.6–3.5 µA | DRV5032 (always on by design) | Not a fault |
@@ -731,24 +799,43 @@ The SPEC places a Molex 146153 flex antenna on the base floor, connected by coax
 
 1. NanoVNA V2 / V2 Plus4 or LiteVNA. Sweep **2.0–3.0 GHz**, ≥ 401 points, with averaging or a low IF bandwidth.
 2. SOL calibration at the SMA reference plane.
-3. Add the SMA-to-u.FL-receptacle adapter and apply port extension: with the adapter open, adjust the electrical
-   delay until the trace collapses to a point on the right edge of the Smith chart across the sweep.
-4. Every mate counts against the u.FL's ~30-cycle rating. Plan the sequence and use the extraction tool.
+3. Add the **RF test pigtail** (1.13 mm coax, u.FL receptacle to SMA, assembly §4.3) and apply port extension:
+   with the pigtail's u.FL end open, adjust the electrical delay until the trace collapses to a point on the
+   right edge of the Smith chart across the sweep. Port extension removes delay, not loss. With the end open,
+   |S11| reads −2 × the pigtail's one-way loss. Note that value and enter it as port-extension loss if the
+   firmware supports it; otherwise every |S11| reading is that much better than the truth.
+4. Every mate counts against the u.FL's ~30-cycle rating. Follow the sequence in assembly §7.1, use the
+   extraction tool and log each cycle.
+5. **Common-mode check.** The flex is coax-fed with no balun, so current on the outside of the pigtail's shield
+   changes the result. For c–e, fit a clip-on ferrite on the pigtail outside the device, ≥ 30 mm from the magnet
+   track, and lead the cable away at right angles to the device. Then grip and move the pigtail outside the
+   device: if the minimum moves by more than ≈ 10 MHz or |S11| at the band edges by more than ≈ 1 dB, shield
+   current is significant. Add a second ferrite further out or reroute, and record the spread **[TVP]**. Most
+   clip-on ferrites lose effect well below 2.4 GHz, so the touch test, not the ferrite, is the real check.
 
 ### B-11.2 Measurements
 
 Record the frequency of minimum |S11| and |S11| at 2400, 2440 and 2480 MHz for each:
 
-| # | Configuration | Purpose |
-|---|---|---|
-| a | Antenna alone, taped to foam ≥ 30 mm from anything | Baseline ([Molex 146153](https://www.molex.com/ja-jp/products/part-detail/1461530100)) |
-| b | In the base-cup recess, cup only | Plastic loading |
-| c | Base complete: battery, base board, harness | Nearby conductors |
-| d | **Full device**, rotor fitted, top cover and OLED off for access, on a wooden desk. Antenna u.FL unplugged from the module and plugged into the VNA adapter, cable led out through the top | **Acceptance** |
-| e | As d, on a metal plate (laptop lid or steel desk), and with a hand gripping the dial | Sensitivity. The antenna faces the desk (SPEC §8) |
+| # | When (assembly) | Configuration | Purpose |
+|---|---|---|---|
+| a | Stage B4 | Antenna alone, pigtail mated, taped to foam ≥ 30 mm from anything | Baseline ([Molex 146153](https://www.molex.com/ja-jp/products/part-detail/1461530100)) |
+| b | Stage B4 | Bonded in the floor pocket, cup only | Plastic loading |
+| c | Stage B6 | Base complete: battery, base board (harness optional) | Nearby conductors |
+| d | **Stage R** | **Full device**: pigtail fitted at D2 in place of the module mate, main board seated with all screws, rotor and base complete, top (OLED, light box, diffuser, cover) not yet fitted, on a wooden desk. Pigtail out through the main-board Ø5 hole (or round the board edge), ferrite outside | **Acceptance** |
+| e | Stage R | As d, on a metal plate (laptop lid or steel desk), and with a hand gripping the dial | Sensitivity. The antenna lies ≈ 1.4 mm above the desk (assembly §7.1) |
 
-**Pass (d):** |S11| ≤ −10 dB from 2400 to 2483.5 MHz. **Marginal:** ≤ −6 dB at the worst band edge, accepted
-only if B-11.3 passes **[TVP]** ([mcu research]). Case e is informative; record how far it moves.
+The module's u.FL is on the main board's bottom side inside the bowl (SPEC §8), so d and e cannot be done by
+taking the top off. The antenna has to be connected to the pigtail before the main board is seated, and swapped
+to the module afterwards by lifting the board (assembly §11.4 D2, §11.5).
+
+**Pass (d):** |S11| ≤ −10 dB from 2400 to 2483.5 MHz, after the pigtail-loss correction. **Marginal:** ≤ −6 dB
+at the worst band edge, accepted only if B-11.3 passes **[TVP]** ([mcu research]). Case e is informative; record
+how far it moves.
+
+**Which units:** d/e are required on the first unit of a build and after any change to the antenna, cup, pack or
+coax route. On later identical units they are optional (each costs two extra u.FL cycles and a board lift), and
+B-11.3 is the per-unit RF gate.
 
 **Tuning levers:**
 
@@ -839,7 +926,11 @@ detent is under-damped and SPEC has no friction shoe, so firmware must decide th
 velocity reversal ([detent verifier]). Record the count.
 
 **B-12.6 HID mapping.** In CLICK mode, check that one physical click gives exactly one menu step in Windows
-Wheel / Surface Dial settings (report 100 units = 10.0° per detent; configurable) ([mcu research]).
+Wheel / Surface Dial settings. The firmware default reports 100 units (10.0°) per detent ([mcu research]), but
+that assumes Windows' default RotationResolutionInDegrees is 10°, which the mcu verifier rated unverifiable;
+`docs/architecture.md` says 150 units **[TVP]**. Test both 100 and 150 units per detent (it is a setting) in
+Windows Wheel settings and in one app menu, record which gives exactly one step per click, and make that the
+default ([`firmware.md`](firmware.md) Dial mapping notes the same open point).
 
 ---
 
@@ -850,11 +941,17 @@ Wheel / Surface Dial settings (report 100 units = 10.0° per detent; configurabl
 * Detent parked (HOME asserted).
 * Device on a level wooden desk at 20–25 °C.
 * Bearing prepared per assembly §9 and run in (10 spins first).
-* Rotor fully assembled and balanced.
+* Rotor fully assembled and balanced: static balance (assembly §10.3) and the dynamic trim (assembly
+  §10.4) already done.
 
 **Procedure:**
 
-1. Flick the ring above 10 rev/s. Firmware logs ω(t) from the TMAG at ≥ 100 Hz (decimated).
+1. **Hold the base cup only** with one hand, or tape the base to the desk, with no fingers on the top cover or
+   the FA. Flick the ring above 10 rev/s with the other hand, then let go of the base. A 10 rev/s flick is
+   ≈ 7.8 N average over ≈ 30 ms, against a slide threshold of 1.4–2.3 N and a tip threshold of ≈ 3.3 N
+   ([mechanical verifier]), so an unheld unit slides or tips. Gripping the top instead presses the FA, which can
+   cause false clicks and adds drag. **Discard any run in which the base moved.** Firmware logs ω(t) from the
+   TMAG at ≥ 100 Hz (decimated).
 2. Record the time from crossing **10.0 rev/s** down to **0.1 rev/s**.
 3. Do 5 runs clockwise and 5 counter-clockwise. Report the median.
 4. Fit **α = −a − b·ω** to each run. The Coulomb torque is T_c = I·a and the viscous coefficient is c = I·b.
@@ -891,21 +988,21 @@ count.
 | 3 | B-2 | Visual: 48 LED orientation, polarised parts, ZIF type | All correct | |
 | 4 | B-3a | VSYS, +3V3, VLED to GND | > 1 kΩ (no short) | |
 | 5 | B-3a | +13V_OLED to GND | 520–580 kΩ | |
-| 6 | B-3b | Pull resistors | Within ±10 % of nominal | |
+| 6 | B-3b | Pull resistors, per net | Within ±10 % of the B-3b per-net value (e.g. MOT_NSLEEP ≈ 33 kΩ, LED_PWR_EN 88–100 kΩ, VSYS_SENSE 0.7–1.0 MΩ), not of the bare resistor | |
 | 7 | B-3c | CC1, CC2 to GND | 5.1 kΩ each | |
 | 8 | B-3c | TS/MR to GND | 8–13 kΩ at 20–30 °C | |
 | 9 | B-4a | Base VSYS on USB | 4.4–4.6 V; input < 5 mA | |
 | 10 | B-4b | Base VSYS on bench battery | VBAT ± 50 mV | |
 | 11 | B-5 | Main +3V3 | 3.20–3.40 V; supply < 10 mA unprogrammed | |
 | 12 | B-5 | VLED, OLED_VIN off | < 50 mV | |
-| 13 | B-6 | Linked on USB: main VSYS, +3V3 | 4.4–4.6 V, 3.30 V; < 20 mA | |
+| 13 | B-6 | Linked, first power-up at 5.00 V / 100–150 mA into base VBUS TP: main VSYS, +3V3 | 4.4–4.6 V, 3.30 V; < 20 mA | |
 | 14 | B-7.2 | FICR PART / VARIANT recorded | 0x52840; revision noted | |
 | 15 | B-7.3 | NFCPINS, PSELRESET, REGOUT0 | 0xFFFFFFFE; PIN 18 ×2; 0xFFFFFFFF | |
 | 16 | B-7.3 | SWD after a power cycle | Attaches | |
 | 17 | B-8.3 | LFCLKSTAT | 0x00010001 | |
 | 18 | B-8.5 | VSYS ADC vs DMM | ±2 % raw; ±20 mV calibrated | |
 | 19 | B-8.6 | USB CDC enumeration and loopback | 0 errors | |
-| 20 | B-8.7 | MCUboot: USB DFU, BLE DFU, serial recovery | All pass **before the OLED is fitted** | |
+| 20 | B-8.7 | MCUboot: USB DFU, BLE DFU, revert; serial recovery **with the TC2030 removed**, routes a/b/c | DFU and revert pass; route c and at least one of a/b pass; working routes recorded. **Before the OLED is fitted** | |
 | 21 | B-9.1 | QSPI JEDEC ID, quad R/W 1 MB | EF 40 18; 0 errors | |
 | 22 | B-9.2 | I2C scans | TWIM0: 0x35. TWIM1: 0x19, 0x6A | |
 | 23 | B-9.3 | LIS2DW12 WHO_AM_I, \|a\|, INT1 | 0x44; 0.9–1.1 g; pulse on tap | |
@@ -920,21 +1017,21 @@ count.
 | 32 | B-9.6c | Track signal | 24 periods; Bz 12–25 mT; per-pole ±15 % | |
 | 33 | B-9.6d | W&S wake on a small rotation | INT latches; re-arm verified | |
 | 34 | B-9.7 | Piezo at 4 kHz | Clear tone, ≈ 72–79 dB(A) at 10 cm | |
-| 35 | B-9.8a | VLED rise time; VSYS dip | ≈ 1.5–2.5 ms; ≤ 100 mV | |
+| 35 | B-9.8a | VLED rise time; tON; VSYS dip (C7 CT–VSYS fix fitted) | ≈ 1.5–2.5 ms; ≈ 3.8 ms recorded; ≤ 100 mV | |
 | 36 | B-9.8b | LED bit timing | Within the V6 windows | |
-| 37 | B-9.8c/d | Walk test, D1 at θ = 0° CCW; 49th word at DOUT | All 48 correct | |
+| 37 | B-9.8c/d | Walk test, D101 at θ = 0° CCW to D148; 49th word at TP40 | All 48 correct | |
 | 38 | B-9.8e | Ring white at 10 % | ≈ 72 mA above baseline (±25 %) | |
 | 39 | B-9.8f | Logic margin at 4.6 V and 3.4 V | No glitches in 10 min | |
 | 40 | B-9.9a | Bare boost output | 12.7–13.3 V | |
 | 41 | B-9.9b | OLED full test pattern, no missing lines | Pass | |
 | 42 | B-9.9b | SCK edges at the ZIF | t_R/t_F ≤ 15 ns | |
 | 43 | B-9.10a | DRV8837 truth table, both drivers | All five states | |
-| 44 | B-9.10c | HOME_N low near park, high at click | Both, on this unit | |
+| 44 | B-9.10c | HOME_N low near park (required); release at click (recorded) | Low within ≈ 4–5 mm of PARK. Click state logged, not pass/fail (BRP spread) | |
 | 45 | B-9.10d | 50 round trips | HOME error ≤ ±2 steps | |
-| 46 | B-10 | Ship current | ≤ 4.5 µA | |
+| 46 | B-10 | Ship current (PPK2 on the breakout tail) | ≤ 4.5 µA | |
 | 47 | B-10 | System OFF, press wake only, panel fitted | ≤ 30 µA | |
 | 48 | B-10 | System ON idle, armed | ≤ 60 µA | |
-| 49 | B-11.2d | S11, full device on a wooden desk | ≤ −10 dB over 2400–2483.5 MHz | |
+| 49 | B-11.2d | S11, full device on a wooden desk (Stage R; first unit and after changes, optional on later identical units) | ≤ −10 dB over 2400–2483.5 MHz after pigtail-loss correction; u.FL cycles logged | |
 | 50 | B-11.3 | HID link at 5 m, 10 min, LEDs and OLED animating | No drops | |
 | 51 | B-12.2 | 24 detent rest angles | Within ±0.5° of the 15° grid | |
 | 52 | B-12.3 | T(0 mm) | 16.4 mN·m ±25 % (slip mass ≈ 36–60 g at r = 35) | |
@@ -946,11 +1043,16 @@ count.
 
 ## Open [TVP] items for the first prototype
 
-1. VLED soft-start (CT reference node) and the inrush it produces (B-9.8a).
-2. HOME_N release at the click end with the top-side DRV5032 (B-9.10c).
-3. Antenna S11 and link margin with the desk-facing antenna, on wood and on metal (B-11).
-4. TMAG W&S currents and wake angle; LIS2DW12 current at 3.3 V (B-10).
-5. Detent torque at R = 29 mm versus the R_t = 30 mm simulation; ringing count without a damping shoe (B-12).
-6. Absolute spin time, and whether the oil holds up (B-13).
-7. Register-level ID values (W25Q128 JEDEC, LIS2DW12 WHO_AM_I, TMAG IDs, BQ25180 power-on values), which were
+1. VLED soft-start and inrush with C7 moved to CT–VSYS (B-9.8a). The sheet fix itself is not a TVP; it is
+   required before ordering (assembly §2.4 item 3).
+2. HOME_N release at the click end with the top-side DRV5032, given the BRP spread (B-9.10c).
+3. Antenna S11 and link margin with the desk-facing antenna, on wood and on metal (B-11), and how much the test
+   pigtail's shield current moves the result.
+4. Which serial-recovery routes work on a closed unit, in particular whether the 20 s long-press reset fires with
+   USB present (B-8.7; EN_PUSH wording in SLUSE99C).
+5. Windows Radial Controller units per detent, 100 vs 150 (B-12.6).
+6. TMAG W&S currents and wake angle; LIS2DW12 current at 3.3 V (B-10).
+7. Detent torque at R = 29 mm versus the R_t = 30 mm simulation; ringing count without a damping shoe (B-12).
+8. Absolute spin time, and whether the oil holds up (B-13).
+9. Register-level ID values (W25Q128 JEDEC, LIS2DW12 WHO_AM_I, TMAG IDs, BQ25180 power-on values), which were
    not confirmed against primary sources in the research set.
