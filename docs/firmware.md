@@ -2948,7 +2948,7 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 | M4 BLE HID | bt_hids, report map, Swift Pair, slots, pairing UX | Windows Dial menu works; macOS scroll; Android volume |
 | M5 USB + DFU | Composite USB, MCUboot with QSPI, SMP both ways, serial recovery | Test 24 |
 | M6 Power | State machine, BQ25180 driver, battery policy, sleep entry/exit | Tests 9 and 22 currents met |
-| M7 Game | Predictor, game service, app (Web Bluetooth first) | Prediction error vs actual logged over 100 spins |
+| M7 Game | Predictor, game service, app (Web Bluetooth first); NFC tag emulation and `nfc_tag` | Prediction error vs actual logged over 100 spins; a phone reads an NDEF record set from the app |
 | M8 Production | Factory sequencer, factory data, release build, APPROTECT policy | Full test table on 3 units |
 
 **Host-side unit tests** (`tests/`, ztest on `native_sim`, run in CI):
@@ -2972,9 +2972,13 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 * the W&S threshold rule, i.e. the [§4.8](#48-wake-on-rotation-wake-upsleep)
   simulation as a test;
 * predictor RLS on simulated spin-downs, with the analytic t_rem/Δθ_rem;
-* the LED limiter (token bucket, derating);
+* the LED limiter (token bucket, derating, the instantaneous lit-channel
+  budget with its VBAT rows, actuator offset and USB rule);
+* the boot rail checks (reset reason × retained rail-state record × FLAG0
+  BAT_OCP_FAULT, the VLED latch) and the OLED_VCC_EN rules at ILIM 100 mA;
 * HID report packing (int15 dial, sign, clamping, remainder carry);
-* BQ25180 register encoders (ICHG and ILIM codes);
+* BQ25180 register encoders (ICHG and ILIM codes) and the SYS_REG assert
+  (only SYS_REG_CTRL 001 or 010 accepted);
 * strength LUT inversion;
 * settings schema migration.
 
