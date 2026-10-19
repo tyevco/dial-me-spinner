@@ -19,7 +19,8 @@
 *                    Battery supplement (Table 7.5 VBSUP1 = 40 mV: battery feeds SYS when VSYS < VBAT - 40 mV):
 *                    diode with ~40 mV at ~10 mA (IS 3.4e-16, N 0.05) in series with RON_BAT and rpack.
 * NOT modelled: BATOCP / BUVLO / ILIM-interrupt / thermal trips (the tests compare currents and voltages against
-*   those thresholds instead), input UVLO/OVP, VINDPM, regulation-loop dynamics, the charge current (assumed to
+*   those thresholds instead), the BUVLO gate on supplement mode (SLUSE99C 8.3.3: no supplement while VBAT <
+*   VBUVLO; the D_SUP diode always conducts, so a test models a cell below BUVLO with vbat=0), input UVLO/OVP, VINDPM, regulation-loop dynamics, the charge current (assumed to
 *   give way instantly to the system load, DPPM), the 25 Ohm SYS pull-down (ship/shutdown only).
 * Pins: SYS GND.
 * =====================================================================================================

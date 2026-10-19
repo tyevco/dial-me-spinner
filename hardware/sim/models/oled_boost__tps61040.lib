@@ -50,7 +50,9 @@
 *   1.5 V when VIN sits at the threshold, which is slow to simulate), EN input leakage (0.1 uA), switch-node
 *   capacitance (Coss is not specified; the rectifier junction capacitance sets the SW-node ringing),
 *   gate-drive edge rates (switch edges are ~1 ns), dependence of VFB / ILIM on VIN (< 1 %, Fig 5-9),
-*   line/load regulation terms beyond what the ideal comparator + external parts produce, the
+*   line/load regulation terms beyond what the ideal comparator + external parts produce (so the
+*   double pulses / bursts that SLVS413L 7.2.2.2 predicts with too small a CFF do not appear: removing
+*   C40 leaves the simulated ripple unchanged - CFF value errors are invisible to this model), the
 *   0.1 uA shutdown current (EN is tied to VIN on this board, so the part is either in UVLO or on).
 *
 * Pins: EN FB SW VIN GND   (same order as the vendor TPS61040_TRANS subcircuit)

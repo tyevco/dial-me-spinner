@@ -112,6 +112,10 @@ EMARKER_RA = 800.0         # lowest Ra of USB Type-C R2.0 Table 4-26 (800-1200 O
 X5R_DCBIAS = {
     "CC0603KRX5R8BB225": 6.12,
     "CL10A475KO8NNNC": 4.52,
+    # 2.2 uF/25 V X7R 0805 (C1 since the USB-3 fix): ~80 % retained at 5 V for this case/rating class (Murata
+    # GRM21BR71E225 published curve; ESTIMATE, Yageo curve not downloadable) -> V0 10.0 V. X7R's +-15 % over
+    # -55..125 C is the same temperature bound as X5R's.
+    "CC0805KKX7R8BB225": 10.0,
 }
 X5R_TEMP_BOUND = 0.15      # EIA X5R: +-15 % over -55..85 C, applied as -15 % at the -10 / 60 C corners
 
@@ -711,10 +715,8 @@ def test_cin_after_dc_bias_25c(base, parts, check, vin, main):
     check(f"CIN effective at {vin} V, -tol, 25 C", c, BQ_CIN[0][0], BQ_CIN[0][1], "F", BQ_CIN[1])
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE (margin): C1 2.2 uF/25 V 0603 X5R falls below the BQ25180's "
-                   "1 uF effective CIN at 5.5 V with -10 % tolerance and the -15 % X5R temperature bound "
-                   "(DC-bias curve is an estimate, see X5R_DCBIAS)")
+# USB-3 (fixed): C1 was a 2.2 uF/25 V 0603 X5R that fell below the 1 uF effective CIN at the temperature corners;
+# it is now a 0805 X7R (base.py), and this check guards it.
 @pytest.mark.parametrize("temp", [-10, 60])
 def test_cin_after_dc_bias_temperature(base, parts, check, temp, main):
     """C1 at VIN max (5.5 V), -tolerance, with the EIA X5R -15 % temperature bound at -10 / 60 C: >= 1 uF."""
