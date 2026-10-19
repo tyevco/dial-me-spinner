@@ -21,8 +21,8 @@ step passing first.
   strap, feet (§4.3, §10, §11). `docs/mechanical.md` §12 is the reference build order; re-check against it
   before printing or machining parts.
 * Designators are the ones in the schematic sheet modules (`hardware/design/sheets/*.py`) and on the generated
-  boards. The BOM, CPL and `ORDER-NOTES.md` that `release.py` writes come from the same netlists and boards (§2),
-  so treat those files, not this text, as the order record.
+  boards. The BOM, CPL and `ORDER-NOTES.md` that `release.py` wrote into `hardware/fab/<board>/` come from the
+  same netlists and boards (§2), so treat those files, not this text, as the order record.
 
 ---
 
@@ -52,8 +52,10 @@ step passing first.
 bottom-side placements, board-only parts). For review it adds the schematic PDF, board PDFs per side and per copper
 layer, and top and bottom 3D renders. It first runs `kicad-cli` DRC with schematic parity and stops before writing
 any fab output if either reports an error (the report is `drc-parity.rpt`; `--force` writes a review-only package).
-DNP parts are left out of the BOM and the CPL. The CPL angles and origins carry per-LCSC-part corrections fitted to
-JLC's EasyEDA footprints (`hardware/tools/jlc_cpl.py`, cached in `hardware/design/jlc_offsets.json`; top θ + α,
+Both boards are routed and passed that gate, and both packages are in the repository: the main board with 0 DRC
+errors or warnings, 0 unconnected items and clean parity, the base board with 0 errors and 0 unconnected items (two
+silk-to-edge warnings only). DNP parts are left out of the BOM and the CPL. The CPL angles and origins carry
+per-LCSC-part corrections fitted to JLC's EasyEDA footprints (`hardware/tools/jlc_cpl.py`, cached in `hardware/design/jlc_offsets.json`; top θ + α,
 bottom 180° − θ + α), so the JLC preview should already show every part the right way round. Check it anyway
 (§3.4).
 
@@ -66,12 +68,13 @@ bottom 180° − θ + α), so the JLC preview should already show every part the
 | Stack-up | JLC standard (e.g. JLC04161H-7628) | No controlled impedance needed. RF stays inside the module (u.FL on the module), and USB is Full-Speed through a short run |
 | Impedance control | No | As above |
 | Surface finish | **ENIG** (1 µ" is enough) | Flat pads for the 61-pad bottom-terminated MDBT50Q (0.4 mm pad gaps), the LGA-12 LIS2DW12, the WSON-8 DRV8837, the 0.5 mm ZIF and 48 LEDs with 0.7 mm pads. HASL is not acceptable |
-| Outer / inner copper | 1 oz / 0.5 oz (JLC default) | 0.5 oz inner copper doubles the ring IR-drop estimate to about 12 mV per mm of path, which is still negligible ([leds verifier]). In1 is a solid GND plane (`layout.py`). Order 1 oz inner only if VLED ends up routed on In2 as a thin trace |
-| Min track / spacing | **0.12 mm / 0.10 mm** (signal net class; power and GND tracks 0.3 mm, low-current supplies 0.2 mm; copper to board edge 0.3 mm) | `layout.py` BOARDS main `rules`: the finer signal rules let tracks escape the module's LGA. Inside JLC's standard 4-layer capability (0.09 / 0.09 mm) |
-| Vias | **0.20 mm drill / 0.40 mm pad** (signal and low-current supplies); 0.25 mm drill / 0.5 mm pad on the power and GND net classes (`layout.py`), **tented** | Min via 0.40 mm / 0.20 mm drill, against JLC's standard 4-layer minimum drill of 0.15 mm. Module inner pads escape inward to tented vias under the module body ([mcu verifier]). If any via touches a pad, order "epoxy filled & capped" instead |
+| Outer / inner copper | 1 oz / 0.5 oz (JLC default) | 0.5 oz inner copper doubles the ring IR-drop estimate to about 12 mV per mm of path, which is still negligible ([leds verifier]). In1 is a solid GND plane (`layout.py`). VLED is routed on F.Cu only (0.3 mm), not on In2, so 0.5 oz inner copper is enough |
+| Min track / spacing | **0.12 mm / 0.10 mm** (signal net class; power and GND tracks 0.3 mm, low-current supplies 0.2 mm, GND fan-out stubs to the In1 plane 0.25 mm; copper to board edge 0.3 mm) | `layout.py` BOARDS main `rules`: the finer signal rules let tracks escape the module's LGA. Inside JLC's standard 4-layer capability (0.09 / 0.09 mm) |
+| Vias | **0.20 mm drill / 0.40 mm pad** (signal and low-current supplies); 0.25 mm drill / 0.5 mm pad on the power and GND net classes (`layout.py`), **tented** | Min via 0.40 mm / 0.20 mm drill, against JLC's standard 4-layer minimum drill of 0.15 mm. Module inner pads escape inward to tented vias under the module body ([mcu verifier]). If any via touches a pad, order "epoxy filled & capped" instead. On the routed main board ten do (§13 #28): GND fan-out vias with the drill inside the pad at J20 pins 9, 16 and 17, U31 pin 7 and the U40/U41 exposed pads, one whose drill cuts the edge of C10 pad 2, and via rings overlapping J20 pin 15, U30 pin 2 and J10 pad 1 (+3V3) |
 | Solder mask | **White** (matches the white light-box interior in SPEC §8) or black | White raises the cavity-floor reflectance and recovers band-edge brightness. Black gives crisper pixels. Both sides get the same colour. Check JLC's minimum mask dam for the chosen colour against the 0.5 mm-pitch ZIF and LGA pads |
 | Silkscreen | Any, but **none inside the LED cavity r 27–30** | Silk and bare copper inside the cavity show as specular hotspots ([leds research]). As generated, the stock LED footprints' own silk marks (D101–D148) lie in this band: remove them or accept the hotspots (§13 #22). R42 has moved to r 24.1, out of the band |
 | Board outline | Ø64 disc, centre Ø5; 3× **plated GND** M2 (H1–H3) at r = 6.5, θ 90°/210°/330°; 2× NPTH M2 (H4/H5) at r = 17, θ 60°/120° | SPEC §8. The spindle's M4 spigot passes the Ø5 hole. The brass hub's face on the plated H1–H3 pads is the GND end of the ring's ESD bleed (§10.1, §11.4), and the OLED-bracket screws go through H1–H3 into the hub. H4 holds the stepper saddle; the model leaves H5 unused |
+| Copper keep-outs under clamped metal | No tracks or vias on B.Cu at r < 8.8 (the brass hub flange, r ≤ 8.5, is clamped against the board bottom by the M4 nut); none on F.Cu at r < 4.6 (the M4 nut, OD 7); none on any layer at r < 2.85 (0.35 mm from the Ø5 centre hole) | `layout.py` `clamp_keepouts` rule areas. Under the flange there are only the GND spindle pads H1–H3 and the GND pour (the hub is GND); In2 still passes under the hub. Freerouting does not see the inner board edge, hence the centre-hole ring |
 | Fiducials | FID1–FID3 on the top, FID4–FID6 on the bottom (1 mm copper, 2 mm mask opening) | Three per assembled side (`layout.py`) |
 | Electrical test | Yes (JLC default for multilayer) | |
 
@@ -112,7 +115,7 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    2 / 3 / 4 mm and 5 rev/s ([detent research]). Bearing friction is ≈ 150 µN·m.
 2. **No ferromagnetic or inductor parts within 10 mm** of the TMAG5273 (U30, bottom, Hall element at r 29,
    θ 270°) or of the track annulus r 27–31 on the bottom (SPEC §5.3, §7). This includes the TPS61040 inductor
-   L20, any ferrite bead and shield cans. As placed at the time of writing, L20 (top) is ≈ 21 mm from U30, but
+   L20, any ferrite bead and shield cans. On the routed board, L20 (top) is ≈ 21 mm from U30, but
    its courtyard reaches r ≈ 19.9, which is ≈ 7 mm in plane (and ≈ 5 mm higher) from the annulus edge at
    r = 27. Confirm that this meets the rule or move L20 (§13 #23).
 3. **TPS22917 CT capacitor: done.** The TPS22917 pin table reads "CT: Switch slew rate control. Connect
@@ -128,8 +131,9 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    ≈ 24 ms nominal, 26.6 ms worst case, inside firmware's 30 ms wait (SPEC §5.1; hardware/sim, LSW-2). Bring-up
    step B-9.8a measures both. Only the TPS22918 alternate takes CT to GND, so if you substitute it for U2 or U21,
    its CT capacitor goes back to GND.
-4. **TC2030-IDC-NL footprint** J10 on the top side under the OLED glass (r 12, θ 150°): 6 pads plus 3 NPTH
-   locating holes, with no parts inside the cable-head outline.
+4. **TC2030-IDC-NL footprint** J10 on the top side under the OLED glass (r 20.8, θ 238.5°, beside the module's
+   SWDIO/SWDCLK/NRESET/SWO pins, at the glass edge near the OLED-bracket rim): 6 pads plus 3 NPTH locating holes,
+   which clear the module on the bottom and the J20/J11 courtyards, with no parts inside the cable-head outline.
 5. **LED rotations:** D101 (SPEC "LED1", pixel 0 in `leds.py`) sits at θ = 0° and the numbering runs CCW to
    D148: 48 LEDs at 7.5° steps on r = 28.5. Each footprint is rotated, so check in the JLC placement preview that
    every pin-1 mark is rotated consistently (§3.4). Note that D1 on the *base* board is the SMF5.0A TVS.
@@ -140,7 +144,9 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 7. **Test points** TP1 VSYS, TP2 +3V3, TP3 VLED and TP4 GND (main), plus TP1–TP4 VBUS, VBAT, VSYS and GND (base)
    must be exposed copper (no mask). Place them so they can be probed with the boards linked by the harness on the
    bench (B-6). On the main board, TP2–TP4 are on the top and are reachable only before the OLED and cover go on.
-   **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
+   The spare-GPIO pads TP10–TP13 (TP_SPARE1..4: P0.03, P0.04, P1.11, P1.13) are on the top too, near the module's
+   west pad row (r 12–20, θ 193–205°) under the OLED glass, so like J10 they are reachable only before the display
+   is fitted. **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
    **Base-board TPs and J2 are unreachable once Stage C has fitted the FA lower plate and the rotor**, which is
    why §7.2 adds a battery breakout.
 8. **Module u.FL clearance to the rotor: done.** The mated u.FL plug stands about 2.5 mm proud of the module and
@@ -149,7 +155,7 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    r 17.3, θ 215° on the bottom, inner end at r ≥ 8.8, with its **u.FL end facing outward** (u.FL at r ≈ 23,
    over the bowl), and the model's clash check passes on the current boards. The coax runs back under the board
    beside the module to the spindle's θ = 270° slot and threads between U12 and the module's inner corner:
-   0.13 mm to U12 and 0.44 mm above the rotating cap ring (r 9–13), so it is tacked up with Kapton at
+   0.84 mm to U12 and 0.44 mm above the rotating cap ring (r 9–13), so it is tacked up with Kapton at
    assembly (§7.1, §11.4 D2).
 9. **Base-board mounting: done.** SPEC §8 and the base board now use one M2 hole (H1) at r = 20, θ = 270°,
    outside the pack, plus the cup's rib under the θ = 90° edge and the USB-C shell. The θ = 90° boss is gone: it
@@ -174,10 +180,11 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
   second-stage USB ESD array U12, QSPI flash U11 and crystal Y1, TMAG5273 U30 and its ESD array U32, both DRV8837
   (U40, U41), link J1, motor connector J40, piezo BZ1, the NFC tuning caps C16/C17, and their passives. Top:
   LEDs, ZIF J20, LDO U1, both TPS22917 load switches (U2, U21), 13 V boost, LIS2DW12, DRV5032 U42, TC2030 pads,
-  NFC coil pads J11 (no part). `ORDER-NOTES.md` lists every bottom-side placement. Plan for two reflow passes.
+  NFC coil pads J11 (no part). `hardware/fab/main/ORDER-NOTES.md` lists every bottom-side placement (33). Plan for
+  two reflow passes.
 * **Base board: Standard PCBA, top side only.** This is the safer tier for a 0.4 mm DSBGA plus an X-ray request.
-  Check JLC's current rules on which tier offers X-ray. The board is single-sided (SPEC §8), so `ORDER-NOTES.md`
-  should list no bottom-side placements for it.
+  Check JLC's current rules on which tier offers X-ray. The board is single-sided (SPEC §8), and
+  `hardware/fab/base/ORDER-NOTES.md` lists no bottom-side placements.
 * Most ICs are JLC Extended parts. Each unique Extended part carries a per-order setup fee, so check the BOM
   quote and consider ordering 5 boards per order.
 
@@ -238,8 +245,8 @@ The CPL already carries the per-part rotation and origin corrections (§2). The 
 ### 3.5 DNP
 
 `release.py` takes the DNP list from the parts flagged `dnp=True` in `hardware/design/sheets/*.py`, writes it
-into `ORDER-NOTES.md` and leaves those parts out of the BOM and the CPL. At the time of writing that is (main
-board only):
+into `ORDER-NOTES.md` and leaves those parts out of the BOM and the CPL. `hardware/fab/main/ORDER-NOTES.md` lists
+(main board only; the base board has none):
 
 * **R11**, 10 kΩ NRESET pull-up (`mcu` sheet). The nRF's internal pull-up is used.
 * **U43** SN74LV1T34DBVR and its 100 nF **C43** (`leds` sheet): the optional VLED-referenced LED data level
@@ -426,7 +433,7 @@ r 17.3, θ = 215°, u.FL end facing outward at r ≈ 23). The 50 mm -0050 is too
   (x, y) ≈ (−14.6, 19.9), outside the base board (r 23) and inside the FA ring (r 26), crosses over J3 at
   z ≈ 15, enters the spindle through the θ = 120° window together with the harness, runs up the bore, leaves
   through the θ = 270° slot and the hub's C-gap, and runs back flat against the board bottom beside the module to
-  the outward-facing u.FL. On the way it threads between U12 and the module's inner corner, 0.13 mm from U12 and
+  the outward-facing u.FL. On the way it threads between U12 and the module's inner corner, 0.84 mm from U12 and
   0.44 mm above the rotating cap ring (r 9–13), so it **must be tacked up to the board with Kapton** there
   (SPEC §8; §11.4 D2). That is ≈ 79 mm on the current boards (`hardware/mechanical/calcs_output.txt` §12). Stow
   the remaining ≈ 21 mm as one gentle loop against the cup wall at θ ≈ 100–150°, away from the antenna body, and
@@ -857,7 +864,7 @@ face down once it is seated. Make every connection with the board held just abov
    Dress the service loops and Kapton-tape the coax, and the mated pair or pigtail, to the board underside so
    nothing hangs into the rotor's swept volume: r ≤ 12.2 below z 26.0, and the carrier web at z ≤ 19 (see §2.4
    item 8). **Tack the coax up with Kapton where it passes between U12 and the module's inner corner:** it clears
-   U12 by 0.13 mm and the rotating cap ring (r 9–13) by only 0.44 mm (SPEC §8, §7.1).
+   U12 by 0.84 mm and the rotating cap ring (r 9–13) by only 0.44 mm (SPEC §8, §7.1).
 3. Lower the board onto the hub over the M4 spigot, with H1–H3 over the hub's tapped holes. Fit the M4 × 0.5
    brass nut with Loctite 222 and tighten it to 0.10 N·m with a pin spanner. That one nut clamps board → hub →
    608 inner race → lower spacer → plate → spindle flange (`docs/mechanical.md` §4). Check the magnet-to-track gap
@@ -913,7 +920,7 @@ or through the breakout (B-1).
    pads (main top, r 21.5, θ 222°; flat pads, because a header does not fit under the display glass, SPEC §5.2)
    **[TVP: tail route past the OLED bracket on the mock-up]**. Snap the cover (Ø30 OLED window, cover OD
    r = 32.5) onto the light box, then run B-9.11.
-4. From here on, firmware updates go over MCUboot (USB CDC or BLE SMP), and SWD needs the top and OLED removed.
+4. From here on, firmware updates go over MCUboot (USB CDC or BLE SMP), and SWD needs the top, the OLED and its bracket removed.
    **Write the serial-recovery route that passed B-8.7 into the unit log and on a label under the base**, for
    example "hold the dial through the 20 s reset and keep holding until the USB port re-enumerates" (route a)
    or "from ship mode: hold the dial and plug in USB" (route b). Route c (app command 0x08) needs a running app.
@@ -954,7 +961,7 @@ or through the breakout (B-1).
 | 8 | Harness lead part numbers and lengths, including the lift loop; 28 AWG on pins 1–4 and 8 (§6) | Open |
 | 9 | Knife-edge balance sensitivity; IMU dynamic trim response (§10) | TVP |
 | 10 | Folded-FPC fit under the glass (§7.4 mock-up) | TVP |
-| 11 | Module and mated u.FL over the hub: the earlier placement (r 14.5, u.FL toward the centre) put the module's inner end ≈ 1.5 mm into the brass hub and the plug 0.2 mm into the rotating cap ring (§2.4 item 8, `docs/mechanical.md` §3B B1) | **Done:** U10 centred at r 17.3, θ 215°, inner end r ≥ 8.8, u.FL facing outward (SPEC §8); the clash check passes. The coax passes 0.13 mm from U12 and 0.44 mm above the cap ring, so it is Kapton-tacked at D2 (§11.4) |
+| 11 | Module and mated u.FL over the hub: the earlier placement (r 14.5, u.FL toward the centre) put the module's inner end ≈ 1.5 mm into the brass hub and the plug 0.2 mm into the rotating cap ring (§2.4 item 8, `docs/mechanical.md` §3B B1) | **Done:** U10 centred at r 17.3, θ 215°, inner end r ≥ 8.8, u.FL facing outward (SPEC §8); the clash check passes. The coax passes 0.84 mm from U12 and 0.44 mm above the cap ring, so it is Kapton-tacked at D2 (§11.4) |
 | 12 | Bearing "wave-spring preload" (SPEC §8): a single 608 cannot be axially preloaded by a spring without a reaction against the stationary side. In the model the wave washer and cap ring only form a compliant drop seat. The rotor weight (≈ 1.3 N) exceeds the ±0.7 N detent pull, so the balls should stay loaded anyway **[TVP]** | Restate in SPEC |
 | 13 | FA springs did not match the model's installed length | **Done:** re-specced to the pockets: wire 0.32, free length 4.72, 2.60 mm installed, 1.33 N each, 0.50 mm to solid at the hard stop (§4.3). Measure the rate **[TVP]** |
 | 14 | J2 location and height | **Done:** SPEC §8 and the board put J2 on the base-board top at r = 17, θ = 222°, mouth radially outward, with BAT+/GND silk, and J2 is now the 2.95 mm side-entry SM04B-SRSS-TB (pins 1–2 BAT+, 3–4 GND) instead of the ≈ 5.5 mm PH part (#24). It is still buried after Stage C, hence the breakout (§7.2) |
@@ -971,6 +978,7 @@ or through the breakout (B-1).
 | 25 | Stepper can and lead screw 3.1–4.6 mm from the track, against SPEC's 10 mm rule; free-mode cogging unknown (§7.3, `docs/mechanical.md` §3 A12) | Bench test before PCB freeze **[TVP]** |
 | 26 | Actuator thrust: the SPICE motor model gives the VSM08102 at most 0.93 N from any battery VSYS against a 0.8–1.15 N worst-case load (architecture risk R4; hardware/sim, MD-4) (§4.3, §7.3) | **Open:** cut the carriage preload and anti-lash spring so the load stays ≤ 0.5 N, or change the actuator; the 10 mm sibling does not fit the bowl in the model |
 | 27 | NFC coil: inductance, C16/C17 tuning (180 pF for ≈ 1.4–1.5 µH) and the tail route from the cover to J11 (§4.3, §11.7) | TVP on the prototype (bring-up B-9.11) |
+| 28 | Vias touching pads on the routed main board: GND fan-out vias in J20, U31, U40/U41, C10 and U30 pads, and a +3V3 via ring on J10 pad 1 (§2.1 Vias) | Open, before ordering: order "epoxy filled & capped" for the main board, or move these vias off the pads |
 
 Source abbreviations used above: "[x research]" and "[x verifier]" refer to the subsystem research and its
 independent verification, which SPEC.md was built from. Where the two differ, the verifier's corrected value is

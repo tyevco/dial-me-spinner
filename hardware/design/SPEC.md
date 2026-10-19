@@ -481,18 +481,19 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   spindle's top slot.
 * Rotating hub zone: bottom-side parts over r 9.5–12.5 must keep their bottom at z ≥ 26.3 (hang ≤ 2.8 mm).
 * Actuator corridor: bottom-side parts in θ 30°–160°, r 8.5–27 must be ≤ 1.3 mm tall (chip passives and test pads;
-  J40 is the only component there, and every bottom part was checked against the actuator in
-  hardware/mechanical/calcs_output.txt §11); inside θ 60°–120°, r 12–27 the no-component keep-out above applies.
+  the two taller parts that reach into it, J40 and the piezo BZ1, whose edge reaches θ ≈ 36°, were checked against
+  the actuator with every other bottom part in hardware/mechanical/calcs_output.txt §11); inside θ 60°–120°, r 12–27
+  the no-component keep-out above applies.
 * Top side: keep r ≤ 4.6 free for the spindle's M4 nut (OD 7); other top parts stay inside the LED-cap ring
   (r ≤ 25.3) — beyond it are the light box (r 27–30) and the top-cover skirt.
 * The piezo BZ1 goes on the **bottom** side at r = 22, θ = 22° (sound vents through the board).
 * The TC2030 pads (J10) go on the top side at r = 20.8, θ = 238.5°, beside the module's SWDIO/SWDCLK/NRESET/SWO
-  pins (SWDIO 3.3 mm, SWDCLK 3.9 mm of track). They are still under the OLED glass (at its edge, near the bracket
+  pins (SWDIO 3.3 mm, SWDCLK 3.9 mm of track). They are under the OLED glass (at its edge, near the bracket
   rim), so they are reachable only before the OLED bracket and glass are fitted. J10's three NPTH alignment holes clear
   the module (on the bottom) and the J20/J11 courtyards.
 * The spare-GPIO test pads TP10–TP13 (TP_SPARE1..4: P0.03, P0.04, P1.11, P1.13) sit on the top side near the
-  module's west pad row (r 12–20, θ 193–205°), also under the OLED glass, so like J10 they are reachable before the
-  display is fitted.
+  module's west pad row (r 12–20, θ 193–205°). TP10 and TP11 are under the OLED glass and TP12/TP13 just beyond its
+  west edge, so like J10 they are reachable before the display is fitted.
 * The NFC coil pads J11 sit on the top side at r = 21.5, θ = 222°, under the OLED-bracket rim relief; NFC1/NFC2 run
   as a pair, away from the TMAG5273 and the LED data line.
 * Assembly order at the display: solder the NFC coil tail to J11 **before** the OLED bracket goes on (the joint ends

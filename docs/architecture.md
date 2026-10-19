@@ -200,7 +200,8 @@ flowchart TB
 ```
 
 Not shown: the 32.768 kHz crystal, the TC2030 SWD pads (J10, top side,
-r 20.8, θ 238.5°, beside the module's SWD pins), the DNP SN74LV1T34 LED-data level shifter (U43, [§6.4](#64-led-ring-and-audio)),
+r 20.8, θ 238.5°, beside the module's SWD pins), the DNP SN74LV1T34
+LED-data level shifter (U43, [§6.4](#64-led-ring-and-audio)),
 and the per-part decoupling, pull-ups and test pads. The +3V3 rail also feeds
 the flash, TMAG, IMU, OLED logic, DRV8837 VCC and DRV5032.
 
@@ -311,11 +312,12 @@ The essentials:
   is open on the axis ([§4.2](#42-the-link)). The spindle flange screws to the
   main board through three plated GND M2 holes (H1–H3 at r = 6.5 mm,
   θ 90°/210°/330°), which gives the touchable ring an ESD bleed path: ring →
-  conductive epoxy → 608 races → spindle → GND. The brass hub flange
-  (r ≤ 8.5) is clamped against the board bottom by the M4 nut (about 120 N),
-  so the main board has no tracks or vias on B.Cu at r < 8.8 (only H1–H3 and
-  the GND pour; the hub is GND), none on F.Cu at r < 4.6 under the nut, and
-  none on any layer within 0.35 mm of the Ø5 centre hole (SPEC §8).
+  conductive epoxy → 608 races → spindle → GND. That flange (on the brass
+  hub, r ≤ 8.5) is clamped against the board bottom by the M4 nut (about
+  120 N, [docs/mechanical.md](mechanical.md) A7), so the main board has no
+  tracks or vias on B.Cu at r < 8.8 (only H1–H3 and the GND pour; the hub is
+  GND), none on F.Cu at r < 4.6 under the nut, and none on any layer within
+  0.35 mm of the Ø5 centre hole (SPEC §8).
 * **Why a 608 and not a large-bore bearing.** In the SKF friction model, drag
   scales roughly with the bearing's mean diameter to the power 1.96. For the
   same rotor, an oiled 61808 (40×52) gives about 1.6 N·mm at 10 rev/s and a
@@ -1396,7 +1398,7 @@ blocking and Wi-Fi coexistence are what is at stake.
    gain is unverified. That is fine for personal builds; any sale needs a
    permissive change or new testing.
 
-**Validation plan (before PCB release, on a printed mock-up with the real
+**Validation plan (before the PCB order, on a printed mock-up with the real
 ring, battery and base board).**
 1. Measure S11 with a NanoVNA through a u.FL-to-SMA pigtail, in the assembled
    mock-up:
@@ -1431,7 +1433,7 @@ L = likelihood, I = impact (H / M / L).
 
 | ID | Risk | L | I | Mitigation / next action |
 |---|---|---|---|---|
-| R1 | Antenna on the base shelf (about 6 mm above the desk) detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before PCB release. Wall-mount fallback. TX is already +8 dBm by default, so there is no power headroom left. |
+| R1 | Antenna on the base shelf (about 6 mm above the desk) detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before the PCB order. Wall-mount fallback. TX is already +8 dBm by default, so there is no power headroom left. |
 | R2 | Antenna coax flexes 0.3–0.5 mm on every click. **Length and route: closed.** It was too short (the -0050 is 50 mm); SPEC §5.2/§8 name the 146153-0100 (100 mm), and the CAD route to the outward-facing u.FL is 79 mm, leaving about 21 mm to stow ([§9](#9-rf-strategy-and-its-risk)). Near U12 it passes 0.84 mm from the part and 0.44 mm above the rotating cap ring | L | M | Service loop and strain relief. Tack the coax up with Kapton tape beside U12 (assembly step). |
 | R3 | Spin time below expectation (bearing preload ≥ 2.5–3 N, oil migration, shield rub; the model may under-predict friction). The verified acceptance is ≥ 45–60 s from 10 rev/s, and SPEC's preload is predicted to give 20–65 s | M | H | Measure spin-down with 3–5 bearings of each type. Keep **≥ 45 s from 10 rev/s** as the acceptance and treat the preload as the variable (D3): the lowest preload that stops click-mode rocking. Bearing prep step in assembly. |
 | R4 | Detent actuator under-powered: the worst-case load is 0.8–1.15 N, and the SPICE motor model gives the 8 mm VSM08102 at most 0.93 N from any battery VSYS (rated ≥ 0.78 N at 500 PPS) (hardware/sim, MD-4). Fit: a radial lead screw from r 21.5 inward hits the hub, so the mechanical model uses an inclined-slot chord path sweeping θ ≈ 35–160° ([docs/mechanical.md](mechanical.md) A11) | M | H | **Still open.** Cut the carriage preload and anti-lash spring so the worst-case load stays ≤ 0.5 N; if the thrust gate still fails, fall back to the N20 or a Ø6 planetary gearmotor with a lead screw ([docs/mechanical.md](mechanical.md) §7). The 10 mm sibling is not a remedy: its Ø10 can does not fit the 10.1 mm bowl. No change on the `detent` sheet closes the gap. Slow PPS in the loaded zone. |
@@ -1477,7 +1479,7 @@ L = likelihood, I = impact (H / M / L).
 
 | ID | Decision | Options | Recommendation | Decide when |
 |---|---|---|---|---|
-| D1 | Final antenna location | Base shelf at z ≈ 5.5–6, centred on y = +23.5 (SPEC), base floor (the earlier SPEC position), base wall, a different antenna, a ≤ 30 mm-wide pack for more pack clearance | Keep the shelf for rev A (SPEC §8 now closes its geometry, at 1.75 mm from the pack: [§13](#13-issues-found-in-spec-during-this-review) item 4), but make the cup accept a wall-mounted antenna too, and decide on mock-up VNA/RSSI data | Before PCB release |
+| D1 | Final antenna location | Base shelf at z ≈ 5.5–6, centred on y = +23.5 (SPEC), base floor (the earlier SPEC position), base wall, a different antenna, a ≤ 30 mm-wide pack for more pack clearance | Keep the shelf for rev A (SPEC §8 now closes its geometry, at 1.75 mm from the pack: [§13](#13-issues-found-in-spec-during-this-review) item 4), but make the cup accept a wall-mounted antenna too, and decide on mock-up VNA/RSSI data | Before the PCB order |
 | D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 8 mm VSM08102 with the preloads cut to ≤ 0.5 N; the N20 or a Ø6 planetary gearmotor as the fallback. The 10 mm sibling's Ø10 can does not fit the 10.1 mm bowl ([docs/mechanical.md](mechanical.md) §7). The 8 mm motor reaches at most 0.93 N from battery VSYS, below the 0.8–1.15 N worst-case load, so it works only with preloads cut to ≤ 0.5 N (hardware/sim, MD-4; R4). Chord path with an inclined-slot link in the mechanical model ([docs/mechanical.md](mechanical.md) A11) | Before mechanical CAD freeze |
 | D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N. Pick the lowest preload that stops rocking; it must meet the verified ≥ 45 s acceptance (R3). If no preload does both, the conflict goes back to SPEC | First rotor prototype |
 | D4 | Detent damping shoe | None, felt, UHMW | Make it removable and decide by feel | First rotor prototype |
@@ -1504,7 +1506,7 @@ from the research). Items marked *estimate* have no quote yet.
 |---|---|---|---|
 | Main-board electronics | MDBT50Q-U1MV2 ($6.8 TME to $16.8 JLC), SSD1351 panel ($15.3 Newhaven to $28 Orient/DigiKey), 48 LEDs ($3.9–5.0), W25Q128 ($1.6–2.8), LIS2DW12 ($1.1), piezo ($1.1), boost chain ($1.3–1.8), TMAG5273 ($0.58), TPD4E05U06 encoder ESD and second USBLC6 (U12) (*estimate* $0.1–0.3 each), DRV8837 ×2 + DRV5032 ($0.6–1.0), LDO + 2× TPS22917 load switch ($0.9–1.2), crystal, connectors and about 115 passives ($1.5–3) | $35 | $63 |
 | Base-board electronics | BQ25180 ($1.1–1.8), USB-C, USBLC6, SMF5.0A, BSS138DW, NTC, switch, JST connectors, passives | $2 | $3.5 |
-| PCBs and assembly | Main 4-layer Ø64 + base 4-layer Ø46 with the USB tab, both ENIG (*estimate* $6–15 per set, made when the base was 2-layer; *to re-quote*). JLC setup, two-sided assembly on the main board (36 bottom-side parts; the base board is single-sided) and extended-part fees spread over 5 sets (*estimate* $15–30) | $21 | $45 |
+| PCBs and assembly | Main 4-layer Ø64 + base 4-layer Ø46 with the USB tab, both ENIG (*estimate* $6–15 per set, made when the base was 2-layer; *to re-quote*). JLC setup, two-sided assembly on the main board (33 bottom-side placements, `hardware/fab/main/ORDER-NOTES.md`; the base board is single-sided) and extended-part fees spread over 5 sets (*estimate* $15–30) | $21 | $45 |
 | Mechanics | 316L ring CNC ($15–40), carrier ($5–20), 608 + wave spring ($2–11), spindle ($1–5), 49 magnets ($2–5), micro stepper ($2.8–7), printed parts (*estimate* $15–40), diffuser and window ($2–8), springs, screws, feet ($1.5–4) | $46 | $140 |
 | Off-board | Molex 146153-0100 ($1.5–3), 1000 mAh LiPo with PCM ($3–7), 12-wire SH harness with 28 AWG pre-crimped leads on the power pins and the 4-lead battery re-termination (*estimate* $1–3), 13.56 MHz NFC coil flex (no quote yet, not in the total) | $5.5 | $13 |
 | **Total per prototype unit** | | **≈ $110** | **≈ $265** |
@@ -1637,8 +1639,8 @@ item 8, and item 9.
 7. **Antenna 1–2 mm above the desk. Addressed in SPEC.** SPEC put the antenna
    at z 1.0–2.0, effectively on the desk surface. SPEC §8 now raises it to a
    shelf at z ≈ 5.5–6, about 6 mm above the desk. Metal surfaces remain the
-   main RF risk ([§9](#9-rf-strategy-and-its-risk)); validate before PCB
-   release.
+   main RF risk ([§9](#9-rf-strategy-and-its-risk)); validate before the
+   PCB order.
 8. **Actuator path wording. Addressed.** SPEC §1/§8 said the carriage
    "slides radially … along θ = 90°" with a "chord placement" actuator in the
    θ 60–120° keep-out. A radial lead screw driving the carriage from r 21.5 to

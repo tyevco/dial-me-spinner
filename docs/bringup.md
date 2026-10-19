@@ -232,8 +232,9 @@ power without a battery**. Test it in B-9.5d. Serial recovery is therefore alway
 
 ### B-7.1 Hook-up
 
-* TC2030 pads (J10, r 12, θ 150°) are on the main-board **top under the OLED glass**, so they are only reachable
-  before the panel is fitted (SPEC §8). Pinout: 1 VTref (+3V3), 2 SWDIO, 3 NRESET (P0.18), 4 SWDCLK, 5 GND, 6 SWO (P1.00).
+* TC2030 pads (J10, r 20.8, θ 238.5°, beside the module's SWD pins) are on the main-board **top under the OLED
+  glass**, at its edge near the bracket rim, so they are only reachable before the OLED bracket and panel are
+  fitted (SPEC §8). Pinout: 1 VTref (+3V3), 2 SWDIO, 3 NRESET (P0.18), 4 SWDCLK, 5 GND, 6 SWO (P1.00).
 * The TC2030-CTX-NL plugs into a J-Link EDU Mini directly, or into the nRF52840 DK's 10-pin "Debug out" header.
   The DK only switches to an external target when it sees target voltage on VTref and the GND-detect pin
   (header pin 9) is grounded. Check that the cable does this, and confirm in the DK user guide **[TVP]**.
@@ -292,8 +293,9 @@ Build a Zephyr/NCS image for the board with: a shell over **RTT** (no extra pins
 
 ### B-8.2 Blinky
 
-There is no discrete LED. Toggle **TP_SPARE1 (P0.03, pad TP10 on the main-board bottom)** at 1 Hz and watch it on the scope or DMM, and print
-"hello" over RTT. P0.03 is a low-frequency pin, which is fine at 1 Hz.
+There is no discrete LED. Toggle **TP_SPARE1 (P0.03, pad TP10 on the main-board top at r 17.7, θ 201°)** at 1 Hz and watch it on the scope or DMM, and print
+"hello" over RTT. P0.03 is a low-frequency pin, which is fine at 1 Hz. Like J10, TP10 sits under the OLED glass, so it
+can be probed only before the display is fitted; at this step (assembly Stage A6) it is not fitted yet.
 
 ### B-8.3 Clocks
 
