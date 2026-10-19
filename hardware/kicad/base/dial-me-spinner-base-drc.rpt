@@ -1,8 +1,12 @@
 ** Drc report for dial-me-spinner-base.kicad_pcb **
-** Created on 2026-10-19T03:02:14+0000 **
+** Created on 2026-10-19T03:17:30+0000 **
 ** Report includes: Errors, Warnings, Exclusions **
 
 ** Found 6 DRC violations **
+[clearance]: Clearance violation (pad clearance 0.6000 mm; actual 0.5406 mm)
+    Local override; error
+    @(113.5812 mm, 94.9990 mm): Track [/Base board/USB_DP] on F.Cu, length 7.6914 mm
+    @(113.7886 mm, 86.2114 mm): Pad [<no net>] of FID1 on F.Cu
 [silk_edge_clearance]: Silkscreen clipped by board edge
     Rule: board setup constraints silk; warning
     @(134.6000 mm, 106.5000 mm): Segment on Edge.Cuts
@@ -16,50 +20,31 @@
     @(95.1530 mm, 120.3856 mm): Via [GND] on F.Cu - B.Cu
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(94.7530 mm, 118.6356 mm): Track [/Base board/I2C_SCL] on F.Cu, length 0.8000 mm
+    @(113.5812 mm, 94.9990 mm): Track [/Base board/USB_DP] on F.Cu, length 7.6914 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
     @(94.7530 mm, 119.0356 mm): Track [/Base board/I2C_SDA] on F.Cu, length 0.8000 mm
-[track_dangling]: Track has unconnected end
-    Local override; warning
-    @(94.7530 mm, 118.2356 mm): Track [/Base board/CHG_INT_N] on F.Cu, length 0.8000 mm
 
-** Found 12 unconnected pads **
+** Found 7 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(125.2060 mm, 103.9034 mm): Pad 1 [/Base board/USB_CC1] of R1 on F.Cu
-    @(127.3050 mm, 101.2500 mm): Pad A5 [/Base board/USB_CC1] of J1 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
+    @(113.5812 mm, 94.9990 mm): Track [/Base board/USB_DP] on F.Cu, length 7.6914 mm
     @(91.6830 mm, 84.5946 mm): Pad 7 [/Base board/USB_DP] of J3 on F.Cu
-    @(117.8220 mm, 99.2398 mm): Track [/Base board/USB_DP] on F.Cu, length 2.2750 mm
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(117.8220 mm, 99.2398 mm): Track [/Base board/USB_DP] on F.Cu, length 2.2750 mm
     @(127.3050 mm, 99.2500 mm): Track [/Base board/USB_DP] on F.Cu, length 1.6750 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(119.7220 mm, 99.2398 mm): Track [/Base board/USB_DM] on F.Cu, length 2.2750 mm
-    @(90.8170 mm, 85.0945 mm): Pad 6 [/Base board/USB_DM] of J3 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(124.6300 mm, 99.7500 mm): Track [/Base board/USB_DM] on F.Cu, length 1.0000 mm
-    @(119.7220 mm, 99.2398 mm): Track [/Base board/USB_DM] on F.Cu, length 2.2750 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(125.2531 mm, 97.3318 mm): Pad 1 [/Base board/USB_CC2] of R2 on F.Cu
-    @(127.3050 mm, 98.2500 mm): Pad B5 [/Base board/USB_CC2] of J1 on F.Cu
+    @(117.8220 mm, 99.2398 mm): Track [/Base board/USB_DP] on F.Cu, length 2.0510 mm
 [unconnected_items]: Missing connection between items
     Local override; error
     @(93.4151 mm, 83.5946 mm): Pad 9 [/Base board/I2C_SCL] of J3 on F.Cu
-    @(94.7530 mm, 118.6356 mm): Track [/Base board/I2C_SCL] on F.Cu, length 0.8000 mm
+    @(94.7530 mm, 118.6356 mm): Track [/Base board/I2C_SCL] on F.Cu, length 0.4000 mm
 [unconnected_items]: Missing connection between items
     Local override; error
     @(94.2811 mm, 83.0946 mm): Pad 10 [/Base board/I2C_SDA] of J3 on F.Cu
     @(94.7530 mm, 119.0356 mm): Track [/Base board/I2C_SDA] on F.Cu, length 0.8000 mm
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(94.7530 mm, 118.2356 mm): Track [/Base board/CHG_INT_N] on F.Cu, length 0.8000 mm
+    @(94.7530 mm, 118.2356 mm): Track [/Base board/CHG_INT_N] on F.Cu, length 0.4000 mm
     @(95.1471 mm, 82.5946 mm): Pad 11 [/Base board/CHG_INT_N] of J3 on F.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
@@ -67,12 +52,8 @@
     @(96.0131 mm, 82.0946 mm): Pad 12 [/Base board/BTN_N] of J3 on F.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(94.6260 mm, 119.4360 mm): Track [/Base board/CHG_TSMR] on F.Cu, length 0.1266 mm
-    @(94.2579 mm, 104.6535 mm): Pad 6 [/Base board/CHG_TSMR] of Q1 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(103.0000 mm, 98.1250 mm): Pad 1 [/Base board/SW_HI] of SW1 on F.Cu
-    @(97.7067 mm, 98.0956 mm): Track [/Base board/SW_HI] on F.Cu, length 2.4316 mm
+    @(94.2579 mm, 104.6535 mm): Track [/Base board/CHG_TSMR] on F.Cu, length 0.0005 mm
+    @(94.6260 mm, 119.4360 mm): Track [/Base board/CHG_TSMR] on F.Cu, length 0.0635 mm
 
 ** Found 0 Footprint errors **
 
