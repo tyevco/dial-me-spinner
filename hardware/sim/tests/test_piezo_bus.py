@@ -28,11 +28,15 @@ gate ramp (EDGE) is calibrated to the PS tHRF,25pF / tRF,25pF edge rates.
 from __future__ import annotations
 
 import math
+import os
+import sys
 
 import numpy as np
 import pytest
 
 import spicelib
+sys.path.insert(0, os.path.join(spicelib.HW, "design"))
+from nets import MCU_PINS  # noqa: E402
 from spicelib import Deck
 
 LIB = {k: f"piezo_bus__{k}.lib" for k in
@@ -524,7 +528,8 @@ def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=
     for i, n in enumerate(nets):             # link pins 9..12 on both ends (nets.LINK_PINOUT)
         assert d.pin("J1", str(9 + i)) == mn[n] and bnode(b.pin("J3", str(9 + i))) == bn[n], f"link pin {9 + i}"
     assert d.pin("U10", "P0.08") == mn["I2C_SCL"] and d.pin("U10", "P1.09") == mn["I2C_SDA"]
-    assert d.pin("U10", "P0.09") == mn["CHG_INT_N"] and d.pin("U10", "P1.10") == mn["BTN_N"]
+    pin_of = {net: pin for pin, net in MCU_PINS.items() if net}      # nets.py is the pin map of record
+    assert d.pin("U10", pin_of["CHG_INT_N"]) == mn["CHG_INT_N"] and d.pin("U10", pin_of["BTN_N"]) == mn["BTN_N"]
     assert d.pin("U31", "SCL/SPC") == mn["I2C_SCL"] and d.pin("U31", "SDA/SDI/SDO") == mn["I2C_SDA"]
     assert bnode(b.pin("U1", "SCL")) == bn["I2C_SCL"] and bnode(b.pin("U1", "SDA")) == bn["I2C_SDA"]
     assert bnode(b.pin("U1", "~{INT}")) == bn["CHG_INT_N"] and bnode(b.pin("Q1", "3")) == bn["BTN_N"]
@@ -548,7 +553,7 @@ def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=
     cn = f"cpad={cs['c_nrf']:g}"
     deck += gpio("NSCL", mn["I2C_SCL"], v3, "0", c["scl_nrf"], *drive, vdd).replace("cpad=3e-12", cn)
     deck += gpio("NSDA", mn["I2C_SDA"], v3, "0", c["sda_nrf"], *drive, vdd).replace("cpad=3e-12", cn)
-    deck += gpio_in("NINT", mn["CHG_INT_N"], v3, vdd, max(cs["c_nrf"], 4e-12))   # P0.09 = NFC1 pad
+    deck += gpio_in("NINT", mn["CHG_INT_N"], v3, vdd, cs["c_nrf"])   # CHG_INT_N on a plain GPIO (P1.03)
     deck += gpio_in("NBTN", mn["BTN_N"], v3, vdd, cs["c_nrf"])
     deck += f"XLSCL {mn['I2C_SCL']} 0 LIS2DW12_IN ci={cs['c_dev']:g}"
     deck += f"VAM_LSDA {mn['I2C_SDA']} {mn['I2C_SDA']}_l 0"
