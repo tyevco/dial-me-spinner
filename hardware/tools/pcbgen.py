@@ -542,6 +542,113 @@ def stitch_vias(b, net_name="GND", pitch=3.0, via=0.5, drill=0.25, clearance=0.2
     return added
 
 
+def fanout_vias(b, net_name="GND", pads=None, via=0.5, drill=0.25, track=0.25, clearance=0.15, max_dist=2.2,
+                lock=True):
+    """Give each SMD pad of the net (or just `pads`) a through via with a short track on the pad's layer, so the
+    pad reaches the inner plane.  A pad that already has a same-net via within reach of its own edge gets only the
+    track.  Each candidate spot is checked against every other-net pad, track and via on every layer it touches,
+    the via/track rule areas and hole-to-hole spacing.  Returns (pads done, pads left without a spot)."""
+    net = b.GetNetInfo().GetNetItem(net_name)
+    if net is None:
+        return 0, []
+    code = net.GetNetCode()
+    cu = [lay for lay in (pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu) if b.IsLayerEnabled(lay)]
+    tracks = list(b.GetTracks())
+    allpads = [pd for fp in b.GetFootprints() for pd in fp.Pads()]
+    holes = [pd for pd in allpads if pd.GetDrillSize().x > 0]
+    vias = [t for t in tracks if t.Type() == pcbnew.PCB_VIA_T]
+    rules = [z for z in b.Zones() if z.GetIsRuleArea()]
+    rv, hw, clr = MM(via / 2), MM(track / 2), MM(clearance)
+    if pads is None:
+        pads = [pd for pd in allpads if pd.GetNetCode() == code and pd.GetDrillSize().x == 0
+                and (pd.IsOnLayer(pcbnew.F_Cu) or pd.IsOnLayer(pcbnew.B_Cu))]
+
+    def via_ok(pt):
+        for z in rules:
+            if z.GetDoNotAllowVias() and z.Outline().Collide(pt, int(rv + clr)):
+                return False
+        acc = rv + clr
+        for t in tracks:
+            if t.GetNetCode() != code and t.HitTest(pt, acc):
+                return False
+        for pd in allpads:
+            if pd.GetNetCode() != code and any(pd.IsOnLayer(lay) for lay in cu) and pd.HitTest(pt, acc):
+                return False
+        for h in holes:  # drill-to-drill 0.25 mm, and via copper to a (NPTH) hole edge 0.25 mm
+            if (h.GetPosition() - pt).EuclideanNorm() < max(MM(drill / 2), rv) + MM(0.25) + h.GetDrillSize().x // 2:
+                return False
+        for v in vias:
+            if (v.GetStart() - pt).EuclideanNorm() < MM(drill / 2 + 0.25) + v.GetDrillValue() // 2:
+                return False
+        return True
+
+    def seg_ok(a, c, layer, own):
+        n = max(2, int((c - a).EuclideanNorm() / MM(0.05)))
+        for k in range(1, n + 1):
+            q = pcbnew.VECTOR2I(a.x + (c.x - a.x) * k // n, a.y + (c.y - a.y) * k // n)
+            for z in rules:
+                if z.GetDoNotAllowTracks() and z.IsOnLayer(layer) and z.Outline().Collide(q, int(hw + clr)):
+                    return False
+            for t in tracks:
+                if t.GetNetCode() != code and t.IsOnLayer(layer) and t.HitTest(q, hw + clr):
+                    return False
+            for pd in allpads:
+                if pd is not own and pd.GetNetCode() != code and pd.IsOnLayer(layer) and pd.HitTest(q, hw + clr):
+                    return False
+        return True
+
+    def add_track(a, c, layer):
+        t = pcbnew.PCB_TRACK(b)
+        t.SetStart(a)
+        t.SetEnd(c)
+        t.SetWidth(MM(track))
+        t.SetLayer(layer)
+        t.SetNet(net)
+        t.SetLocked(lock)
+        b.Add(t)
+        tracks.append(t)
+
+    done, left = 0, []
+    for pd in pads:
+        layer = pcbnew.F_Cu if pd.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
+        c0 = pd.GetPosition()
+        reach = max(pd.GetSize().x, pd.GetSize().y) // 2
+        # an existing same-net via close by: just connect to it
+        near = sorted((v for v in vias if v.GetNetCode() == code),
+                      key=lambda v: (v.GetStart() - c0).EuclideanNorm())
+        if near and (near[0].GetStart() - c0).EuclideanNorm() <= reach + MM(1.0):
+            if (near[0].GetStart() - c0).EuclideanNorm() <= reach or seg_ok(c0, near[0].GetStart(), layer, pd):
+                if (near[0].GetStart() - c0).EuclideanNorm() > reach:
+                    add_track(c0, near[0].GetStart(), layer)
+                done += 1
+                continue
+        found = None
+        d = reach + rv + clr
+        while d <= reach + MM(max_dist) and not found:
+            for k in range(24):
+                a = 2 * math.pi * k / 24
+                pt = c0 + pcbnew.VECTOR2I(int(d * math.cos(a)), int(d * math.sin(a)))
+                if via_ok(pt) and seg_ok(c0, pt, layer, pd):
+                    found = pt
+                    break
+            d += MM(0.1)
+        if not found:
+            left.append(pd)
+            continue
+        v = pcbnew.PCB_VIA(b)
+        v.SetPosition(found)
+        v.SetWidth(MM(via))
+        v.SetDrill(MM(drill))
+        v.SetNet(net)
+        v.SetLocked(lock)
+        b.Add(v)
+        tracks.append(v)
+        vias.append(v)
+        add_track(c0, found, layer)
+        done += 1
+    return done, left
+
+
 def dedupe_tracks(b):
     """Drop exact duplicate segments/vias (a re-route of an already routed board re-imports the old wiring)."""
     seen, dup = set(), []

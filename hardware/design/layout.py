@@ -616,6 +616,7 @@ BOARDS = {
     "main": dict(layers=4, fixed=main_fixed, anchors=main_anchor_sides, inside=main_inside,
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
                  light_power=("+3V3", "VBUS", "+13V_OLED"),  # +3V3 < 0.1 A, VBUS sense 2.4 mA, +13V_OLED < 30 mA
+                 gnd_fanout=True,  # every GND SMD pad gets a via to the In1 plane before routing; GND is not routed
                  post_fixed=main_post_fixed,
                  # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
                  pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM")},
@@ -932,6 +933,51 @@ def dsn_plane_as_layer_rule(dsn, net="GND", layer="In1.Cu"):
         f.write("".join(out))
 
 
+def dsn_drop_net(dsn, net="GND"):
+    """Leave a net out of the routing: its pins become no-net obstacles, and its pre-placed copper (the locked GND
+    fan-out vias and tracks) is handed over as keepouts so the router still keeps clear of it.  Used where the net
+    reaches an inner plane through fan-out vias placed before routing (Freerouting cannot route against a plane,
+    and wiring every GND pad as a trace swamps the main board)."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    m = re.search(r"\(net %s\s" % re.escape(net), s)
+    if not m:
+        return
+    s = s[:m.start()] + s[_sexpr_end(s, m.start()):]
+    # classes: drop the net from its class; a class left with no nets goes
+    out, pos = [], 0
+    for m in re.finditer(r"\(class (\S+)", s):
+        if m.start() < pos:
+            continue
+        end = _sexpr_end(s, m.start())
+        block = s[m.start():end]
+        head, rest = block[:block.index("(", 1)], block[block.index("(", 1):]
+        names = re.findall(r'"[^"]*"|[^\s()]+', head)[2:]
+        if net in names:
+            names = [n for n in names if n != net]
+            block = (f"(class {m.group(1)} {' '.join(names)}\n      " + rest) if names else ""
+        out += [s[pos:m.start()], block]
+        pos = end
+    out.append(s[pos:])
+    s = "".join(out)
+    # pre-placed copper of the net -> keepouts in the structure
+    layers = re.findall(r"\(layer (\S+)\s*\(type", s)
+    keep = []
+    for m in list(re.finditer(r"\(wire \(path (\S+) ([0-9.]+) ([^)]*)\)\s*\(net %s\)[^\n]*" % re.escape(net), s))[::-1]:
+        keep.append(f'    (keepout "" (path {m.group(1)} {m.group(2)} {m.group(3)}))')
+        s = s[:m.start()] + s[m.end():]
+    for m in list(re.finditer(r'\(via "([^"]+)"\s+([-0-9.]+) ([-0-9.]+)\s*\(net %s\)[^\n]*' % re.escape(net), s))[::-1]:
+        dia = re.search(r"Via\[[0-9]+-[0-9]+\]_([0-9.]+):", m.group(1))
+        d = float(dia.group(1)) if dia else 500.0
+        keep += [f'    (keepout "" (circle {lay} {d:g} {m.group(2)} {m.group(3)}))' for lay in layers]
+        s = s[:m.start()] + s[m.end():]
+    st = s.find("(structure")
+    end = _sexpr_end(s, st)
+    s = s[:end - 1] + "\n".join(keep) + "\n  )" + s[end:]
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write(s)
+
+
 def dsn_clearance_margin(dsn, margin_um=10):
     """Freerouting approximates rotated pads (the 48 ring LEDs sit at 7.5° steps) with octagons and lands a few µm
     inside KiCad's clearance; route with the plain clearances raised by margin_um so the result passes KiCad's DRC."""
@@ -942,7 +988,7 @@ def dsn_clearance_margin(dsn, margin_um=10):
         f.write(s)
 
 
-def route(path, minutes=30, threads=1, optimizer_passes=20):
+def route(path, minutes=30, threads=1, optimizer_passes=20, drop_nets=()):
     """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
     Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
     the run is bounded by its job timeout, after which it writes the best board so far.  The post-route optimizer
@@ -956,6 +1002,8 @@ def route(path, minutes=30, threads=1, optimizer_passes=20):
         os.remove(ses)
     pcbgen.export_dsn(path, dsn)
     dsn_plane_as_layer_rule(dsn)
+    for n in drop_nets:
+        dsn_drop_net(dsn, n)
     dsn_clearance_margin(dsn)
     with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
         subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mt", str(threads),
@@ -990,8 +1038,17 @@ def main():
         out = generate(board, pours=not a.route)
         print(f"[{board}] placed ->", out)
         if a.route:
+            drop = ()
+            if BOARDS[board].get("gnd_fanout"):
+                b = pcbnew.LoadBoard(out)
+                done, left = pcbgen.fanout_vias(b, "GND")
+                pcbnew.SaveBoard(out, b)
+                pcbgen.refill(out)
+                print(f"[{board}] GND fan-out: {done} pads, {len(left)} without room:",
+                      [(p.GetParentFootprint().GetReference(), p.GetNumber()) for p in left])
+                drop = ("GND",)
             for attempt in range(a.attempts):
-                route(out, a.minutes * (attempt + 1))
+                route(out, a.minutes * (attempt + 1), drop_nets=drop)
                 _, counts = drc(out)
                 left = counts.get("[unconnected_items]", 0)
                 print(f"[{board}] route attempt {attempt + 1}: {left} unconnected")
