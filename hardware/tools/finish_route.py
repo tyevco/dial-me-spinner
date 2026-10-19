@@ -327,6 +327,37 @@ class Router:
                     mk[k] |= tmp
         return mk, pts
 
+    @staticmethod
+    def reachable(free, vfree, start, goal):
+        """Can any start cell reach any goal cell? Free space labelled per layer (8-connected), layers joined at the
+        cells where a via fits. Cheap (scipy), so hopeless searches are skipped."""
+        from scipy import ndimage
+        L = free.shape[0]
+        labels, off = [], 0
+        for k in range(L):
+            lab, n = ndimage.label(free[k], structure=np.ones((3, 3), int))
+            labels.append(np.where(lab > 0, lab + off, 0))
+            off += n
+        parent = np.arange(off + 1)
+
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+        for a in range(L):
+            for c in range(a + 1, L):
+                m = vfree & (labels[a] > 0) & (labels[c] > 0)
+                if not m.any():
+                    continue
+                pairs = np.unique(np.stack([labels[a][m], labels[c][m]], axis=1), axis=0)
+                for la, lc in pairs:
+                    ra, rc = find(int(la)), find(int(lc))
+                    if ra != rc:
+                        parent[ra] = rc
+        src = {find(int(labels[k][y, x])) for k, y, x in zip(*np.nonzero(start)) if labels[k][y, x]}
+        return any(find(int(labels[k][y, x])) in src for k, y, x in zip(*np.nonzero(goal)) if labels[k][y, x])
+
     def astar(self, grid, blk, vblk, src, dst, dst_pts, sblk=None, svblk=None):
         L, ny, nx = blk.shape
         free = ~blk
@@ -340,6 +371,8 @@ class Router:
         start = src & free
         goal = dst & free
         if not start.any() or not goal.any():
+            return None
+        if not (start & goal).any() and not self.reachable(free, ~vblk, start, goal):
             return None
         gk, gy_, gx_ = np.nonzero(goal)
         bx0, bx1, by0, by1 = int(gx_.min()), int(gx_.max()), int(gy_.min()), int(gy_.max())

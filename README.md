@@ -77,8 +77,10 @@ hardware/
     layout.py            generates the boards (.kicad_pcb) from the netlists:
                          SPEC §8 placement of the constrained parts, clustering
                          of the rest, outline, keep-outs, zones, fiducials,
-                         optional Freerouting autoroute with clean-up (GND
-                         stitching vias, silkscreen references), then DRC
+                         optional Freerouting autoroute, then the grid router
+                         (hardware/tools/finish_route.py) for what it leaves
+                         open, clean-up (GND stitching vias, silkscreen
+                         references), then DRC
     release.py           fab and review outputs into hardware/fab/<board>/:
                          gerbers, JLCPCB BOM + CPL, ORDER-NOTES.md, schematic and
                          board PDFs, 3D renders; refuses to write them unless DRC
@@ -127,7 +129,7 @@ Requirements:
     `KICAD9_FOOTPRINT_DIR` overrides the footprint path, and only `layout.py`
     reads it. The project template path
     (`/usr/share/kicad/template/kicad.kicad_pro`) is fixed in `schgen.py`.
-* **Python 3.10+**, with numpy for `layout.py` and the CPL writer.
+* **Python 3.10+**, with numpy for `layout.py` and the CPL writer, and matplotlib for the grid router.
 * **poppler-utils** (`pdftoppm`), only for `--render`.
 * Optionally `xvfb-run`, which `release.py` uses for headless 3D renders.
 * For autorouting only: **Java 21** and the **Freerouting 2.1.x** jar, given
@@ -163,8 +165,10 @@ Boards and fab outputs (after `build.py`, which writes the netlists they read):
 # Place both boards and run DRC; add --route to autoroute with Freerouting
 # (--minutes N is the Freerouting time budget of the first attempt, default 30,
 # and attempt k gets k x N; --attempts N, default 3, re-runs it while
-# connections remain; --finish only cleans up an already routed board)
-python3 hardware/design/layout.py [--board main|base] [--route] [--minutes N] [--attempts N] [--finish]
+# connections remain; whatever is still open then goes to the grid router;
+# --resume continues routing the board as it is; --complete runs only the grid
+# router on it; --finish only cleans up an already routed board)
+python3 hardware/design/layout.py [--board main|base] [--route] [--minutes N] [--attempts N] [--resume] [--complete] [--finish]
 
 # Gerbers, JLCPCB BOM + CPL, ORDER-NOTES.md, PDFs and 3D renders into
 # hardware/fab/<board>/; stops if DRC or schematic parity reports an error
