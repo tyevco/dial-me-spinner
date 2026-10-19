@@ -32,21 +32,28 @@ Limits (every one from a datasheet, quoted in each check's source string):
 
 The "capped" scenarios apply the firmware power policy of docs/firmware.md (5.8, 6.3, 7.4, 12.4): LED average
 150 mA sustained / 300 mA bursts at VBAT >= 3.65 V, 100 mA below 3.60 V and while the actuator moves, only a
-2 mA red cue below 3.53 V, SHIP below 3.48 V, actuator moves only at VSYS >= 3.40 V (park >= 3.30 V).
+2 mA red cue and then SHIP below 3.53 V (VSENSE-1/4; the 3.48 V points of the old SHIP threshold are kept, a
+3.53 V reading can be 46 mV high), non-park actuator moves only from VSYS >= 3.55 V measured idle (MD-2; park
+>= 3.30 V). The firmware also holds the OLED at C7 <= 08h below 3.75 V and during LED bursts (OLED-BST-2); the
+fw_scenarios points keep the panel at 100 % down to 3.60 V, which is the conservative direction.
 
 Corners: nominal (pack 100 mOhm, contacts as new, 25 C typical RON), worst (200 mOhm pack, contacts after
 environmental tests, 60 C datasheet-max RON / dropout, VSYS-GND wires 5 mm apart, every capacitor at -tol),
 cold (-10 C, same but copper colder). VBAT 3.0 / 3.7 / 4.2 V plus the firmware policy thresholds; VBUS
-4.5 / 5.0 / 5.5 V with SYS_REG -2 % / nominal / +2 %.
+4.5 / 5.0 / 5.5 V with SYS_REG at the firmware 4.4 V (0x20) -2 % / nominal and at the 4.5 V POR default (the
+only other allowed value) +2 % for the 5.5 V maximum-voltage corner.
 
-What the simulation shows (rev A netlists; xfail tests carry the evidence):
+What the simulation shows (rev A netlists; xfail tests carry the evidence, *_with_fw_rule tests guard the rules):
   * Uncapped (no firmware limit) the system draws ~1.33 A: VLED 3.05 V at VBAT 3.7 V worst corner, and at the
-    end of discharge (3.0 V) +3V3 falls below the flash minimum -> the firmware limiter is a protection function.
+    end of discharge (3.0 V) +3V3 falls below the flash minimum -> the firmware limiter is a protection function
+    (PI-1; guarded by test_hw_worst_case_uncapped_dc_with_fw_rule).
   * With the firmware AVERAGE caps every steady-state point passes (VLED >= 3.33 V worst corner).
   * But the cap limits the average only: with all LEDs lit and their PWM aligned the ring pulls 0.72 A for
     70-210 us, VLED falls to 3.08-3.25 V at VBAT <= 3.70 V; a peak (lit-channel) budget is derived per VBAT
-    (test_led_peak_budget_vs_vbat) and verified (test_proposed_peak_cap_fix).
-  * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses).
+    (test_led_peak_budget_vs_vbat), and the firmware.md 6.3 table taken from it (PI-2) is guarded by
+    test_firmware_capped_sync_pwm_transient_with_fw_rule and test_led_peak_budget_table_with_fw_rule.
+  * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses); the "no supplement"
+    profile (PI-4) is guarded by test_usb_without_battery_with_fw_rule.
   * Ground offset between the boards <= ~47 mV; the I2C low level seen by the BQ25180 is 0.30 V (VIL 0.4 V).
   * Decoupling: BQ25180 SYS 20 uF local, 93.6 uF on both boards at +tol (Table 9-2 max 100 uF: little room to
     add VSYS bulk); a hard VLED short is stopped only by BATOCP / the pack PCM (U2 has no current limit).
@@ -120,7 +127,9 @@ CONTACT_A = {"SH": 1.0, "PH": 2.0}   # A per contact (JST SH: 1.0 A with AWG #28
 BATT_RINT = (0.100, 0.200)           # Ohm, 1S LiPo pack (cell + PCM) range of the task brief
 
 # ------------------------------------------------------------------------------- IC datasheet values
-BQ_VSYSREG, BQ_VSYSREG_TOL = 4.5, 0.02              # SLUSE99C Table 8-3, 7.5 VSYS_REG_ACCURACY
+BQ_VSYSREG, BQ_VSYSREG_TOL = 4.5, 0.02              # SLUSE99C Table 8-19 POR default SYS_REG_CTRL = 010, 7.5 accuracy
+BQ_VSYSREG_FW = 4.4      # firmware SYS_REG (0x0A) = 0x20, SYS_REG_CTRL = 001 (docs/firmware.md 13.1; LED-DATA-V3,
+                         # LDO-2); 4.5 V (BQ_VSYSREG) is the only other allowed value, so it bounds the maximum side
 BQ_ILIM500 = (0.450, 0.475, 0.498)                  # SLUSE99C 7.5 ILIM, 500 mA code (min, typ, max)
 BQ_ILIM100 = (0.080, 0.090, 0.098)                  # SLUSE99C 7.5 ILIM, 100 mA code
 BQ_RON_IN = (0.270, 0.470)                          # SLUSE99C 7.5 RON_IN typ / max
@@ -155,9 +164,48 @@ BOOST_VF = 0.45                                     # B5819W drop at ~0.4 A (ass
 MOTOR_RCOIL, MOTOR_IRUN, MOTOR_FPWM = 20.3, 0.160, 25e3
 MOTOR_I45 = MOTOR_IRUN * math.cos(math.pi / 4)
 
+
+def motor_r_fw(temp: float) -> float:
+    """Coil + rDS(on) in the firmware duty formula, d = I x R / VSYS (docs/firmware.md 5.3, MD-3: temperature
+    compensated, 20 Ohm x (1 + 0.00393 (T - 25 C)) + 0.33 Ohm). Never below the 25 C 20.3 Ohm used before MD-3: at
+    the cold corner the lower duty would lower the modelled VM current (loosen the checks); above 25 C the hotter
+    coil needs, and draws, the higher duty."""
+    return max(MOTOR_RCOIL, 20.0 * (1 + CU_TC * (temp - 25.0)) + 0.33)
+
 # firmware policy (docs/firmware.md 5.8, 6.3, 7.4, 12.4)
 FW_LED_BURST, FW_LED_SUST, FW_LED_LOW, FW_LED_MOVING, FW_LED_CUE = 0.300, 0.150, 0.100, 0.100, 0.002
-FW_V_FULL, FW_V_DERATE, FW_V_OFF, FW_V_SHIP = 3.65, 3.60, 3.53, 3.48
+# LEDs off except the red cue below 3.53 V, and SHIP after 3 such readings (VSENSE-1, VSENSE-4)
+FW_V_FULL, FW_V_DERATE, FW_V_OFF, FW_V_SHIP = 3.65, 3.60, 3.53, 3.53
+# superseded SHIP threshold (3.48 V before VSENSE-1/4). Kept as the low-battery evidence point of the strict xfails
+# and of the passing lowbat / USB-low-pack checks (3.53 V there would loosen them). A unit can still sit at it: a
+# 3.53 V reading can be up to 46 mV high (firmware.md 12.4), and it is the lowest row of the instantaneous budget,
+# the one used on USB (PI-2, NF-1)
+FW_V_SHIP_OLD = 3.48
+FW_V_OLED_DIM = 3.75                  # OLED C7 <= 08h below this rested VBAT and during LED bursts (OLED-BST-2)
+FW_VSYS_MOVE, FW_VSYS_PARK = 3.55, 3.30   # non-park moves from VSYS >= 3.55 V measured idle (MD-2); park moves
+# instantaneous lit-channel budget, docs/firmware.md 6.3 (PI-2): (rested VBAT row, allowed aligned ring peak A);
+# the full ring from 3.90 V, about 0.23 A less while the actuator moves
+FW_PK_ROWS = ((3.48, 0.19), (3.53, 0.28), (3.60, 0.33), (3.65, 0.42), (3.70, 0.51), (3.80, 0.69))
+FW_PK_V_FULL, FW_PK_MOVING = 3.90, 0.23
+FW_PK_USB_ROW = 3.48       # on USB: this row until CHG_STAT reports CV/done (NF-1) ...
+FW_USB_TOTAL = 0.40        # ... or keep the total on-USB load (LEDs + OLED + actuator) <= 0.40 A (NF-1)
+FW_PK_B_FULL = 1.0         # WS2812B-2020-V6 variant (12 mA/ch): instantaneous cap about 1.0 A at full battery (PI-3)
+# "no supplement" profile on USB (pack absent, BUVLO_STAT = 1 or CHG_STAT = precharge), firmware.md 6.3 / 13.3, PI-4:
+# ILIM 100 mA phase: LEDs <= 20 mA cue, OLED off, no flash erase, BLE TX 0 dBm, total <= 70 mA;
+# ILIM 500 mA phase: no actuator, LEDs <= 100 mA peak-limited, OLED C7 <= 08h, total <= 400 mA
+FW_NOSUP_LED100, FW_NOSUP_TOTAL100 = 0.020, 0.070
+FW_NOSUP_LED500, FW_NOSUP_TOTAL500 = 0.100, 0.400
+RULE_PI1 = ("with fw rule PI-1 (docs/firmware.md 6.3 / 11.2, SPEC 5.4): limiter active from the first frame after "
+            "reset; MCUboot and the recovery image keep LED_PWR_EN, OLED_VCC_EN and MOT_NSLEEP low")
+RULE_PI2 = ("with fw rule PI-2 (docs/firmware.md 6.3): lit channels x I_ch <= 0.19/0.28/0.33/0.42/0.51/0.69 A at "
+            "VBAT 3.48/3.53/3.60/3.65/3.70/3.80 V, full ring >= 3.90 V, 0.23 A less while the actuator moves")
+RULE_NF1 = ("with fw rule NF-1 (docs/firmware.md 6.3 / 13.3): on USB the 3.48 V row (0.19 A) until CHG_STAT reports "
+            "CV/done, or total on-USB load (LEDs + OLED + actuator) <= 0.40 A")
+RULE_PI3 = ("with fw rule PI-3 (docs/firmware.md 6.1 / 6.3, SPEC 5.4): the WS2812B variant only with the "
+            "instantaneous cap, about 1.0 A at full battery")
+RULE_PI4 = ("with fw rule PI-4 (docs/firmware.md 6.3 / 13.3, SPEC 5.4): no-supplement profile, ILIM 100 mA: LEDs "
+            "<= 20 mA cue, OLED off, no flash erase, TX 0 dBm, <= 70 mA; ILIM 500 mA: no actuator, LEDs <= 100 mA "
+            "peak-limited, OLED C7 <= 08h, <= 400 mA")
 
 
 # =========================================================================================== corners
@@ -263,6 +311,7 @@ class Loads:
     i3v3_base: float = I3V3_BASE
     i3v3_tx: float = I3V3_TX
     tx: bool = True             # TX bursts (else the TX current is steady)
+    led_en: bool = True         # LED_PWR_EN (False: U2 off, as MCUboot / the recovery image leave it, PI-1)
 
 
 def led_sync(cap: float, n: int, ich: float = WS_ICH) -> dict:
@@ -434,7 +483,8 @@ class System:
         d += self._remap(M.passives(nets=self.MAIN_NETS, scale=self._scale(M, scale)), "m_", "gm", "m")
 
         # ---- LED rail: TPS22917 U2 + ring
-        v_on = f"PULSE(0 3.3 {loads.led_on_at} 1u 1u 1 2)" if loads.led_on_at is not None else "DC 3.3"
+        v_on = f"PULSE(0 3.3 {loads.led_on_at} 1u 1u 1 2)" if loads.led_on_at is not None else \
+            "DC 3.3" if loads.led_en else "DC 0"
         d += [f"Ven_led {self.mpin('U2', 'ON')} gm {v_on}", f"Vilsw {self.mpin('U2', 'VIN')} lsw_in 0",
               f"Rvled_leak {self.mpin('U2', 'VOUT')} gm 10meg", f"Rqod_leak {self.mpin('U2', 'QOD')} gm 10meg",
               f"Xu2 lsw_in {self.mpin('U2', 'ON')} {self.mpin('U2', 'CT')} {self.mpin('U2', 'VOUT')} "
@@ -460,7 +510,7 @@ class System:
         # ---- detent drivers (both share one PWM instance: aligned edges)
         if loads.motor != "off":
             for ref in ("U40", "U41"):
-                duty = min(1.0, loads.motor_icoil * MOTOR_RCOIL / max(v, 2.5))
+                duty = min(1.0, loads.motor_icoil * motor_r_fw(c.temp) / max(v, 2.5))
                 if loads.motor == "full":
                     p = f"RCOIL={MOTOR_RCOIL} FULLON=1"
                 elif loads.motor == "avg":
@@ -490,7 +540,7 @@ class System:
             d += [f"Rq1b_on {self.bpin('Q1', q)} 0 {QFET_RDS}"]
 
         # ---- initial guess for the operating point (the behavioural min/max sources need one)
-        led_up = loads.led_on_at is None
+        led_up = loads.led_on_at is None and loads.led_en
         v = vguess if vguess is not None else v
         ns = {self.m("VSYS"): v, self.b("VSYS"): v, "hv1": v, "bq_sys": v, self.m("+3V3"): min(v, vset) - 0.01,
               self.m("VLED"): v if led_up else 0.0, self.mpin("U2", "CT"): 0.0 if led_up else v,
@@ -597,7 +647,9 @@ def longest_below(res, vec: str, thr: float) -> float:
 
 # ================================================================================ scenario definitions
 def fw_scenarios(n_led: int) -> dict:
-    """Firmware power policy points (docs/firmware.md): name -> (VBAT rested, LED cap A, OLED ICC A, motor)."""
+    """Firmware power policy points (docs/firmware.md): name -> (VBAT rested, LED cap A, OLED ICC A, motor).
+    The OLED stays at 100 % at 3.65 / 3.70 V although OLED-BST-2 now dims it below 3.75 V (conservative); at 3.53 and
+    3.48 V only park moves are allowed since MD-2 (VSYS < 3.55 V), modelled with the same coil current."""
     return {
         "full@3.65": (FW_V_FULL, FW_LED_BURST, OLED_ICC_MAX, "off"),
         "full@3.70": (3.70, FW_LED_BURST, OLED_ICC_MAX, "off"),
@@ -605,7 +657,7 @@ def fw_scenarios(n_led: int) -> dict:
         "moving@3.65": (FW_V_FULL, FW_LED_MOVING, OLED_ICC_MAX, "run"),
         "moving@4.20": (4.20, FW_LED_MOVING, OLED_ICC_MAX, "run"),
         "derated@3.53": (FW_V_OFF, FW_LED_LOW, OLED_ICC_DIM, "run"),
-        "lowbat@3.48": (FW_V_SHIP, FW_LED_CUE, OLED_ICC_DIM, "run"),
+        "lowbat@3.48": (FW_V_SHIP_OLD, FW_LED_CUE, OLED_ICC_DIM, "run"),
     }
 
 
@@ -628,6 +680,64 @@ def hw_loads(sync: bool, ich=WS_ICH) -> Loads:
     return Loads(oled_icc=OLED_ICC_MAX, motor="full", tx=sync, oled_ripple=sync, **led)
 
 
+# ------------------------------------------------------- documented firmware rules (for the *_with_fw_rule guards)
+def fw_peak_cap(vbat: float, n_led: int, moving: bool = False, ich: float = WS_ICH, usb: bool = False) -> float:
+    """Instantaneous (lit-channel) budget of docs/firmware.md 6.3 (PI-2): the row at or below the rested VBAT, the
+    full ring from 3.90 V, 0.23 A less while the actuator moves; on USB the 3.48 V row (NF-1). Below the lowest row
+    the table allows nothing (only the red cue runs there)."""
+    full = 3 * n_led * ich
+    v = FW_PK_USB_ROW if usb else vbat
+    if v >= FW_PK_V_FULL:
+        pk = full
+    else:
+        rows = [p for vr, p in FW_PK_ROWS if vr <= v + 1e-9]
+        pk = rows[-1] if rows else 0.0
+    return min(full, max(0.0, pk - (FW_PK_MOVING if moving else 0.0)))
+
+
+def fw_policy(vbat: float) -> dict:
+    """Documented battery load policy at a rested VBAT (docs/firmware.md 5.8, 6.3, 7.4, 12.4):
+    phase -> (LED average cap A, OLED panel current A, actuator moving).
+    OLED at C7 <= 08h below 3.75 V and while the LEDs burst above 150 mA (OLED-BST-2), else 100 % ('bright' mode);
+    in the 3.60-3.65 V hysteresis band the 300 mA bursts are still allowed when VBAT comes from above; below 3.53 V
+    only the red cue, then SHIP; non-park moves need VSYS >= 3.55 V idle, park moves VSYS >= 3.30 V (MD-2): a park
+    move counts as moving (rested VBAT stands in for the idle VSYS)."""
+    def oled(burst):
+        return OLED_ICC_DIM if (vbat < FW_V_OLED_DIM or burst) else OLED_ICC_MAX
+    if vbat < FW_V_SHIP:
+        ph = {"cue": (FW_LED_CUE, OLED_ICC_DIM, False)}
+        if vbat >= FW_VSYS_PARK:
+            ph["cue+park"] = (FW_LED_CUE, OLED_ICC_DIM, True)
+        return ph
+    ph = {}
+    if vbat >= FW_V_DERATE:
+        ph["burst"] = (FW_LED_BURST, oled(True), False)
+        ph["sustained"] = (FW_LED_SUST, oled(False), False)
+    else:
+        ph["sustained"] = (FW_LED_LOW, oled(False), False)
+    ph["moving"] = (FW_LED_MOVING, oled(False), True)
+    return ph
+
+
+def fw_rule_loads(n_led: int, cap: float, icc: float, moving: bool, sync: bool, pk: float,
+                  ich: float = WS_ICH) -> Loads:
+    """Firmware loads with the instantaneous budget applied: lit channels x I_ch <= pk (aligned ring peak = pk; the
+    lumped ring model spreads it over all LEDs, the per-IC current stays on all 48, which is conservative), the
+    average cap reached by the PWM duty of the lit channels (average = min(cap, pk)). The red cue (<= 2 mA, one
+    channel) is its average; pk = 0 is an all-zero frame. sync: aligned LED / coil PWM edges, TX bursts, boost
+    ripple (as fw_loads)."""
+    if cap <= FW_LED_CUE:
+        led = led_avg(cap, n_led, ich)
+    elif pk <= 0.0:
+        led = {}
+    elif sync:
+        led = dict(led_ipk=pk / (3 * n_led), led_duty=min(1.0, cap / pk))
+    else:
+        led = led_avg(min(cap, pk), n_led, ich)
+    mot = dict(motor="pwm" if sync else "avg", motor_icoil=MOTOR_I45) if moving else dict(motor="off")
+    return Loads(oled_icc=icc, tx=sync, oled_ripple=sync, **led, **mot)
+
+
 def check_all(check, items):
     """check() every (name, value, lo, hi, unit, source); passing ones first so that the report records every
     value up to the first violation (check() asserts on the first one that fails)."""
@@ -638,21 +748,23 @@ def check_all(check, items):
         check(name, v, lo=lo, hi=hi, unit=unit, source=src)
 
 
-def supply_items(s: System, r: dict, tag: str, led_on=True, dc=False) -> list:
-    """Common limits on a run result (op keys or tran meas keys)."""
+def supply_items(s: System, r: dict, tag: str, led_on=True, dc=False, rule: str = "") -> list:
+    """Common limits on a run result (op keys or tran meas keys). rule: the firmware rule a guard applies, appended
+    to every source string."""
     g = (lambda k: r[k]) if dc else (lambda k: r[k + "_min"])
+    src = (lambda x: f"{x}; {rule}") if rule else (lambda x: x)
     items = []
     if led_on:
-        items.append((f"{tag}: VLED min", g("vled"), WS_VDD_MIN, None, "V", SRC_WS))
-    items.append((f"{tag}: +3V3 min", g("v3v3"), V3V3_MIN, None, "V", SRC_3V3))
+        items.append((f"{tag}: VLED min", g("vled"), WS_VDD_MIN, None, "V", src(SRC_WS)))
+    items.append((f"{tag}: +3V3 min", g("v3v3"), V3V3_MIN, None, "V", src(SRC_3V3)))
     if "ibat" in r or "ibat_max" in r:
-        items.append((f"{tag}: I(BAT) peak", r["ibat"] if dc else r["ibat_max"], None, IBAT_OCP, "A", SRC_OCP))
-    items.append((f"{tag}: I(SYS) DC", r["isys"] if dc else r["isys_avg"], None, SYS_DC_MAX, "A", SRC_SYS))
+        items.append((f"{tag}: I(BAT) peak", r["ibat"] if dc else r["ibat_max"], None, IBAT_OCP, "A", src(SRC_OCP)))
+    items.append((f"{tag}: I(SYS) DC", r["isys"] if dc else r["isys_avg"], None, SYS_DC_MAX, "A", src(SRC_SYS)))
     return items
 
 
-def check_supply(check, s: System, r: dict, tag: str, led_on=True, dc=False, extra=()):
-    check_all(check, list(extra) + supply_items(s, r, tag, led_on, dc))
+def check_supply(check, s: System, r: dict, tag: str, led_on=True, dc=False, extra=(), rule: str = ""):
+    check_all(check, list(extra) + supply_items(s, r, tag, led_on, dc, rule))
 
 
 # ======================================================================================== the tests
@@ -676,7 +788,7 @@ def test_harness_model_inputs_from_netlist(main, base, check):
         "limiter is a hardware protection function"))),
     pytest.param("nominal", 3.0, marks=pytest.mark.xfail(strict=True, reason=(
         "DESIGN ISSUE: uncapped full load at the end of discharge (VBAT 3.0 V) pulls +3V3 to ~2.68 V < 2.7 V "
-        "(W25Q128JV VCC min) while the BQ25180 BUVLO deglitch (60 us) runs; only the firmware (SHIP at 3.48 V, "
+        "(W25Q128JV VCC min) while the BQ25180 BUVLO deglitch (60 us) runs; only the firmware (SHIP below 3.53 V, "
         "loads capped) prevents it"))),
     pytest.param("worst", 3.0, marks=pytest.mark.xfail(strict=True, reason=(
         "DESIGN ISSUE: uncapped full load at VBAT 3.0 V worst corner: +3V3 ~2.41 V < 2.7 V (W25Q128JV VCC min)"))),
@@ -699,6 +811,39 @@ def test_hw_worst_case_uncapped_dc(main, base, check, cname, vbat):
     if vbat > VBUVLO:
         extra.append((f"{tag}: V(BAT) (BUVLO)", r["vbat"], VBUVLO, None, "V", SRC_BUVLO))
     check_supply(check, s, r, tag, dc=True, led_on=vbat > WS_VDD_MIN, extra=extra)
+
+
+PI1_XFAIL_CASES = (("worst", 3.7), ("nominal", 3.0), ("worst", 3.0))   # the strict xfails above
+
+
+@pytest.mark.parametrize("cname,vbat,phase", [(c, v, p) for c, v in PI1_XFAIL_CASES
+                                              for p in ["boot"] + [f"app-{k}" for k in fw_policy(v)]])
+def test_hw_worst_case_uncapped_dc_with_fw_rule(main, base, check, cname, vbat, phase):
+    """Guard for the strict xfails of test_hw_worst_case_uncapped_dc, rule PI-1 (docs/firmware.md 6.3 'hardware worst
+    case' and 11.2, SPEC 5.4): the same DC deck, corners and limits with the documented rule applied.
+    'boot': MCUboot and the USB-recovery image keep LED_PWR_EN, OLED_VCC_EN and MOT_NSLEEP low (U2, U21 and both
+    DRV8837 off; +3V3 still at its peak, flash erase and TX included).
+    'app-*': the limiter is active from the first frame after reset, so the loads are the firmware policy at that
+    rested VBAT (fw_policy: every allowed phase, with the PI-2 lit-channel budget; at 3.0 V that is the red cue with
+    the OLED at C7 <= 08h and no actuator, since VSYS < 3.30 V allows no park move)."""
+    s = System(main, base, CORNERS[cname])
+    if phase == "boot":
+        loads, led_on = Loads(led_en=False), False
+    else:
+        cap, icc, moving = fw_policy(vbat)[phase[len("app-"):]]
+        loads = fw_rule_loads(s.n_led, cap, icc, moving, sync=False, pk=fw_peak_cap(vbat, s.n_led, moving))
+        led_on = True
+    r = run_op(s.deck(f"PI-1 rule DC {cname} {vbat} {phase}", loads, vbat=vbat))
+    tag = f"PI-1 rule ({phase}), DC VBAT {vbat} {cname}"
+    extra = [
+        (f"{tag}: link VSYS current per contact", r["ilink"] / s.n_vsys, None, SH_CONTACT_A, "A",
+         f"{SRC_SH}; {RULE_PI1}"),
+        (f"{tag}: link GND current per contact", r["ignd"] / s.n_gnd, None, SH_CONTACT_A, "A", f"{SRC_SH}; {RULE_PI1}"),
+        (f"{tag}: battery connector current per contact", r["ibat"] / min(s.n_bpos, s.n_bneg), None,
+         CONTACT_A[s.bat_series], "A", f"JST {s.bat_series} DS current rating per contact; {RULE_PI1}")]
+    if vbat > VBUVLO:
+        extra.append((f"{tag}: V(BAT) (BUVLO)", r["vbat"], VBUVLO, None, "V", f"{SRC_BUVLO}; {RULE_PI1}"))
+    check_supply(check, s, r, tag, dc=True, led_on=led_on and vbat > WS_VDD_MIN, extra=extra, rule=RULE_PI1)
 
 
 @pytest.mark.parametrize("cname", ["nominal", "worst", "cold"])
@@ -747,6 +892,55 @@ def test_firmware_capped_sync_pwm_transient(main, base, check, cname, point):
          SRC_BQ_VIL + " (offset alone)")])
 
 
+def sync_rule_items(r: dict, tag: str, rule: str) -> list:
+    """The extra limits of the sync-PWM transient (BUVLO deglitch, ground offset) with the guard's rule cited."""
+    return [(f"{tag}: V(BAT) below BUVLO, longest", longest_below(r, "v(p_bat)", VBUVLO), None, TBUVLO, "s",
+             f"{SRC_BUVLO}; {rule}"),
+            (f"{tag}: GND offset main-base, peak", max(r["gnd_max"], -r["gnd_min"]), None, BQ_VIL, "V",
+             f"{SRC_BQ_VIL} (offset alone); {rule}")]
+
+
+PI2_XFAIL_POINTS = (("worst", "full@3.70"), ("worst", "full@3.65"), ("worst", "moving@3.65"),
+                    ("nominal", "derated@3.53"), ("worst", "derated@3.53"))   # the SYNC_XFAIL points above
+
+
+@pytest.mark.parametrize("cname,point,actuator", [(c, p, "as-scenario") for c, p in PI2_XFAIL_POINTS]
+                         + [("nominal", "derated@3.53", "idle"), ("worst", "derated@3.53", "idle")])
+def test_firmware_capped_sync_pwm_transient_with_fw_rule(main, base, check, cname, point, actuator):
+    """Guard for the strict xfails of test_firmware_capped_sync_pwm_transient, rule PI-2 (docs/firmware.md 6.3
+    instantaneous budget): the same decks (scenario VBAT, average cap and OLED level, aligned LED and coil PWM, TX
+    bursts, boost ripple) and limits, with the lit channels limited so that the aligned ring peak is the table row at
+    or below VBAT (0.42 A at 3.65 V, 0.51 A at 3.70 V, 0.28 A at 3.53 V), 0.23 A less while the actuator moves
+    (moving@3.65: 0.19 A; derated@3.53 moves the actuator, a park move under MD-2: 0.05 A). 'idle': the derated@3.53
+    point with the actuator idle, where the rule allows the full 0.28 A row (more LED current than the scenario)."""
+    s = System(main, base, CORNERS[cname])
+    vbat, cap, icc, motor = fw_scenarios(s.n_led)[point]
+    moving = motor == "run" and actuator != "idle"
+    pk = fw_peak_cap(vbat, s.n_led, moving)
+    loads = fw_rule_loads(s.n_led, cap, icc, moving, sync=True, pk=pk)
+    r = run_tran(s.deck(f"PI-2 rule {point} {actuator}", loads, vbat=vbat), stop=1.2e-3, waves=("v(p_bat)",))
+    tag = f"PI-2 rule ({pk:.2f} A aligned peak), sync-PWM {point}{', actuator idle' if actuator == 'idle' else ''} {cname}"
+    check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2), rule=RULE_PI2)
+
+
+@pytest.mark.parametrize("vbat,phase", [(v, p) for v in (3.53, 3.60, 3.65, 3.70, 3.80, FW_PK_V_FULL)
+                                        for p in fw_policy(v)])
+def test_led_peak_budget_table_with_fw_rule(main, base, check, vbat, phase):
+    """Guard for rule PI-2 row by row (docs/firmware.md 6.3; complements the xfail-point guard above): at the worst
+    corner, at each table row's VBAT (the lowest VBAT that row is used at), every phase the documented policy allows
+    there (fw_policy: 300 mA bursts from 3.60 V, 150 / 100 mA sustained, 100 mA while moving; the OLED at the
+    documented level, C7 <= 08h below 3.75 V and during bursts) with the row's lit-channel peak, 0.23 A less while
+    moving, aligned LED / coil PWM, TX bursts and boost ripple."""
+    s = System(main, base, WORST)
+    cap, icc, moving = fw_policy(vbat)[phase]
+    pk = fw_peak_cap(vbat, s.n_led, moving)
+    r = run_tran(s.deck(f"PI-2 row {vbat} {phase}", fw_rule_loads(s.n_led, cap, icc, moving, sync=True, pk=pk),
+                        vbat=vbat), stop=1.2e-3, waves=("v(p_bat)",))
+    tag = (f"PI-2 row VBAT {vbat:.2f} {phase} (LED cap {cap * 1e3:.0f} mA, {pk:.2f} A aligned peak, OLED "
+           f"{icc * 1e3:.1f} mA) worst")
+    check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2), rule=RULE_PI2)
+
+
 @pytest.mark.parametrize("temp", [-10.0, 25.0, 60.0])
 def test_temperature_capped_full_budget(main, base, check, temp):
     """Temperature: RON (TPS22917 / BQ25180 at DS max for the temperature), copper resistance of the harness,
@@ -761,7 +955,7 @@ def test_temperature_capped_full_budget(main, base, check, temp):
 
 @pytest.mark.parametrize("cname", ["nominal", "worst"])
 def test_vbat_3v0_end_of_discharge(main, base, check, cname):
-    """VBAT 3.0 V (BUVLO): with the LEDs, OLED and actuator off (firmware ships at 3.48 V), +3V3 must still be
+    """VBAT 3.0 V (BUVLO): with the LEDs, OLED and actuator off (firmware ships below 3.53 V), +3V3 must still be
     valid for the flash right up to the BUVLO disconnect."""
     s = System(main, base, CORNERS[cname])
     r = run_tran(s.deck(f"3.0 V {cname}", Loads(), vbat=3.0), stop=1.2e-3)
@@ -776,10 +970,12 @@ USB_NOBAT_XFAIL = pytest.mark.xfail(strict=True, reason=(
 
 @pytest.mark.parametrize("vbus", [4.5, 5.0, 5.5])
 def test_usb_vbus_corners(main, base, check, vbus):
-    """USB 4.5 / 5.0 / 5.5 V with a 3.7 V pack charging: SYS regulation (4.5 V +/-2 %, dropout at 4.5 V),
-    ILIM 450 mA min, DPPM and supplement under the firmware 'on USB' load with aligned PWM edges."""
+    """USB 4.5 / 5.0 / 5.5 V with a 3.7 V pack charging: SYS regulation (firmware 4.4 V -2 % / nominal at the
+    minimum-side corners, dropout at 4.5 V; the 4.5 V POR default, the only other allowed SYS_REG value, +2 % at the
+    5.5 V maximum-voltage corner), ILIM 450 mA min, DPPM and supplement under the firmware 'on USB' load with aligned
+    PWM edges."""
     s = System(main, base, WORST if vbus != 5.5 else NOMINAL)
-    vsysreg = {4.5: BQ_VSYSREG * (1 - BQ_VSYSREG_TOL), 5.0: BQ_VSYSREG,
+    vsysreg = {4.5: BQ_VSYSREG_FW * (1 - BQ_VSYSREG_TOL), 5.0: BQ_VSYSREG_FW,
                5.5: BQ_VSYSREG * (1 + BQ_VSYSREG_TOL)}[vbus]
     ilim = BQ_ILIM500[0] if vbus != 5.5 else BQ_ILIM500[2]
     loads = Loads(oled_icc=OLED_ICC_MAX, motor="pwm", motor_icoil=MOTOR_I45, **led_sync(FW_LED_SUST, s.n_led))
@@ -813,11 +1009,51 @@ def test_usb_without_battery(main, base, check, ilim_code, led_cap, icc, motor):
                       (f"{tag}: +3V3", r["v3v3"], V3V3_MIN, None, "V", SRC_3V3)])
 
 
+@pytest.mark.parametrize("cname", ["nominal", "worst"])
+@pytest.mark.parametrize("phase", ["ILIM100", "ILIM500", "ILIM500-aligned-peak"])
+def test_usb_without_battery_with_fw_rule(main, base, check, phase, cname):
+    """Guard for the strict xfails of test_usb_without_battery, rule PI-4 (docs/firmware.md 6.3 / 13.3, SPEC 5.4): the
+    same deck (USB 5.0 V, no pack: nothing supplements SYS, ILIM at its minimum) and limits with the documented
+    'no supplement' profile. ILIM 100 mA phase: LEDs at the <= 20 mA charging cue, OLED off, no flash erase, BLE TX
+    0 dBm; ILIM 500 mA phase: no actuator, LEDs <= 100 mA, OLED C7 <= 08h. SYS_REG at the firmware 4.4 V (0x20), -2 %
+    at the worst corner. The docs give no TX current for 0 dBm, so the +8 dBm datasheet maximum (14.8 mA) stays in
+    (an upper bound). 'ILIM500-aligned-peak': the docs say 'peak-limited' without a value for this phase, so the
+    transient runs the 100 mA with all 48 LEDs lit and their PWM aligned (the full-ring 0.72 A peak, no peak limit at
+    all) and checks the average input current against ILIM and the instantaneous VLED / +3V3 minimums."""
+    s = System(main, base, CORNERS[cname])
+    vsysreg = BQ_VSYSREG_FW * (1 - BQ_VSYSREG_TOL) if cname == "worst" else BQ_VSYSREG_FW
+    vg = vsysreg - 0.001   # nodeset only: the no-pack op converges reliably from just inside SYS regulation
+    if phase == "ILIM100":
+        ilim = BQ_ILIM100[0]
+        loads = Loads(oled_icc=0.0, oled_ripple=False, tx=False, i3v3_base=I3V3_BASE - 25e-3,   # no W25Q erase
+                      **led_avg(FW_NOSUP_LED100, s.n_led))
+    else:
+        ilim = BQ_ILIM500[0]
+        if phase == "ILIM500":
+            loads = Loads(oled_icc=OLED_ICC_DIM, oled_ripple=False, tx=False, **led_avg(FW_NOSUP_LED500, s.n_led))
+        else:
+            loads = Loads(oled_icc=OLED_ICC_DIM, **led_sync(FW_NOSUP_LED500, s.n_led))
+    tag = (f"PI-4 rule, USB only (no pack), {phase} at ILIM min ({ilim * 1e3:.0f} mA), SYS_REG {vsysreg:.3f} V, "
+           f"{cname}")
+    src_ilim = f"BQ25180 DS SLUSE99C 7.5 ILIM min (load must stay below it without supplement); {RULE_PI4}"
+    if phase == "ILIM500-aligned-peak":
+        r = run_tran(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg, vguess=vg), stop=1.2e-3)
+        items = [(f"{tag}: I(IN) average", r["iin_avg"], None, 0.98 * ilim, "A", src_ilim),
+                 (f"{tag}: VLED min", r["vled_min"], WS_VDD_MIN, None, "V", f"{SRC_WS}; {RULE_PI4}"),
+                 (f"{tag}: +3V3 min", r["v3v3_min"], V3V3_MIN, None, "V", f"{SRC_3V3}; {RULE_PI4}")]
+    else:
+        r = run_op(s.deck(tag, loads, vbat=None, vbus=5.0, ilim=ilim, vsysreg=vsysreg, vguess=vg))
+        items = [(f"{tag}: I(IN) (pinned at ILIM = no regulation)", r["iin"], None, 0.98 * ilim, "A", src_ilim),
+                 (f"{tag}: VLED", r["vled"], WS_VDD_MIN, None, "V", f"{SRC_WS}; {RULE_PI4}"),
+                 (f"{tag}: +3V3", r["v3v3"], V3V3_MIN, None, "V", f"{SRC_3V3}; {RULE_PI4}")]
+    check_all(check, items)
+
+
 USB_LOWPACK_XFAIL = pytest.mark.xfail(strict=True, reason=(
     "DESIGN ISSUE: on USB the on-USB budget (LED 150 mA + OLED + actuator, ~0.54 A) is above ILIM min 450 mA, so "
-    "the pack supplements and SYS follows the pack, not the 4.5 V regulation; with aligned LED PWM peaks and a pack "
-    "at the 3.48 V SHIP threshold VLED falls below 3.3 V, and the firmware cannot derate by VBAT on USB (SYS is "
-    "regulated, the BQ25180 has no ADC: firmware.md 12.4)"))
+    "the pack supplements and SYS follows the pack, not the SYS_REG regulation; with aligned LED PWM peaks and a pack "
+    "at 3.48 V (the old SHIP threshold, still reachable: a 3.53 V reading can be 46 mV high) VLED falls below 3.3 V, "
+    "and the firmware cannot derate by VBAT on USB (SYS is regulated, the BQ25180 has no ADC: firmware.md 12.4)"))
 
 
 @pytest.mark.parametrize("cname,sync", [
@@ -826,11 +1062,12 @@ USB_LOWPACK_XFAIL = pytest.mark.xfail(strict=True, reason=(
 ])
 def test_usb_low_pack(main, base, check, cname, sync):
     """Verifier addition, 'VSYS as the charger delivers it' with a partly discharged pack: USB 5.0 V, ILIM 450 mA
-    (min), pack at the 3.48 V SHIP threshold (the lowest rested VBAT a user normally plugs in at), firmware on-USB
-    budget. When the load exceeds ILIM the BQ25180 supplements from the pack (SLUSE99C 8.3.2 / 8.3.3), so the
-    VBAT-dependent margins of the battery-only cases apply on USB too."""
+    (min), pack at 3.48 V (the old SHIP threshold, kept: SHIP is now below a 3.53 V reading, which can be 46 mV high,
+    so this is still the lowest rested VBAT a user normally plugs in at), firmware on-USB budget. When the load
+    exceeds ILIM the BQ25180 supplements from the pack (SLUSE99C 8.3.2 / 8.3.3), so the VBAT-dependent margins of the
+    battery-only cases apply on USB too."""
     s = System(main, base, CORNERS[cname])
-    vbat = FW_V_SHIP
+    vbat = FW_V_SHIP_OLD
     tag = f"USB 5.0 V, pack {vbat} V {cname}, on-USB budget" + (", aligned PWM" if sync else ", average")
     if sync:
         loads = Loads(oled_icc=OLED_ICC_MAX, motor="pwm", motor_icoil=MOTOR_I45, **led_sync(FW_LED_SUST, s.n_led))
@@ -842,6 +1079,54 @@ def test_usb_low_pack(main, base, check, cname, sync):
         # DPPM / supplement operating point sits near VBAT + VDPPM: give Newton that initial guess
         r = run_op(s.deck(tag, loads, vbat=vbat, vbus=5.0, ilim=BQ_ILIM500[0], vguess=vbat + 0.1))
         check_supply(check, s, r, tag, dc=True, extra=[(f"{tag}: I(IN)", r["iin"], None, IIN_MAX, "A", SRC_IIN)])
+
+
+NF1_AVG_XFAIL = pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE (firmware rule insufficient): NF-1's alternative 'keep the total on-USB load (LEDs + OLED + "
+    "actuator) <= 0.40 A' does not bound the PWM peaks when the 0.40 A is the limiter's average current (its "
+    "firmware.md 6.3 current model) and the 3.48 V lit-channel row is lifted: LEDs 150 mA average with all 48 lit "
+    "(aligned 0.72 A peaks) + OLED 100 % (~0.17 A) = 0.32 A <= 0.40 A, pack 3.48 V, USB ILIM 450 mA min -> the pack "
+    "supplements during the peaks and VLED falls to ~3.16 V worst / ~3.26 V nominal < 3.3 V (WS2812C VDD min). "
+    "The 0.40 A must be the instantaneous sum (lit channels x I_ch + OLED + actuator; 'total0.40-inst' passes), or "
+    "the 3.48 V row must stay in force with it"))
+
+
+@pytest.mark.parametrize("cname,variant", [(c, v) for c in ("nominal", "worst")
+                                           for v in ("row3.48-idle", "row3.48-moving", "total0.40-inst")]
+                         + [pytest.param(c, "total0.40-avg", marks=NF1_AVG_XFAIL) for c in ("nominal", "worst")])
+def test_usb_low_pack_with_fw_rule(main, base, check, cname, variant):
+    """Guard for the strict xfails test_usb_low_pack[*-True], rule NF-1 (docs/firmware.md 6.3 'On USB' and 13.3
+    step 3, SPEC 5.4): the same deck (USB 5.0 V, ILIM 450 mA min, pack 3.48 V, OLED 100 %, aligned LED / coil PWM, TX
+    bursts, boost ripple) and limits, SYS_REG at the firmware 4.4 V (0x20), with the on-USB rule applied:
+    'row3.48-idle': the 3.48 V row, lit channels x 5 mA <= 0.19 A, average = peak (the strictest average any cap
+    allows under that peak), actuator idle;
+    'row3.48-moving': the same row while the actuator moves (0.19 - 0.23 A < 0: all-zero LED frame), LED cap 100 mA;
+    'total0.40-inst' / 'total0.40-avg': the alternative, total on-USB load (LEDs + OLED + actuator) <= 0.40 A. The
+    docs say neither how the 0.40 A splits nor whether it is instantaneous or average, so both readings run with
+    the split that leaves the LEDs the most (actuator idle, OLED 100 % at its SYS_REG input current, LEDs the rest):
+    instantaneous, the aligned ring peak = 0.40 A - OLED; average, the on-USB charging cap 150 mA (firmware.md 6.3)
+    with all 48 LEDs lit and aligned (<= 0.40 A - OLED). The CV/done branch is not guarded: the docs do not say which
+    row applies after CHG_STAT reports CV/done."""
+    s = System(main, base, CORNERS[cname])
+    vbat, vsysreg = FW_V_SHIP_OLD, BQ_VSYSREG_FW
+    i_oled = s.boost(vsysreg, OLED_ICC_MAX)["PIN"] / vsysreg     # OLED boost input current at the regulated SYS
+    if variant == "row3.48-idle":
+        pk = fw_peak_cap(vbat, s.n_led, moving=False, usb=True)
+        loads = fw_rule_loads(s.n_led, pk, OLED_ICC_MAX, False, sync=True, pk=pk)
+    elif variant == "row3.48-moving":
+        pk = fw_peak_cap(vbat, s.n_led, moving=True, usb=True)
+        loads = fw_rule_loads(s.n_led, FW_LED_MOVING, OLED_ICC_MAX, True, sync=True, pk=pk)
+    elif variant == "total0.40-inst":
+        pk = FW_USB_TOTAL - i_oled
+        loads = fw_rule_loads(s.n_led, pk, OLED_ICC_MAX, False, sync=True, pk=pk)
+    else:
+        led_a = min(FW_LED_SUST, FW_USB_TOTAL - i_oled)
+        pk = 3 * s.n_led * WS_ICH
+        loads = Loads(oled_icc=OLED_ICC_MAX, **led_sync(led_a, s.n_led))
+    tag = f"NF-1 rule ({variant}, {pk:.2f} A aligned LED peak), USB 5.0 V, pack {vbat} V {cname}"
+    r = run_tran(s.deck(tag, loads, vbat=vbat, vbus=5.0, ilim=BQ_ILIM500[0], vsysreg=vsysreg), stop=1.2e-3)
+    check_supply(check, s, r, tag, rule=RULE_NF1,
+                 extra=[(f"{tag}: I(IN) peak", r["iin_max"], None, IIN_MAX, "A", f"{SRC_IIN}; {RULE_NF1}")])
 
 
 @pytest.mark.parametrize("vbat", [4.2, 3.7])
@@ -1043,6 +1328,19 @@ def test_ws2812b_dropin_peak(main, base, check):
           source=SRC_OCP)
 
 
+@pytest.mark.parametrize("cname", ["nominal", "worst"])
+def test_ws2812b_dropin_peak_with_fw_rule(main, base, check, cname):
+    """Guard for the strict xfail test_ws2812b_dropin_peak, rule PI-3 (docs/firmware.md 6.1 / 6.3, SPEC 5.4): the same
+    deck (WS2812B-2020-V6, 12 mA/ch, 300 mA average cap, OLED 100 %, aligned PWM, VBAT 4.2 V) and limit with the
+    instantaneous cap at full battery: lit channels x 12 mA <= 1.0 A (83 of 144 channels), at the nominal corner of
+    the xfail and at the worst corner."""
+    s = System(main, base, CORNERS[cname])
+    loads = fw_rule_loads(s.n_led, FW_LED_BURST, OLED_ICC_MAX, False, sync=True, pk=FW_PK_B_FULL, ich=WSB_ICH)
+    r = run_tran(s.deck(f"WS2812B PI-3 rule {cname}", loads, vbat=4.2), stop=1.2e-3)
+    check(f"WS2812B drop-in with the PI-3 instantaneous cap ({FW_PK_B_FULL:.1f} A aligned), 300 mA cap, VBAT 4.2 V "
+          f"{cname}: I(BAT) peak", r["ibat_max"], hi=IBAT_OCP, unit="A", source=f"{SRC_OCP}; {RULE_PI3}")
+
+
 def led_peak_budget(s: System, vbat: float, icc: float, motor_avg: float = 0.0, iters: int = 10) -> float:
     """Largest steady ring current (= aligned PWM peak: lit channels x 5 mA) keeping VLED >= 3.3 V (bisection
     on the operating point; the 70-210 us PWM pulses settle like DC, see the sync-PWM test)."""
@@ -1070,7 +1368,8 @@ def test_led_peak_budget_vs_vbat(main, base, check):
     """Derived firmware limit (answers 'is a firmware LED limit needed'): the largest INSTANTANEOUS ring current
     (lit channels x 5 mA, all PWM phases aligned) that keeps VLED >= 3.3 V at the worst corner, per rested VBAT,
     with the OLED at its policy level and +3V3 at its peak, actuator idle. Where it is below the full-ring
-    0.72 A, the limiter must cap the lit-channel count, not only the average current."""
+    0.72 A, the limiter must cap the lit-channel count, not only the average current. docs/firmware.md 6.3 takes its
+    instantaneous-budget table from this sweep (PI-2, FW_PK_ROWS); the *_with_fw_rule tests guard that table."""
     s = System(main, base, WORST)
     full = 3 * s.n_led * WS_ICH
     for vbat in BUDGET_VBAT:
