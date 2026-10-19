@@ -1,4 +1,4 @@
-"""Schematic sheet modules, in page order.
+"""Schematic sheet modules, grouped per board (KiCad project), in page order.
 
 Each module defines:
     SHEET = (name, filename, title)
@@ -8,4 +8,8 @@ Each module defines:
     def build(d): ...                                                           # adds the sheet's parts
 """
 
-SHEETS: list[str] = []
+PROJECTS: dict[str, list[str]] = {
+    "main": ["main_power", "mcu", "display", "leds", "sensors", "detent"],
+    "base": ["base"],
+}
+SHEETS = [s for v in PROJECTS.values() for s in v]

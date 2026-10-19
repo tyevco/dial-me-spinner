@@ -23,20 +23,19 @@ import symgen  # noqa: E402
 import symlib  # noqa: E402
 
 import nets  # noqa: E402
-from sheets import SHEETS  # noqa: E402
+from sheets import PROJECTS  # noqa: E402
 
-PROJECT = "dial-me-spinner"
 LIB = "dial_spinner"
 DEFAULT_OUT = os.path.join(HW, "kicad")
+TITLES = {"main": "dial-me-spinner main board", "base": "dial-me-spinner base board"}
 
 
-def load_modules(only=None):
-    mods = []
-    for name in SHEETS:
-        if only and name not in only:
-            continue
-        mods.append(importlib.import_module(f"sheets.{name}"))
-    return mods
+def project_name(board):
+    return f"dial-me-spinner-{board}"
+
+
+def load_modules(names):
+    return [importlib.import_module(f"sheets.{n}") for n in names]
 
 
 def build_libraries(mods, out):
@@ -45,7 +44,7 @@ def build_libraries(mods, out):
     sym_path = os.path.join(libdir, LIB + ".kicad_sym")
     fp_dir = os.path.join(libdir, LIB + ".pretty")
     syms, seen = [], set()
-    for m in load_modules():  # always build the full library so every sheet resolves
+    for m in mods:
         for spec in getattr(m, "SYMBOLS", []):
             if spec["name"] in seen:
                 continue
@@ -61,8 +60,8 @@ def build_libraries(mods, out):
     }
 
 
-def make_design(mods):
-    d = schgen.Design(PROJECT, "dial-me-spinner — BLE dial spinner", nets.REV, nets.DATE, "dial-me-spinner")
+def make_design(board, mods):
+    d = schgen.Design(project_name(board), TITLES[board], nets.REV, nets.DATE, "dial-me-spinner")
     d.power(*nets.POWER_NETS)
     d.root_notes = list(getattr(nets, "ROOT_NOTES", []))
     for m in mods:
@@ -70,8 +69,8 @@ def make_design(mods):
     return d
 
 
-def erc(out):
-    sch = os.path.join(out, PROJECT + ".kicad_sch")
+def erc(out, project):
+    sch = os.path.join(out, project + ".kicad_sch")
     rpt = os.path.join(out, "erc.rpt")
     subprocess.run(["kicad-cli", "sch", "erc", "--severity-all", "-o", rpt, sch], capture_output=True, text=True)
     counts = {}
@@ -83,47 +82,64 @@ def erc(out):
     return rpt, counts
 
 
-def netlist(out):
-    sch = os.path.join(out, PROJECT + ".kicad_sch")
-    path = os.path.join(out, PROJECT + ".net")
+def netlist(out, project):
+    sch = os.path.join(out, project + ".kicad_sch")
+    path = os.path.join(out, project + ".net")
     subprocess.run(["kicad-cli", "sch", "export", "netlist", "-o", path, sch], check=True, capture_output=True)
     return path
 
 
-def render(out, dpi=110):
+def render(out, project, dpi=110):
     """Schematic -> PDF -> one PNG per sheet (for visual review)."""
-    sch = os.path.join(out, PROJECT + ".kicad_sch")
+    sch = os.path.join(out, project + ".kicad_sch")
     rdir = os.path.join(out, "render")
     os.makedirs(rdir, exist_ok=True)
-    pdf = os.path.join(rdir, PROJECT + "-schematic.pdf")
+    pdf = os.path.join(rdir, project + "-schematic.pdf")
     subprocess.run(["kicad-cli", "sch", "export", "pdf", "-o", pdf, sch], check=True, capture_output=True)
     subprocess.run(["pdftoppm", "-r", str(dpi), "-png", pdf, os.path.join(rdir, "sheet")], check=True)
     return rdir
 
 
+def build_board(board, sheets, out, run_erc=True, do_render=False, partial=False):
+    mods = load_modules(sheets)
+    libs = build_libraries(mods, out)
+    d = make_design(board, mods)
+    errs = d.check()
+    if partial:
+        errs = [e for e in errs if not any(f"net {n} has only one" in e for n in nets.INTERSHEET)]
+    for e in errs:
+        print(f"[{board}] CHECK:", e)
+    d.write(out, extra_sym_libs=libs["sym"], extra_fp_libs=libs["fp"])
+    project = project_name(board)
+    print(f"[{board}] schematic written to", out)
+    if run_erc:
+        rpt, counts = erc(out, project)
+        print(f"[{board}] ERC:", counts or "clean", "->", rpt)
+        print(f"[{board}] netlist:", netlist(out, project))
+    if do_render:
+        print(f"[{board}] render:", render(out, project))
+    return errs
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", nargs="*")
-    ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument("--board", choices=sorted(PROJECTS), help="build one board only")
+    ap.add_argument("--only", nargs="*", help="build only these sheets (scratch builds; use --out)")
+    ap.add_argument("--out", help="output dir (default hardware/kicad/<board>)")
     ap.add_argument("--no-erc", action="store_true")
     ap.add_argument("--render", action="store_true", help="also export PDF + PNG per sheet")
     a = ap.parse_args()
-    libs = build_libraries(load_modules(), a.out)
-    mods = load_modules(a.only)
-    d = make_design(mods)
-    errs = d.check()
-    if a.only:
-        errs = [e for e in errs if not any(f"net {n} has only one" in e for n in nets.INTERSHEET)]
-    for e in errs:
-        print("CHECK:", e)
-    d.write(a.out, extra_sym_libs=libs["sym"], extra_fp_libs=libs["fp"])
-    print("schematic written to", a.out)
-    if not a.no_erc:
-        rpt, counts = erc(a.out)
-        print("ERC:", counts or "clean", "->", rpt)
-        print("netlist:", netlist(a.out))
-    if a.render:
-        print("render:", render(a.out))
+    errs = []
+    for board, sheets in PROJECTS.items():
+        if a.board and board != a.board:
+            continue
+        sel = [s for s in sheets if not a.only or s in a.only]
+        if not sel:
+            continue
+        out = a.out or os.path.join(DEFAULT_OUT, board)
+        if a.out and not a.board and len(PROJECTS) > 1 and a.only is None:
+            out = os.path.join(a.out, board)
+        errs += build_board(board, sel, out, not a.no_erc, a.render, partial=bool(a.only))
     return 1 if errs else 0
 
 

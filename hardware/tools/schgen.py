@@ -363,6 +363,7 @@ class _SheetWriter:
             gw = max((sum(e[2] - e[0] for _, e in r) + gap * (len(r) - 1)) for r in rows) if rows else 0
             gh = sum(max(e[3] - e[1] for _, e in r) for r in rows) + gap * max(0, len(rows) - 1)
             title_h = 8.0 + (2.2 * (g.note.count("\n") + 1) if g.note else 0)
+            gw = max(gw, len(g.title) * 1.75, max((len(l) for l in g.note.split("\n")), default=0) * 1.0)
             blocks.append((g, rows, gw, gh + title_h, title_h))
         total_area = sum((b[2] + group_gap) * (b[3] + group_gap) for b in blocks)
         self.paper, page_w, page_h = ("A3", 420.0, 297.0)
