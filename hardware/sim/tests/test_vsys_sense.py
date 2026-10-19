@@ -694,7 +694,8 @@ def test_ship_threshold_after_aging_with_fw_rule(check):
         "over-read, but an aged board (R1/R2 ±0.5 %, C5 IR 250 MΩ) at −10 °C or 60 °C over-reads by 71.1 mV "
         "(DMM-at-TP1 calibration) / 72.3 mV (board under 5 mA): the true VBAT at a 3.53 V reading is 3.4589 / "
         "3.4577 V < VBATPOR max 3.46 V. firmware.md §12.4 treats temperature and ageing as separate ±46 mV cases; the "
-        "combined error is about +72 / −78 mV, so SHIP would need >= 3.533 V (3.54 V leaves a true 3.4676 V, 7.6 mV "
+        "combined error is about +72 / −78 mV, so SHIP would need >= 3.5323 V, i.e. 3.533 V in whole mV (3.5311 V with "
+        "the DMM reference alone; 3.54 V leaves a true 3.4676 V, 7.6 mV "
         "above VBATPOR max)")))
     for t in (-10.0, 60.0)])
 def test_ship_threshold_aged_over_temperature_with_fw_rule(temp, check):

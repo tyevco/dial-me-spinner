@@ -20,8 +20,9 @@ Drive patterns:
     conservative one for the coast peak) and in the 60 C strict xfail that is the evidence for MD-3.
 
 Firmware rules guarded here (each strict xfail keeps the old value as evidence, a *_with_fw_rule test or the named
-case applies the rule): MD-2 non-park moves only from >= 3.55 V idle VSYS; MD-3 temperature-compensated duty; MD-1
-brake (IN1 = IN2 = 1 >= 3 ms) before IN = 00 + nSLEEP low (KICK_CASES 'usb-chargedone-worst-brake-then-sleep').
+case applies the rule): MD-2 non-park moves only from >= 3.55 V measured idle VSYS (also with the calibrated reading
+as far off as firmware.md §12.4 allows); MD-3 temperature-compensated duty; MD-1 brake (IN1 = IN2 = 1 >= 3 ms) before
+IN = 00 + nSLEEP low (KICK_CASES 'usb-chargedone-worst-brake-then-sleep').
 
 Assumptions that are not datasheet values (bounded, and listed in the model_limitations of the run):
   * cell + PCM resistance 0.20 Ohm at 25 C, 0.40 Ohm at -10 C, 0.15 Ohm at 60 C (architecture.md §8.4 gives
@@ -91,6 +92,11 @@ FW = "firmware.md"
 FW_VSYS_MOVE_OLD = 3.40                  # pre-MD-2 firmware.md §5.8 non-park minimum (evidence of the strict xfail)
 FW_VSYS_MOVE = 3.55                      # firmware.md §5.8 minimum VSYS for non-park moves, measured idle (MD-2)
 FW_VSYS_PARK = 3.30                      # firmware.md §5.8 minimum VSYS for a park move
+# firmware.md §12.4 (VSENSE-1/4): the calibrated VSYS reading is 'about ±10 mV, but only at 25 ± 10 °C on a fresh unit'
+# and 'can be up to 46 mV high away from 25 °C or after ageing'. MD-2 gates on the *measured* idle VSYS, so a reading
+# that high lets a non-park move start from a true idle VSYS that much lower.
+FW_ADC_FRESH, FW_ADC_HIGH = 0.010, 0.046
+SRC_ADC = f"{FW} §12.4 (VSENSE-1/4) calibrated VSYS reading about ±10 mV at 25 ± 10 °C fresh, up to 46 mV high aged"
 FW_LED_CAP = 0.100                       # firmware.md §5.8 LED cap while moving (100 mA average)
 I_SYS = 0.050                            # nRF + QSPI peak, architecture.md §8.4
 FW_WAKE_WAIT = 1e-3                      # firmware.md §5.2: nSLEEP high, wait 1 ms
@@ -543,6 +549,41 @@ def test_required_current_at_firmware_move_threshold_with_fw_rule(main, base, ch
           f"firmware rule {FW} §5.8 non-park moves only from >= {FW_VSYS_MOVE:.2f} V idle VSYS (MD-2)")
 
 
+MD2_ADC_CASES = [  # id, over-read of the measured idle VSYS (firmware.md §12.4), strict-xfail reason
+    ("fresh-unit-reads-10mV-high", FW_ADC_FRESH, None),
+    ("aged-unit-reads-46mV-high", FW_ADC_HIGH,
+     "DESIGN ISSUE (firmware rule insufficient): firmware.md §5.8 gates non-park moves on 3.55 V *measured* idle VSYS "
+     "and §12.4 says the calibrated reading can be up to 46 mV high after ageing ('every threshold below is set with "
+     "that drift in mind'), so a move can start from a true idle VSYS of 3.504 V: at 25 C the coil gets about 163.6 mA "
+     "< the rated 165 mA (the rated point is 3.533 V; the vsys_sense model's own aged 25 C over-read, 29.6 mV, gives "
+     "3.520 V and about 164.4 mA). The threshold would need about 3.58 V measured (3.533 V + 46 mV); the 0.5 N load "
+     "budget is still met at 25 C"),
+]
+
+
+@pytest.mark.parametrize("cid,over_read,xf", [
+    pytest.param(*c, marks=[pytest.mark.xfail(strict=True, reason=c[-1])] if c[-1] else [], id=c[0])
+    for c in MD2_ADC_CASES])
+def test_required_current_at_measured_move_threshold_with_fw_rule(main, base, check, cid, over_read, xf):
+    """Worst corner of the MD-2 rule (reviewer extension of the guard above): firmware.md §5.8 gates on the *measured*
+    idle VSYS ('3.55 V (measured idle)'), and firmware.md §12.4 gives the calibrated reading as about ±10 mV at
+    25 ± 10 °C on a fresh unit and up to 46 mV high after ageing (VSENSE-1/4). A reading that high lets a non-park move
+    start from a true idle VSYS of 3.55 V minus the over-read. Same deck, stroke load and 25 C rating corner as
+    test_required_current_at_firmware_move_threshold_with_fw_rule."""
+    v_true = FW_VSYS_MOVE - over_read
+    r = hold_op(main, base, Supply(f"VBAT{v_true:.3f}", v_true), 25)
+    i = min(abs(r["ia"]), abs(r["ib"]))
+    check(f"true idle VSYS when it reads {FW_VSYS_MOVE:.2f} V ({over_read * 1e3:g} mV high)", v_true, None, None, "V",
+          f"info: {SRC_ADC}")
+    check(f"BAT pin under stroke load at true VSYS idle {v_true:.3f} V, 25 C", r["vbat"], None, None, "V",
+          "info: detent research 'move only when VBAT >= 3.3 V under load'")
+    check(f"I_coil at the firmware non-park threshold read {over_read * 1e3:g} mV high (true VSYS idle {v_true:.3f} V, "
+          f"25 C)", i, I_RATED, None, "A",
+          f"VSM08102 rated phase voltage 3.3-5 V (vendor page via detent research): 3.3 V / 20 Ohm = 165 mA; "
+          f"firmware rule {FW} §5.8 non-park moves only from >= {FW_VSYS_MOVE:.2f} V measured idle VSYS (MD-2); "
+          f"{SRC_ADC}")
+
+
 @pytest.mark.parametrize("temp", TEMPS)
 def test_ratio_vsys_3v0_vs_4v6(main, base, check, temp):
     """The explicit comparison: coil current / required (rated) current at VBAT 3.0 V (empty cell) and at VSYS
@@ -961,13 +1002,15 @@ def _micro_marks(tag):
     return [pytest.mark.xfail(strict=True, reason=tag)]
 
 
-def run_microstep(main, base, check, cid, sup, temp, *, r_eff=FW_R_COIL_OLD, duty_src=None, rule=""):
+def run_microstep(main, base, check, cid, sup, temp, *, r_eff=FW_R_COIL_OLD, duty_src=None, rule="", vsys_meas=None):
     """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS (amplitude
     i_target x r_eff / VSYS_idle). Checks the VM ripple from the 25 kHz current pulses, VSYS peak, BAT pin, link
-    current and the torque-vector magnitude. `rule` is appended to the sources of the limit checks."""
+    current and the torque-vector magnitude. `rule` is appended to the sources of the limit checks. vsys_meas: the idle
+    VSYS firmware measured and scales d with (default: the true idle VSYS of sup)."""
     pps, n_full = 446, 1
     t_on, t_e = 50e-6, 100e-6                         # the firmware's 1 ms wake wait adds nothing here (twake 30 us)
-    ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle, r_eff=r_eff)
+    vmeas = sup.vsys_idle if vsys_meas is None else vsys_meas
+    ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, vmeas, r_eff=r_eff)
     ctrl["MOT_NSLEEP"] = _pwl([(t_on, 1)])
     deck = new_deck(f"microstep {cid}")
     power(deck, main, base, sup, temp, cscale=vsys_cscale(main, base, sup.vsys_idle, worst=True))
@@ -993,8 +1036,6 @@ def run_microstep(main, base, check, cid, sup, temp, *, r_eff=FW_R_COIL_OLD, dut
     # rating condition at the same speed: ideal 3.3 V two-phase-on full step (vector = sqrt2 x avg |i| per coil)
     iref = rated_reference(pps, KE_MAX, L_NOM, False)
     f_micro = F_RATED * ivec / (math.sqrt(2) * iref)
-    check("µstep thrust estimate (vs 2-phase-on rating at 446 PPS)", f_micro, F_NEED, None, "N",
-          "detent research load <= 0.5 N; rating assumed 2-2 phase full step at 3.3 V (sqrt2 x I vector)" + rule)
     check("VM ripple pk-pk, 25 kHz PWM", float(v.max() - v.min()), None, None, "V", "info")
     check("VM (VSYS) max, 25 kHz PWM", float(v.max()), None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max{rule}")
     check("link current per VSYS contact, 25 kHz PWM", float(il.max()) * SHARE_WORST, None, JST_I_CONTACT, "A",
@@ -1002,6 +1043,9 @@ def run_microstep(main, base, check, cid, sup, temp, *, r_eff=FW_R_COIL_OLD, dut
     if not sup.usb:
         _, vb = window(w, "v(nb_vbat)", t1, t_end)
         check("BAT pin min, 25 kHz PWM", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V{rule}")
+    # last, so a strict xfail on the thrust budget still records every datasheet check above
+    check("µstep thrust estimate (vs 2-phase-on rating at 446 PPS)", f_micro, F_NEED, None, "N",
+          "detent research load <= 0.5 N; rating assumed 2-2 phase full step at 3.3 V (sqrt2 x I vector)" + rule)
     return d_pk, ivec, f_micro
 
 
@@ -1018,13 +1062,18 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     run_microstep(main, base, check, cid, sup, temp)
 
 
-MD3_CASES = [  # id, idle VSYS (battery), temp, strict-xfail reason
+MD3_CASES = [  # id, true idle VSYS (battery), idle VSYS firmware measures (None = true), temp, strict-xfail reason
     # the strict xfail's own corner
-    ("VBAT3.7-60C", 3.7, 60, None),
+    ("VBAT3.7-60C", 3.7, None, 60, None),
     # lowest idle VSYS a non-park move may start from (MD-2): d_peak clamps at 1 there (MD-3 needs >= 3.69 V at 60 C)
-    ("VBAT3.55-60C", FW_VSYS_MOVE, 60, None),
+    ("VBAT3.55-60C", FW_VSYS_MOVE, None, 60, None),
+    # the same at the calibration temperature (reviewer addition)
+    ("VBAT3.55-25C", FW_VSYS_MOVE, None, 25, None),
+    # reviewer addition: MD-2 gates on the measured VSYS, and at 60 C firmware.md §12.4 lets the reading be 46 mV high,
+    # so a move can start from a true 3.504 V (d_peak is clamped at 1 either way)
+    ("VBAT3.504-60C-reads-3.55", FW_VSYS_MOVE - FW_ADC_HIGH, FW_VSYS_MOVE, 60, None),
     # coldest corner at the lowest non-park VSYS: the worst corner of the MD-3 rule
-    ("VBAT3.55--10C", FW_VSYS_MOVE, -10,
+    ("VBAT3.55--10C", FW_VSYS_MOVE, None, -10,
      "DESIGN ISSUE (firmware rule insufficient): at -10 C the MD-3 duty d = I x (20 Ohm x (1 + 0.00393 x (T - 25 C)) "
      "+ 0.33 Ohm) / VSYS lowers the drive to 160 mA x 17.58 Ohm = 2.81 V, but the back-EMF (upper ke) and the cold "
      "pack sag do not shrink with it, so at 446 PPS the current vector falls to about 121 mA and the thrust estimate "
@@ -1033,20 +1082,25 @@ MD3_CASES = [  # id, idle VSYS (battery), temp, strict-xfail reason
 ]
 
 
-@pytest.mark.parametrize("cid,vbat,temp,xf", [
+@pytest.mark.parametrize("cid,vbat,vmeas,temp,xf", [
     pytest.param(*c, marks=[pytest.mark.xfail(strict=True, reason=c[-1])] if c[-1] else [], id=c[0])
     for c in MD3_CASES])
-def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, temp, xf):
+def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, vmeas, temp, xf):
     """Guard for MD-3 (firmware.md §5.3: d_peak = I_target x (20 Ohm x (1 + 0.00393 x (T - 25 C)) + 0.33 Ohm) / VSYS,
     clamp d <= 1, T = nRF die temperature, here equal to the coil / ambient temperature). Same deck as the strict
     xfail test_firmware_microstep_pwm[VBAT3.7-60C] (446 PPS, rDS(on) max, upper back-EMF, worst VSYS caps): the
     torque vector must stay above the 0.5 N load budget and every other limit of that test must hold, at that corner,
-    at the lowest non-park VSYS (MD-2, 3.55 V idle) and at the cold end."""
-    sup = SUP["VBAT3.7"] if vbat == 3.7 else Supply(f"VBAT{vbat:.2f}", vbat)
+    at the lowest non-park VSYS (MD-2, 3.55 V idle; also when it reads 46 mV high, firmware.md §12.4) and at the cold
+    end."""
+    sup = SUP["VBAT3.7"] if vbat == 3.7 else Supply(f"VBAT{vbat:.3f}", vbat)
     r_eff = fw_r_eff(temp)
     check(f"MD-3 R_eff at {temp} C (firmware.md §5.3 formula)", r_eff, None, None, "Ohm", f"info: {SRC_MD3}")
-    run_microstep(main, base, check, f"{cid}-MD-3", sup, temp, r_eff=r_eff, duty_src=SRC_MD3,
-                  rule=f"; firmware rule {SRC_MD3}")
+    rule = f"; firmware rule {SRC_MD3}"
+    if vmeas is not None:
+        check("idle VSYS firmware measures (true idle VSYS is the supply)", vmeas, None, None, "V", f"info: {SRC_ADC}")
+        rule += f"; MD-2 threshold {FW_VSYS_MOVE:.2f} V measured, read {(vmeas - vbat) * 1e3:.0f} mV high ({SRC_ADC})"
+    run_microstep(main, base, check, f"{cid}-MD-3", sup, temp, r_eff=r_eff, duty_src=SRC_MD3, rule=rule,
+                  vsys_meas=vmeas)
 
 
 # ------------------------------------------------ nSLEEP wake timing
