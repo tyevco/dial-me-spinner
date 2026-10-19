@@ -656,10 +656,11 @@ def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13
     d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
     n13, nin, nfb = main.node("+13V_OLED"), main.node("OLED_VIN"), main.node("OLED_BST_FB")
-    # start from rest (uic: every capacitor at 0 V, +3V3 / VSYS up), as after a power-up with the OLED left off;
-    # at 60 C the boost would hiccup around its UVLO, so there is no DC operating point to start from
-    d += [f".ic v({n13})={v13_0} v({nin})=0 v(n_vsys)={CORNERS['bat3.7']['vbat']} v(n_vsys_b)={CORNERS['bat3.7']['vbat']}"]
-    d.tran(f"{stop / 2000:.3g}", f"{stop}", extra="uic")
+    # start with OLED_VIN and +13V_OLED held at 0 V for the operating point (.ic, released at t = 0), as after a
+    # power-up with the OLED left off; at 60 C the boost would hiccup around its UVLO, so there is no free DC
+    # operating point to start from
+    d += f".ic v({n13})={v13_0} v({nin})=0"
+    d.tran(f"{stop / 2000:.3g}", f"{stop}")
     d.meas(f"tran vin_end FIND v({nin}) AT={stop}")
     d.meas(f"tran vin_max MAX v({nin})")
     d.meas(f"tran v13_end FIND v({n13}) AT={stop}")
