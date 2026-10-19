@@ -174,7 +174,7 @@ Boost:
 ### 5.4 `leds` — 48× WS2812C-2020-V6 ring
 * D101…D148 WS2812C-2020-V6 (C55109522; footprint
   `LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm`; WS2812B-2020-V6 C52917434 is a
-  drop-in), chained DOUT→DIN (nets LED_D1…LED_D47; the last DOUT is LED_D48). Each LED has its own 100 nF 0402 (C1525) on
+  pin-compatible only: its 12 mA/ch gives a 2.35 A worst case, so the firmware ring cap ≤ 0.75 A becomes mandatory and the link power contacts are at their limit), chained DOUT→DIN (nets LED_D1…LED_D47; the last DOUT is LED_D48). Each LED has its own 100 nF 0402 (C1525) on
   VLED/GND (C101…C148, same index).
 * LED_DIN_MCU → 220 Ω (R40; limits DIN clamp injection if P0.06 is ever high while VLED is off) → LED_DIN (D101.DIN),
   with 100 kΩ pull-down (R41) on LED_DIN. D148.DOUT (LED_D48) goes to TP40 with a 100 kΩ pull-down (R42), since V6 DI/DO are swappable.
@@ -247,7 +247,7 @@ dimensions are in mm.
 | 18.0–25.0 | 608 bearing on the spindle; ≥ 2.5–3 N wave-spring axial preload | outer race r = 11 |
 | 19–29.1 | "bowl" under the main board, r 12–27: detent actuator (micro linear stepper, chord placement near θ = 90°) | stationary, hangs from the main-board bottom |
 | 26.6–28.6 | detent magnet Ø3×2 N52 on carriage, 1.0 mm above the track; slides r = 29.0 (click) → 21.5 (free) along θ = 90° | carriage plate 0.5 mm, rail fixed to the main-board bottom |
-| 29.1–30.7 | **main board** Ø64 (r ≤ 32), 4-layer 1.6 mm | centre Ø5 hole + 3× M2 at r = 6.5 (spindle flange), 2× M2 at r = 17 θ = 60°/120° (actuator bracket) |
+| 29.1–30.7 | **main board** Ø64 (r ≤ 32), 4-layer 1.6 mm | centre Ø5 hole + 3× **plated GND** M2 at r = 6.5 (spindle flange; the ring's ESD bleed path runs ring → conductive epoxy → 608 races → spindle → GND), 2× M2 at r = 17 θ = 60°/120° (actuator bracket) |
 | 30.7–31.6 | LEDs (48× WS2812C-2020) at r = 28.5 | |
 | 31.6–34.2 | LED light box (white interior, opaque exterior) r 27–30 | |
 | 33.0–34.7 | OLED glass 33.8 × 34.0 (active-area centre on axis) on a bracket; FPC folded under to the ZIF | |

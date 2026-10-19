@@ -145,6 +145,11 @@ def main_fixed(comps):
                 P[ref] = (x, y, rot, side)
                 return ref
 
+    for i, th in enumerate((90, 210, 330)):                              # plated GND spindle holes
+        ref = f"H{i + 1}"
+        if ref in comps:
+            x, y = pol(6.5, th)
+            P[ref] = (x, y, 0.0, "F")
     put(lambda c: "TMAG5273" in mpn(c), 29.0, 270.0, 0.0, "B")          # long axis radial (SOT-23 pins along x)
     put(lambda c: "DRV5032" in mpn(c), 21.5, 90.0, 0.0, "F")
     put(lambda c: "MDBT50Q" in mpn(c), 14.5, 215.0, 215.0 + 90.0, "B")   # u.FL end toward the centre
@@ -236,9 +241,14 @@ def build_main(bb, comps, nets):
     bb.circle(pcbnew.Edge_Cuts, CX, CY, MAIN_R, 0.1)
     bb.edge_band_keepout(bb.circle_pts(CX, CY, MAIN_R, 180))
     bb.circle(pcbnew.Edge_Cuts, CX, CY, 2.5, 0.1)  # Ø5 harness hole
-    for i, th in enumerate((90, 210, 330)):
-        x, y = pol(6.5, th)
-        bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", f"H{i + 1}")
+    for i, th in enumerate((90, 210, 330)):   # plated GND spindle holes come from the schematic (H1-H3)
+        ref = f"H{i + 1}"
+        if ref in bb.footprints:
+            x, y = pol(6.5, th)
+            bb.footprints[ref].SetPosition(pcbnew.VECTOR2I(pcbgen.MM(x), pcbgen.MM(y)))
+        else:
+            x, y = pol(6.5, th)
+            bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", ref)
     for i, th in enumerate((60, 120)):
         x, y = pol(17.0, th)
         bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", f"H{i + 4}")
