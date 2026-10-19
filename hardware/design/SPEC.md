@@ -238,10 +238,10 @@ dimensions are in mm.
 | 0.0–1.0 | 3× rubber/micro-suction feet | r = 28 |
 | 1.0–2.5 | base cup floor (PA12/PETG) | cup OD Ø70, wall 1.6, wall top z = 14.3 |
 | 2.5–9.0 | LiPo bay, protected 603450-class pack **≤ 6.0 thick** (≥ 1 mm swelling gap to the board) | long axis along **θ = 0°/180°** (|x| ≤ 27.5, |y| ≤ 17.25); leads exit at the θ = 180° end |
-| 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf along the chord y = +26 (θ ≈ 90°), outer edge ≤ r 33 | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 4 mm from the pack side (y = 17.25); coax rises to the spindle side slot |
-| 9.5–11.1 | **base board** (Ø46 disc + USB tab to r = 35 at θ = 0°, 1.6 mm) | 2× M2 bosses at r = 21, θ = 90°/270° (outside the pack); the USB-C shell clamped in the cup wall is the 3rd support |
+| 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf, centred on the chord y = +23.5 (θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33) | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 1.75 mm from the pack side (y = 17.25); coax rises to the spindle side slot. Base-board copper keeps ≥ 5 mm away: no B.Cu copper for y > 15.4, no F.Cu pour for y > 17 |
+| 9.5–11.1 | **base board** (Ø46 disc + USB tab to r = 35 at θ = 0°, 1.6 mm) | supports: **one M2 boss at r = 20, θ = 270°** (outside the pack, 1.9 mm of FR4 to the edge), a printed **rib** under the θ = 90° edge (y 17.75–18.75, between the pack and the antenna shelf; no boss fits there) and the USB-C shell clamped in the cup wall |
 | 11.1–12.6 | press switch TS-1187A (1.5 tall) at the base-board centre | |
-| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
+| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, ±18°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30 with a **through-notch at θ = 0° for the USB-C** (x ≥ 26.5, |y| ≤ 5.6; the receptacle top is at z 14.36)). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
 | 12.8–29.1 | hollow spindle Ø8 × 1.0 wall (316 or titanium), bore Ø6 for link harness + antenna coax | clamped to the lower plate and to the main board; side slots at z ≈ 14.5–16 (below the carrier web) and just under the main board let the harness/coax in and out |
 | 15.6–25.6 | **rotor**: 316L ring OD 70 / ID 54, on a PA12-GF carrier web (z 17–19, r 11–27) holding the 608 outer race | ring top face z = 25.6 carries the 48-magnet track (Ø2×2, pockets 2.05 deep, R_t = 29.0) |
 | 18.0–25.0 | 608 bearing on the spindle; ≥ 2.5–3 N wave-spring axial preload | outer race r = 11 |
@@ -284,7 +284,9 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   * USB-C J1 at θ = 0° on the tab;
   * USBLC6 U2 and SMF5.0A near J1;
   * link J3 (**side-entry** SH SM12B, ~3 mm tall, entry facing the centre) at r ≈ 15.5, θ = 120°. A vertical header plus plug would reach the rotor web;
-  * battery J2 (PH, top side) at r ≈ 17, θ ≈ 212°. The pack leads come up past the board edge from the pack end at θ = 180°.
-* Nothing on the base-board bottom side: the battery sits 0.5 mm below it. The only exception is pads/test points.
+  * battery J2 (PH, top side) at r = 17, θ = 222°, mouth radially outward (body θ ≈ 206–238°, clear of the θ 180° spoke). The pack leads come up past the board edge from the pack end at θ = 180°.
+* Nothing on the base-board bottom side: the battery sits 1 mm below it. The only exception is pads/test points. RT1 (NTC) is on the top side at r 8, θ 200°, so it reads board/pack-air temperature.
+* BQ25180 at r = 19.5, θ = 255°: off the pack (|y| > 17.25) in the open θ 240° sector, with stitching vias around its GND ball D2 into both pours (it dissipates up to ≈ 0.6 W while charging). Q1 (BSS138DW, SOT-363 up to 1.1 mm) at r 9, θ ≈ 218°, outside the θ 180° spoke sector.
+* Antenna clearance: no B.Cu copper (tracks, vias, pour) for device y > 15.4 and no F.Cu pour for y > 17 (layout.py ANTENNA_KEEPOUT_*).
 * SW1 sits exactly at the centre, under the FA boss.
 

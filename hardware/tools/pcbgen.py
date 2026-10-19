@@ -395,6 +395,140 @@ def trim_dangling(b, tol=2000):
     return trimmed
 
 
+def _zone_has(b, net, layer, pt):
+    return any(z.GetNetCode() == net and z.IsOnLayer(layer) and z.HitTestFilledArea(layer, pt)
+               for z in b.Zones() if not z.GetIsRuleArea())
+
+
+def _end_connected(b, t, p, segs, vias, tol=2000):
+    net, layer = t.GetNetCode(), t.GetLayer()
+    if any(o is not t and o.GetNetCode() == net and o.GetLayer() == layer and
+           ((o.GetStart() - p).EuclideanNorm() < tol or (o.GetEnd() - p).EuclideanNorm() < tol) for o in segs):
+        return True
+    if any(v.GetNetCode() == net and (v.GetStart() - p).EuclideanNorm() < tol for v in vias):
+        return True
+    if any(pad.GetNetCode() == net and pad.IsOnLayer(layer) and pad.HitTest(p)
+           for fp in b.GetFootprints() for pad in fp.Pads()):
+        return True
+    return _zone_has(b, net, layer, p)
+
+
+def remove_debris(b, tol=2000):
+    """Zone-aware clean-up after routing + pour fill (run on a filled board, repeat until stable):
+    unlocked segments that only retrace a locked segment (router copper laid over a locked BGA neck),
+    unlocked spurs with an open end and no other copper on them, and unlocked vias that join < 2 items."""
+    removed = 0
+    for _ in range(10):
+        segs = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_TRACE_T]
+        vias = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_VIA_T]
+        doomed = []
+        locked = [t for t in segs if t.IsLocked()]
+        for t in segs:
+            if t.IsLocked():
+                continue
+            for lk in locked:
+                if lk.GetNetCode() == t.GetNetCode() and lk.GetLayer() == t.GetLayer():
+                    seg = pcbnew.SEG(lk.GetStart(), lk.GetEnd())
+                    if seg.Distance(t.GetStart()) < tol and seg.Distance(t.GetEnd()) < tol:
+                        doomed.append(t)
+                        break
+        for t in segs:
+            if t.IsLocked() or t in doomed:
+                continue
+            for p, q in ((t.GetStart(), t.GetEnd()), (t.GetEnd(), t.GetStart())):
+                if _end_connected(b, t, p, segs, vias, tol):
+                    continue
+                seg = pcbnew.SEG(p, q)
+                taps = [x for o in segs if o is not t and o.GetNetCode() == t.GetNetCode() and o.GetLayer() == t.GetLayer()
+                        for x in (o.GetStart(), o.GetEnd()) if seg.Distance(x) < tol and (x - p).EuclideanNorm() > tol]
+                taps += [v.GetStart() for v in vias if v.GetNetCode() == t.GetNetCode() and seg.Distance(v.GetStart()) < tol]
+                if not taps and not _end_connected(b, t, q, segs, vias, tol):
+                    doomed.append(t)  # floating piece
+                elif not taps:
+                    doomed.append(t)  # spur: one end open, nothing on it
+                break
+        for v in vias:
+            if v.IsLocked():
+                continue
+            p, net = v.GetStart(), v.GetNetCode()
+            n = sum(1 for o in segs if o not in doomed and o.GetNetCode() == net and
+                    ((o.GetStart() - p).EuclideanNorm() < tol or (o.GetEnd() - p).EuclideanNorm() < tol))
+            n += sum(1 for lay in (pcbnew.F_Cu, pcbnew.B_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu)
+                     if b.IsLayerEnabled(lay) and _zone_has(b, net, lay, p))
+            if n < 2:
+                doomed.append(v)
+        if not doomed:
+            break
+        for t in doomed:
+            b.Delete(t)
+        removed += len(doomed)
+    return removed
+
+
+def stitch_vias(b, net_name="GND", pitch=3.0, via=0.5, drill=0.25, clearance=0.2, spacing=1.0,
+                priority=(), max_vias=400):
+    """Add GND stitching vias on a grid (plus any priority points first) wherever a through via fits:
+    inside the filled pour of that net on both outer layers, clear of every other-net item on every layer."""
+    net = b.GetNetInfo().GetNetItem(net_name)
+    if net is None:
+        return 0
+    code = net.GetNetCode()
+    cu = [lay for lay in (pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu) if b.IsLayerEnabled(lay)]
+    tracks = [t for t in b.GetTracks()]
+    pads = [p for fp in b.GetFootprints() for p in fp.Pads()]
+    holes = [p for p in pads if p.GetDrillSize().x > 0]
+    rv = MM(via / 2)
+    placed = [v.GetStart() for v in tracks if v.Type() == pcbnew.PCB_VIA_T]
+    bb = b.GetBoardEdgesBoundingBox()
+
+    no_via = [z for z in b.Zones() if z.GetIsRuleArea() and z.GetDoNotAllowVias()]
+
+    def ok(pt):
+        for z in no_via:
+            if z.Outline().Collide(pt, int(rv + MM(clearance))):
+                return False
+        for lay in (pcbnew.F_Cu, pcbnew.B_Cu):
+            ring = [pt] + [pt + pcbnew.VECTOR2I(int(rv * math.cos(a)), int(rv * math.sin(a)))
+                           for a in (k * math.pi / 4 for k in range(8))]
+            if not all(_zone_has(b, code, lay, q) for q in ring):
+                return False
+        acc = rv + MM(clearance)
+        for t in tracks:
+            if t.GetNetCode() != code and any(t.IsOnLayer(lay) for lay in cu) and t.HitTest(pt, acc):
+                return False
+        for p in pads:
+            if p.GetNetCode() != code and p.HitTest(pt, acc):
+                return False
+        for p in holes:  # hole-to-hole spacing applies to every net
+            if (p.GetPosition() - pt).EuclideanNorm() < MM(drill / 2 + 0.25) + p.GetDrillSize().x // 2:
+                return False
+        return all((q - pt).EuclideanNorm() >= MM(spacing) for q in placed)
+
+    added = 0
+    pts = [vec(x, y) for x, y in priority]
+    step = MM(pitch)
+    y = bb.GetY() + step // 2
+    while y < bb.GetBottom():
+        x = bb.GetX() + step // 2
+        while x < bb.GetRight():
+            pts.append(pcbnew.VECTOR2I(int(x), int(y)))
+            x += step
+        y += step
+    for pt in pts:
+        if added >= max_vias or not ok(pt):
+            continue
+        v = pcbnew.PCB_VIA(b)
+        v.SetPosition(pt)
+        v.SetWidth(MM(via))
+        v.SetDrill(MM(drill))
+        v.SetNet(net)
+        b.Add(v)
+        placed.append(pt)
+        tracks.append(v)
+        added += 1
+    return added
+
+
 def dedupe_tracks(b):
     """Drop exact duplicate segments/vias (a re-route of an already routed board re-imports the old wiring)."""
     seen, dup = set(), []
