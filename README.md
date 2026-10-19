@@ -156,7 +156,7 @@ Boards and fab outputs (after `build.py`, which writes the netlists they read):
 # Place both boards and run DRC; add --route to autoroute with Freerouting
 # (--attempts N re-runs it while connections remain; --finish only cleans up
 # an already routed board)
-python3 hardware/design/layout.py [--board main|base] [--route] [--passes N] [--attempts N] [--finish]
+python3 hardware/design/layout.py [--board main|base] [--route] [--minutes N] [--attempts N] [--finish]
 
 # Gerbers, JLCPCB BOM + CPL, ORDER-NOTES.md, PDFs and 3D renders into
 # hardware/fab/<board>/; stops if DRC or schematic parity reports an error

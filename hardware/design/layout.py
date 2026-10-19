@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the dial-me-spinner PCBs (main + base) from the KiCad netlists.
 
-usage: python3 hardware/design/layout.py [--board main|base] [--route] [--passes N]
+usage: python3 hardware/design/layout.py [--board main|base] [--route] [--minutes N]
 
 The script places mechanically constrained parts explicitly (SPEC §8): LED ring,
 Hall sensors, module, connectors, switch. It then greedily clusters every other
@@ -870,9 +870,11 @@ def drc(path, warnings=None):
     return rpt, counts
 
 
-def route(path, passes=12, timeout=4 * 3600, threads=2, optimizer_passes=20):
+def route(path, minutes=30, threads=2, optimizer_passes=20):
     """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
-    The post-route optimizer is capped (its default of 100 passes takes hours on the 4-layer main board)."""
+    Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
+    the run is bounded by its job timeout, after which it writes the best board so far.  The post-route optimizer
+    is capped (its default of 100 passes takes hours on the 4-layer main board)."""
     jar = FREEROUTING or os.path.join(os.environ.get("SCRATCH", "/tmp"), "freerouting.jar")
     if not os.path.exists(jar):
         raise SystemExit(f"Freerouting jar not found ({jar}); set FREEROUTING_JAR")
@@ -882,12 +884,10 @@ def route(path, passes=12, timeout=4 * 3600, threads=2, optimizer_passes=20):
         os.remove(ses)
     pcbgen.export_dsn(path, dsn)
     with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
-        # Freerouting 2.1 ignores -mp (its settings file wins, max_passes 9999), so the pass limit is also given
-        # as a settings override.
-        subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mp", str(passes), "-mt", str(threads),
-                        f"--router.max_passes={passes}", f"--router.optimizer.max_passes={optimizer_passes}",
-                        "--gui.enabled=false"],
-                       timeout=timeout, stdout=log, stderr=subprocess.STDOUT)
+        subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mt", str(threads),
+                        f"--router.job_timeout={minutes // 60:02d}:{minutes % 60:02d}:00",
+                        f"--router.optimizer.max_passes={optimizer_passes}", "--gui.enabled=false"],
+                       timeout=(minutes + 60) * 60, stdout=log, stderr=subprocess.STDOUT)
     if not os.path.exists(ses):
         raise RuntimeError("Freerouting produced no session file")
     pcbgen.import_ses(path, ses, path)
@@ -899,7 +899,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--board", choices=sorted(BOARDS))
     ap.add_argument("--route", action="store_true")
-    ap.add_argument("--passes", type=int, default=12)
+    ap.add_argument("--minutes", type=int, default=30, help="Freerouting time budget for the first attempt")
     ap.add_argument("--attempts", type=int, default=3, help="re-run Freerouting on the routed board while connections remain")
     ap.add_argument("--finish", action="store_true", help="only clean up an already routed board (no re-placement)")
     a = ap.parse_args()
@@ -917,7 +917,7 @@ def main():
         print(f"[{board}] placed ->", out)
         if a.route:
             for attempt in range(a.attempts):
-                route(out, a.passes + 10 * attempt)
+                route(out, a.minutes * (attempt + 1))
                 _, counts = drc(out)
                 left = counts.get("[unconnected_items]", 0)
                 print(f"[{board}] route attempt {attempt + 1}: {left} unconnected")
