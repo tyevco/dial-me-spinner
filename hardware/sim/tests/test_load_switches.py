@@ -113,6 +113,8 @@ def vsys_network(deck, main, base, corner="bat3.7", temp=25, i3v3=I_3V3, ronbat=
         deck += f"XBQ n_vsys_b 0 LSW_BQ25180_BAT params: vbat={c['vbat']} rpack={RPACK[temp]} ronbat={ronbat}"
     deck += _rename(base.passives(nets={"VSYS", "GND"}), "b")
     deck += f"RHARN n_vsys_b n_vsys {R_HARNESS:.6g}"
+    v_guess = min(vsysreg, c["vbus"]) if c["usb"] else c["vbat"]
+    deck += f".nodeset v(n_vsys)={v_guess} v(n_vsys_b)={v_guess} v(n_p3v3)={min(3.3, v_guess)}"   # OP guide
     deck += main.passives(nets={"VSYS", "GND", "VSYS_SENSE"})
     deck += f"I3V3 n_vsys 0 DC {i3v3}"
     deck += f"BIBAT n_ibat 0 V = (V(xbq.vcell) - V(xbq.bat))/{RPACK[temp]}"     # battery current (A as V)
@@ -654,9 +656,10 @@ def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13
     d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
     n13, nin, nfb = main.node("+13V_OLED"), main.node("OLED_VIN"), main.node("OLED_BST_FB")
-    if v13_0:
-        d += f".ic v({n13})={v13_0}"
-    d.tran("1m", f"{stop}", extra="uic" if v13_0 else "")
+    # start from rest (uic: every capacitor at 0 V, +3V3 / VSYS up), as after a power-up with the OLED left off;
+    # at 60 C the boost would hiccup around its UVLO, so there is no DC operating point to start from
+    d += [f".ic v({n13})={v13_0} v({nin})=0 v(n_vsys)={CORNERS['bat3.7']['vbat']} v(n_vsys_b)={CORNERS['bat3.7']['vbat']}"]
+    d.tran(f"{stop / 2000:.3g}", f"{stop}", extra="uic")
     d.meas(f"tran vin_end FIND v({nin}) AT={stop}")
     d.meas(f"tran vin_max MAX v({nin})")
     d.meas(f"tran v13_end FIND v({n13}) AT={stop}")
@@ -666,7 +669,7 @@ def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13
 
 def test_u21_off_leakage_alone_keeps_boost_off(main, base, check):
     """Without the panel's ESD path, U21's worst-case off leakage (ISD max) alone cannot enable the boost."""
-    r = u21_off_state(main, base, 60, panel_esd=False)
+    r = u21_off_state(main, base, 60, panel_esd=False, stop=10.0)
     check("OLED_VIN, U21 off, ISD max, no panel path, 60 C", r["vin_max"], None, BST_EN_VIL, "V",
           f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN) / {DS_SW} Table 7.5 ISD 100 nA max")
 
@@ -677,10 +680,72 @@ def test_u21_off_leakage_alone_keeps_boost_off(main, base, check):
                    "from +3V3 (fix: tie U21 QOD to OLED_VIN, see design_findings)")
 @pytest.mark.parametrize("temp", [-10, 25, 60])
 def test_u21_off_backpower_via_panel_and_d21(main, base, check, temp):
-    r = u21_off_state(main, base, temp, panel_esd=True)
+    # D21 leakage charges C38 at roughly 0.2 / 1 / 6 V/s at -10 / 25 / 60 C: simulate long enough to settle or to
+    # reach the boost UVLO region (where it would start hiccuping), not longer
+    r = u21_off_state(main, base, temp, panel_esd=True, stop={-10: 8.0, 25: 3.0, 60: 0.25}[temp])
     check(f"+13V_OLED held by the panel ESD path (record) {temp}C", r["v13_end"], None, None, "V",
           "SSD1351 Rev 1.3 8.9 Note (1)")
     check(f"FB - OLED_VIN with OLED off {temp}C", r["vfb_end"] - r["vin_end"], None, BST_FB_OVER_VIN, "V",
           f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
     check(f"OLED_VIN with OLED off (boost EN = VIN) {temp}C", r["vin_max"], None, BST_EN_VIL, "V",
           f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN): boost guaranteed off")
+
+
+# ======================================================================================== 8. DC load extremes
+N_LEDS_FULL_A = 48 * 3 * 5e-3     # A, 48 pixels x 3 channels x 5 mA (WS2812C DS p.1) = hardware maximum
+
+
+def _ron_max(vin, temp_row):
+    """Table 7.5 RON max, linear in VIN between the 3.6 V and 5 V rows (clamped outside)."""
+    a, b = SW_RON_MAX[3.6][temp_row], SW_RON_MAX[5.0][temp_row]
+    x = min(max((vin - 3.6) / 1.4, 0.0), 1.0)
+    return a + (b - a) * x
+
+
+def led_dc(main, base, corner, temp, i_led, ron_add=0.0, vsysreg=4.5):
+    d = Deck(f"LED DC {corner} {temp}C {i_led} A")
+    d += f".temp {temp}"
+    vsys_network(d, main, base, corner, temp, vsysreg=vsysreg)
+    sense(d, "n_vsys", "n_u2_vin", "n_iu2")
+    tps22917(d, main, "U2", ron_add=ron_add, vin_node="n_u2_vin")
+    led_rail(d, main, duty=i_led / N_LEDS_FULL_A)
+    d += ["VCTL n_ctl 0 1", "VOE n_oe 0 1"]
+    gpio(d, main, "LED_PWR_EN", "n_ctl", "n_oe")
+    d.op()
+    d.print_op("v(n_u2_vin)", "v(n_vled)", "v(n_iu2)", "v(n_ibat)")
+    r = run(d, need=("op_0", "op_1", "op_2", "op_3"))
+    r["vin"], r["vled"], r["i"], r["ibat"] = r["op_0"], r["op_1"], r["op_2"], r["op_3"]
+    r["ron"] = (r["vin"] - r["vled"]) / max(r["i"], 1e-9)
+    return r
+
+
+@pytest.mark.parametrize("corner,vsysreg", [("usb5.0", 4.5 * 1.02), ("bat4.2", 4.5)])
+def test_u2_full_white_thermal(main, base, check, corner, vsysreg):
+    """Hardware-maximum ring current (full white, no firmware cap) at 60 C ambient with RON at its 85 C maximum."""
+    ta = 60
+    r0 = led_dc(main, base, corner, ta, N_LEDS_FULL_A, vsysreg=vsysreg)
+    ron_t = _ron_max(r0["vin"], 85)
+    r = led_dc(main, base, corner, ta, N_LEDS_FULL_A, ron_add=max(0.0, ron_t - r0["ron"]), vsysreg=vsysreg)
+    p = r["i"] ** 2 * r["ron"]
+    check(f"U2 current, full white {corner}", r["i"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
+    check(f"U2 TJ at 60 C ambient, full white {corner}", ta + p * SW_THETA_JA, None, SW_TJMAX, "C",
+          f"{DS_SW} Table 7.1 TJ max 125 C; Table 7.4 theta-JA 183 C/W; Table 7.5 RON max 85 C row")
+    r_nl = led_dc(main, base, corner, ta, 0.0, vsysreg=vsysreg)
+    check(f"VLED max, no load (VSYS_REG +2 %) {corner}", r_nl["vled"], None, WS_VDD_MAX, "V",
+          f"{DS_WS} p.2 VDD 5.3 V max; {DS_BQ} VSYS_REG accuracy +2 %")
+    if not CORNERS[corner]["usb"]:
+        check(f"battery current, full white {corner}", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A")
+
+
+@pytest.mark.parametrize("vbat,i_led,temp", [(3.53, 0.100, 25), (3.53, 0.100, -10), (3.65, 0.300, -10)])
+def test_vled_at_firmware_led_floor(main, base, check, vbat, i_led, temp):
+    """Lowest battery at which firmware still lights the ring (docs/firmware.md LED derating: < 3.60 V -> 100 mA cap,
+    < 3.53 V -> off; >= 3.65 V -> 300 mA bursts): VLED under that load must stay in the WS2812C supply range."""
+    CORNERS["_floor"] = dict(usb=0, vbat=vbat, vbus=0.0)
+    try:
+        r0 = led_dc(main, base, "_floor", temp, i_led)
+        r = led_dc(main, base, "_floor", temp, i_led, ron_add=max(0.0, _ron_max(r0["vin"], 25) - r0["ron"]))
+    finally:
+        CORNERS.pop("_floor")
+    check(f"VLED at VBAT {vbat} V rested, {i_led * 1e3:.0f} mA, {temp} C", r["vled"], WS_VDD_MIN, None, "V",
+          f"{DS_WS} p.2 VDD 3.3 V min; docs/firmware.md LED derating table; {DS_SW} Table 7.5 RON max")

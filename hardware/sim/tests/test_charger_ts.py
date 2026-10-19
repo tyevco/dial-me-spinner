@@ -78,7 +78,8 @@ VGSS_MAX = 20.0          # DS maximum ratings VGSS
 # Cgs = Ciss - Crss, Cds = Coss - Crss, and scales the whole Crss(VDS) curve so that it meets 8 pF at 10 V.
 FIG10 = {"ciss10": 33e-12, "crss10": 3.3e-12, "crss0": 22.3e-12}
 CISS_MAX, COSS_MAX, CRSS_MAX = 50e-12, 25e-12, 8e-12
-C_SLOW = dict(cgs=CISS_MAX - CRSS_MAX, cds=COSS_MAX - CRSS_MAX, cgd0=FIG10["crss0"] * CRSS_MAX / FIG10["crss10"])
+CRSS_MODEL10 = 22.3e-12 / (1 + 10 / 0.6) ** 0.64   # model Cgd at VDG = 10 V (cgd0/vjgd/mgd fit in the .lib)
+C_SLOW = dict(cgs=CISS_MAX - CRSS_MAX, cds=COSS_MAX - CRSS_MAX, cgd0=22.3e-12 * CRSS_MAX / CRSS_MODEL10)
 QA = ("6", "2", "1")     # Q1 unit A pins (D, G, S), KiCad Q_Dual_NMOS_S1G1D2S2G2D1 (sheets/base.py)
 QB = ("3", "5", "4")     # Q1 unit B pins (D, G, S)
 

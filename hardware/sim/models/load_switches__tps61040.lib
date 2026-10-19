@@ -63,7 +63,7 @@ B_IAVG  IAVG 0 V = V(TFALL) <= {toffmin} ? V(IPK)/2*(V(TON)+V(TFALL))/(V(TON)+{t
 +                  : V(IPK) - V(VD)*{toffmin}/{lind}/2
 B_TCYC  TCYC 0 V = V(TFALL) <= {toffmin} ? V(TON) + {toffmin}
 +                  : V(VD)*{toffmin}/V(VI) + {toffmin}
-B_FSW   FSW 0 V = 1/V(TCYC)
+B_FSW   FSW 0 V = 1/min(max(V(TCYC), 100n), 1m)
 * ---- regulation (PFM stops above VREF) and the averaged input current, filtered 5 us
 B_GREG  GREG 0 V = min(1, max(0, ({vref} - V(FB,GND))/50m))
 B_ITGT  ITGT 0 V = V(ENI) * V(GREG) * V(IAVG)

@@ -651,6 +651,8 @@ def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=2
 
 
 MICRO_CASES = [("VBAT3.7-25C", "VBAT3.7", 25, None), ("VBUS5.0-25C", "VBUS5.0", 25, "slow"),
+               # sensitivity: the detent sheet's own VM caps left off (C70, C72 100 nF, C74 10 uF)
+               ("VBAT3.7-25C-without-C70-C72-C74", "VBAT3.7", 25, "slow"),
                ("VBAT3.7-60C", "VBAT3.7", 60,
                 "DESIGN ISSUE: the firmware's sine microstepping uses a fixed 20.3 Ohm coil in d = I x R / VSYS and a "
                 "160 mA peak, so the hot coil (60 C, 22.8 Ohm) gets < 160 mA and the torque vector (1/sqrt2 of full "
@@ -671,6 +673,9 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS. Checks the VM ripple
     from the 25 kHz current pulses, VSYS peak, BAT pin, link current and the torque-vector magnitude."""
     sup = SUP[supname]
+    if "without" in cid:
+        for ref in ("C70", "C72", "C74"):
+            main.remove(ref)
     pps, n_full = 446, 1
     t_on, t_e = 50e-6, 100e-6                         # the firmware's 1 ms wake wait adds nothing here (twake 30 us)
     ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)

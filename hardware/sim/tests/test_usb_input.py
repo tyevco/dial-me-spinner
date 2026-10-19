@@ -237,7 +237,8 @@ def line(name, a, b, mm, prefix):
     if mm <= 0:
         return [f"V{prefix}{name} {a} {b} 0"]
     mid = f"{a}_{prefix}{name}"
-    return [f"R{prefix}{name} {a} {mid} {max(mm * R_PER_MM, 1e-6):.4g}", f"L{prefix}{name} {mid} {b} {mm * L_PER_MM:.4g}"]
+    return [f"R{prefix}{name} {a} {mid} {max(mm * R_PER_MM, 1e-6):.4g}",
+            f"L{prefix}{name} {mid} {b} {mm * L_PER_MM:.4g}"]
 
 
 # ============================================================================================ network builder
@@ -547,7 +548,8 @@ def cc_voltage(base: Design, active: str, advert: str, impl: str, corner: tuple,
     val = nom * (1 + rp_sign * tol)
     if impl == "isrc":
         # current source with compliance to `rail` (diode clamp to the rail)
-        dk += [f"Irp 0 {act} {val:.6g}", f"Vrail rail 0 {rail}", f"Dcmp {act} rail DCMP", ".model DCMP D(IS=1e-12 N=0.01)"]
+        dk += [f"Irp 0 {act} {val:.6g}", f"Vrail rail 0 {rail}", f"Dcmp {act} rail DCMP",
+               ".model DCMP D(IS=1e-12 N=0.01)"]
     else:
         dk += [f"Vrail rail 0 {rail}", f"Rrp rail {act} {val:.6g}"]
     dk += [f"Rra {other} 0 {EMARKER_RA}", f"Rnum1 {act} 0 1e12", f"Rnum2 {other} 0 1e12"]
@@ -638,11 +640,13 @@ def test_cin_after_dc_bias_25c(base, parts, check, vin, main):
     check(f"CIN effective at {vin} V, -tol, 25 C", c, BQ_CIN[0][0], BQ_CIN[0][1], "F", BQ_CIN[1])
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="DESIGN ISSUE (margin): C1 2.2 uF/25 V 0603 X5R falls below the BQ25180's "
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE (margin): C1 2.2 uF/25 V 0603 X5R falls below the BQ25180's "
                    "1 uF effective CIN at 5.5 V with -10 % tolerance and the -15 % X5R temperature bound "
                    "(DC-bias curve is an estimate, see X5R_DCBIAS)")
 @pytest.mark.parametrize("temp", [-10, 60])
 def test_cin_after_dc_bias_temperature(base, parts, check, temp, main):
+    """C1 at VIN max (5.5 V), -tolerance, with the EIA X5R -15 % temperature bound at -10 / 60 C: >= 1 uF."""
     c = vbus_capacitance(base, main, BQ_VIN_OP[0][1], vbus_cap_scale(base, main, parts, -1), 1 - X5R_TEMP_BOUND,
                          only_cin=True)
     check(f"CIN effective at 5.5 V, -tol, {temp} C (X5R -15 %)", c, BQ_CIN[0][0], BQ_CIN[0][1], "F", BQ_CIN[1])
@@ -701,7 +705,8 @@ def test_hotplug_grid(base, main, check, vsrc, cable, c_bulk):
     check(f"IN peak ({tag})", r["vin_max"], None, BQ_IN_ABS_MAX[0], "V", BQ_IN_ABS_MAX[1])
     check(f"D1 peak current ({tag})", r["itvs_max"], None, TVS_IPP[0], "A", TVS_IPP[1])
     check(f"U2 VBUS clamp peak current ({tag})", r["itr_max"], None, LC6_IPP[0], "A", LC6_IPP[1])
-    check(f"(info) U2 VBUS pin peak ({tag})", r["vesd_max"], None, None, "V", "USBLC6-2 DS 11265 Rev5 (no VBUS abs max)")
+    check(f"(info) U2 VBUS pin peak ({tag})", r["vesd_max"], None, None, "V",
+          "USBLC6-2 DS 11265 Rev5 (no VBUS abs max)")
     check(f"(info) IN peak vs VIN_OVP min ({tag}): charger input FET trips", r["vin_max"], None, None, "V",
           BQ_VIN_OVP_MIN[1])
     check(f"(info) nRF VBUS peak ({tag})", r["vnrf_max"], None, None, "V", NRF_VBUS_ABS[1])
@@ -709,7 +714,8 @@ def test_hotplug_grid(base, main, check, vsrc, cable, c_bulk):
           "steady state is checked in test_dc_operating_point")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="DESIGN ISSUE: hot plug overshoots the nRF52840 VBUS abs max 5.8 V "
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE: hot plug overshoots the nRF52840 VBUS abs max 5.8 V "
                    "(link VBUS goes straight to U10 VBUS with only C12; no series R as in Nordic's reference)")
 def test_hotplug_nrf_vbus_abs_max(base, main, check):
     worst = max((hotplug(base, main, v, c, b)["vnrf_max"], (v, c, b)) for v, c, b in GRID)
@@ -738,12 +744,15 @@ def test_hotplug_corners(base, main, check, temp, tvs):
             check(f"(info) nRF VBUS peak ({tag})", r["vnrf_max"], None, None, "V", NRF_VBUS_ABS[1])
 
 
+NRF_SERIES_R = (1.8, 4.7)   # 4.7: Nordic reference R1 4R7; 1.8: keeps PS 5.3.8.6 RSOURCE,VBUS <= 2 Ohm incl. cable
+
+
+@pytest.mark.parametrize("r_series", NRF_SERIES_R)
 @pytest.mark.parametrize("temp,tvs", [(-10, "clampmax"), (25, "typ"), (60, "clampmax")])
-def test_hotplug_fix_preview_nrf_series_r(base, main, check, temp, tvs):
-    """WHAT-IF (not in the schematic yet): Nordic's reference 4.7 Ohm in series with the nRF VBUS pin (nRF52840 PS
-    v1.1 section 7.3, circuit configuration 1, R1 4R7, 'recommended for new designs'), C12 behind it.
-    Shows the proposed fix for test_hotplug_nrf_vbus_abs_max at the worst grid point and corners, and that the
-    DC drop keeps nRF VBUS inside its operating range at the lowest VBUS with the charger at 1.1 A."""
+def test_hotplug_fix_preview_nrf_series_r(base, main, check, temp, tvs, r_series):
+    """WHAT-IF (not in the schematic yet): a resistor in series with the nRF VBUS pin, C12 behind it, as in Nordic's
+    reference (nRF52840 PS v1.1 7.3, circuit configuration 1: R1 4R7, 'recommended for new designs'). Worst grid point,
+    temperature / TVS / C12 tolerance corners; plus the DC drop at the lowest VBUS with the charger at 1.1 A."""
     p = Parts(base, main)
     if p.nrf_vbus != p.vbus_m:
         pytest.skip("the schematic already has a series part in front of the nRF VBUS pin "
@@ -751,15 +760,16 @@ def test_hotplug_fix_preview_nrf_series_r(base, main, check, temp, tvs):
     v, c, b = WORST
     for sm in main.extremes(caps_on(main, p.main_vbus_nets)):
         sm = {f"m:{k}": x for k, x in sm.items()}
-        r = hotplug(base, main, v, c, b, temp=temp, tvs=tvs, cscale=sm, series_r_nrf=4.7)
-        check(f"nRF VBUS peak with 4.7 Ohm ({temp} C, TVS {tvs}, {sm})", r["vnrf_max"], None, NRF_VBUS_ABS[0][1], "V",
-              NRF_VBUS_ABS[1])
-    net = Net(base, main, iin=1.1, vusb=3.3, series_r_nrf=4.7)
-    dk = net.deck("DC with 4.7 Ohm")
+        r = hotplug(base, main, v, c, b, temp=temp, tvs=tvs, cscale=sm, series_r_nrf=r_series)
+        check(f"nRF VBUS peak with {r_series} Ohm ({temp} C, TVS {tvs}, {sm})", r["vnrf_max"], None,
+              NRF_VBUS_ABS[0][1], "V", NRF_VBUS_ABS[1])
+    net = Net(base, main, iin=1.1, vusb=3.3, series_r_nrf=r_series)
+    dk = net.deck(f"DC with {r_series} Ohm")
     dk += ["Vsrc srcv 0 4.5", f"Rcab srcv vj1 {CABLES['2m_1uH_100m'][2]}"]
     dk.op()
     dk.print_op("v(vnrf)")
-    check("nRF VBUS DC with 4.7 Ohm at VBUS 4.5 V, IIN 1.1 A", run(dk)["op_0"], *NRF_VBUS_OP[0], "V", NRF_VBUS_OP[1])
+    check(f"nRF VBUS DC with {r_series} Ohm at VBUS 4.5 V, IIN 1.1 A", run(dk)["op_0"], *NRF_VBUS_OP[0], "V",
+          NRF_VBUS_OP[1])
 
 
 # ============================================================================================ ESD
@@ -825,7 +835,8 @@ def test_esd_data_lines_nrf_pad_current(base, main, check, sig, kv):
           max(r[f"inrf{sig}_max"], -r[f"inrf{sig}_min"]), None, *NRF_PAD_LIMIT[:1], "A", NRF_PAD_LIMIT[1])
 
 
-SENS = [(kv, h, esdc, resd) for kv in (8.0, -8.0) for h in HARNESS_MM for esdc in ("typ", "max") for resd in (1.0, 3.0, 10.0)]
+SENS = [(kv, h, esdc, resd) for kv in (8.0, -8.0) for h in HARNESS_MM for esdc in ("typ", "max")
+        for resd in (1.0, 3.0, 10.0)]
 
 
 @pytest.mark.slow

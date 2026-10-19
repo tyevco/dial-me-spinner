@@ -207,19 +207,23 @@ def pcb_net_lengths():
         nn = short(netname.get(str(net[1]), str(net[1])))
         a, b = find(s, "start"), find(s, "end")
         seg[nn] = seg.get(nn, 0.0) + math.dist((float(a[1]), float(a[2])), (float(b[1]), float(b[2])))
-    out = {}
-    for net in ("LED_DIN_MCU", "LED_DIN_R", "LED_DIN"):
-        if seg.get(net):
-            out[net] = (seg[net] * 1e-3, True)
-            continue
-        pts = [p for _, p in pads.get(net, [])]
-        # rectilinear minimum spanning tree (Prim)
+    def mst(pts, dist):
         done, rest, tot = [pts[0]], pts[1:], 0.0
         while rest:
-            dmin, j = min((abs(a[0] - b[0]) + abs(a[1] - b[1]), j) for j, b in enumerate(rest) for a in done)
+            dmin, j = min((dist(a, b), j) for j, b in enumerate(rest) for a in done)
             tot += dmin
             done.append(rest.pop(j))
-        out[net] = (tot * ROUTE_FACTOR * 1e-3, False)
+        return tot
+
+    out = {}
+    for net in ("LED_DIN_MCU", "LED_DIN_R", "LED_DIN"):
+        pts = [p for _, p in pads.get(net, [])]
+        if seg.get(net):
+            # a routed net is never shorter than the Euclidean MST of its pads (guards a partially routed net)
+            out[net] = (max(seg[net], mst(pts, math.dist)) * 1e-3, True)
+            continue
+        # rectilinear minimum spanning tree (Prim) x detour allowance
+        out[net] = (mst(pts, lambda a, b: abs(a[0] - b[0]) + abs(a[1] - b[1])) * ROUTE_FACTOR * 1e-3, False)
     out["_pads"] = pads
     _PCB_CACHE.update(out)
     return _PCB_CACHE
@@ -601,10 +605,16 @@ def test_r27_high_level_margin_per_supply(check, corner_sweep):
         vd, rd = worst(rs, "vhigh_dyn", min)
         check(f"peak during 312 ns T0H - 0.6 VDD, {lab} ({label(rd)})", vd - WS_VIH_PCN * vsys, 0.0, None, "V",
               SRC_PCN)
-        # what architecture.md R27 assumed: the PS table point VOH >= VDD - 0.4 V (at 0.5 mA, not our 33 uA load)
-        vdd_min = vdd_of(vsys, -1)
-        check(f"PS-table bound (VDD-0.4 V) - 0.6 VDD, {lab}", vdd_min - 0.4 - WS_VIH_PCN * vsys, 0.0, None, "V",
-              SRC_PS_GPIO + " VOH,SD + " + SRC_PCN)
+        # what architecture.md R27 assumed: the PS table point VOH >= VDD - 0.4 V (valid for loads <= 0.5 mA), here
+        # with the DC load (R41 + DI leakage) and the series drop (R40 + R43) taken from the netlist
+        d = fresh()
+        voh = vdd_of(vsys, -1) - 0.4
+        i_load = voh / d.value("R41") + WS_II
+        check(f"P0.06 DC load when high <= 0.5 mA (VOH,SD test condition), {lab}", i_load, None, 0.5e-3, "A",
+              SRC_PS_GPIO + " VOH,SD")
+        v_di = voh - i_load * (d.value("R40") + d.value("R43"))
+        check(f"PS-table bound (VOH = VDD-0.4 V, minus R40/R43 drop) - 0.6 VDD, {lab}", v_di - WS_VIH_PCN * vsys, 0.0,
+              None, "V", SRC_PS_GPIO + " VOH,SD + " + SRC_PCN)
         check(f"(info) DC high - 0.7 VDD legacy pre-V6 threshold, {lab}", v - WS_VIH_LEGACY * vsys, None, None, "V",
               "legacy WS2812B VIH 0.7 VDD - not the fitted V6 part's limit")
         check(f"(info) VLED - LED rated VDD min, {lab}", vsys - WS_VDD_MIN, None, None, "V",
@@ -807,11 +817,12 @@ def bound_jobs(mode):
         for ts in (1.0, 2.0):
             for skew in ("weak", "slow_rise", "slow_fall"):
                 jobs.append((fresh(), dict(vsys=vsys, vdd_k=-1, mode=mode, skew=skew, trace_scale=ts, drive="bound")))
-            for skew, vth, lsk in (("slow_rise", "vih", "rise_late"), ("slow_rise", "vil", "rise_late"),
-                                   ("slow_fall", "vil", "fall_late"), ("slow_fall", "vih", "fall_late"),
-                                   ("weak", "vih", "rise_late"), ("weak", "vil", "fall_late")):
-                jobs.append((u43_design(), dict(vsys=vsys, vdd_k=-1, mode=mode, skew=skew, trace_scale=ts,
-                                                drive="bound", lv=lv_params(vsys, vth, lsk), title="U43")))
+        # U43 option at the longer (slower) trace only: threshold x tpd-skew corners that stretch / shrink highs
+        for skew, vth, lsk in (("slow_rise", "vih", "rise_late"), ("slow_rise", "vil", "rise_late"),
+                               ("slow_fall", "vil", "fall_late"), ("slow_fall", "vih", "fall_late"),
+                               ("weak", "vih", "rise_late"), ("weak", "vil", "fall_late")):
+            jobs.append((u43_design(), dict(vsys=vsys, vdd_k=-1, mode=mode, skew=skew, trace_scale=2.0,
+                                            drive="bound", lv=lv_params(vsys, vth, lsk), title="U43")))
     return jobs
 
 
@@ -819,7 +830,7 @@ def bound_jobs(mode):
                                                                                     reason=BOUND_SD_REASON))])
 def test_pulse_widths_ps_guaranteed_drive(check, mode):
     """The P0.06 drive the PS GUARANTEES (min column with the weakest concave I-V, NRF52840_GPIO_BOUND), CI 15 pF,
-    traces x1 / x2, VSYS 3.0 / 4.59 V, default path and U43 option (threshold x tpd-skew corners)."""
+    VSYS 3.0 / 4.59 V, default path (traces x1 / x2) and U43 option (traces x2, threshold x tpd-skew corners)."""
     rs = run_many(bound_jobs(mode))
     c, errs = soft(check)
     default = [r for r in rs if not r.get("u43")]

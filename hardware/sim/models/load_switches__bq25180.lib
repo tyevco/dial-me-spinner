@@ -12,7 +12,9 @@
 *   LSW_BQ25180_USB  VBUS present: input FET from IN to SYS regulated to min(VSYS_REG, VBUS) with output
 *                    resistance RON_IN (Table 7.5: 270 mOhm typ, 470 mOhm max; also used in regulation, which
 *                    makes the modelled droop pessimistic) and current limit ILIM (500 mA code: 450 / 475 /
-*                    498 mA min/typ/max) through the XSPICE "ilimit" block (no reverse current: sink limit 1 mA).
+*                    498 mA min/typ/max) through the XSPICE "ilimit" block.  The block may also SINK (through
+*                    RON_IN): physically SYS never rises above the regulation target in these scenarios, but a
+*                    source-only block lets Newton park SYS at absurd voltages, so sinking is allowed.
 *                    VSYS_REG accuracy +-2 % (Table 7.5 VSYS_REG_ACCURACY) -> param vsysreg.
 *                    Battery supplement (Table 7.5 VBSUP1 = 40 mV: battery feeds SYS when VSYS < VBAT - 40 mV):
 *                    diode with ~40 mV at ~10 mA (IS 3.4e-16, N 0.05) in series with RON_BAT and rpack.
@@ -32,11 +34,11 @@ R_BATFET BAT SYS {ronbat}
 V_BUS    VBUS GND {vbus}
 V_REF    VREG GND {min(vsysreg, vbus)}
 a_INFET  VREG VBUS GND SYS lsw_bq_infet
-.model lsw_bq_infet ilimit(in_offset=0 gain=1 r_out_source={ronin} r_out_sink=1e3 i_limit_source={ilim}
-+        i_limit_sink=1e-3 v_pwr_range=0.01 i_source_range=1e-2 i_sink_range=1e-4 r_out_domain=1e-3)
+.model lsw_bq_infet ilimit(in_offset=0 gain=1 r_out_source={ronin} r_out_sink={ronin} i_limit_source={ilim}
++        i_limit_sink=10 v_pwr_range=0.01 i_source_range=1e-2 i_sink_range=1e-2 r_out_domain=1e-3)
 V_BAT    VCELL GND {vbat}
 R_PACK   VCELL BAT {rpack}
 D_SUP    BAT BSUP lsw_bq_sup
-.model lsw_bq_sup d (is=3.4e-16 n=0.05)
+.model lsw_bq_sup d (is=3.4e-16 n=0.05 xti=0 eg=0)
 R_BATFET BSUP SYS {ronbat}
 .ends LSW_BQ25180_USB
