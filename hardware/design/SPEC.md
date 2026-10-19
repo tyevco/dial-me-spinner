@@ -38,7 +38,7 @@ The magnet track does double duty:
 | Board | Shape | Layers | Contents |
 |---|---|---|---|
 | **main** (`hardware/kicad/main`) | Ø64 mm disc, centre hole Ø5 plus 3× M2 on r = 6.5 mm (spindle flange) | 4 (1.6 mm, ENIG) | nRF52840 module, 32 kHz crystal, QSPI flash, 3V3 LDO, OLED ZIF, 13 V boost, 48 RGB LEDs, LED load switch, TMAG5273, LIS2DW12, piezo, 2× DRV8837, DRV5032 home Hall, motor connector, link connector, SWD Tag-Connect |
-| **base** (`hardware/kicad/base`) | Ø40 mm disc plus a tab to the USB-C at θ = 0° | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
+| **base** (`hardware/kicad/base`) | Ø46 mm disc plus a tab to the USB-C at θ = 0° (r ≤ 35) | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
 
 **Link** = 12-way JST SH (1.0 mm): side-entry `SM12B-SRSS-TB` (C160411) on **both** boards, entry facing the centre (main: bottom side at r = 17.5 mm, clear of the rotor hub; base: r ≈ 15.5 mm, θ = 120°, under the rotor web). Use 28 AWG pre-crimped SH leads for pins 1–4 and 8 (power). A
 12-wire harness runs through the spindle bore. Pinout (identical on both
@@ -142,7 +142,7 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 * U MDBT50Q-U1MV2 (C2688382; JLC global sourcing).
   * VDD + VDDH: 10 µF 0603 + 100 nF; VBUS: 4.7 µF.
   * The u.FL connector is on the module, so the antenna is off-board (Molex
-    146153-0050, mechanical item).
+    146153-0100, 100 mm coax; mechanical item).
 * Y1 + 2× 12 pF.
 * U W25Q128JVSIQ + 100 nF; 10 kΩ CS pull-up.
 * J TC2030-IDC-NL footprint (`Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical`):

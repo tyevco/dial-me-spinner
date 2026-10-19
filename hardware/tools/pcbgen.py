@@ -299,12 +299,21 @@ class BoardBuilder:
             self.footprints[ref] = fp
         return self.footprints
 
-    def mounting_hole(self, x, y, fpid="MountingHole:MountingHole_2.2mm_M2", ref="H"):
+    def board_only(self, fpid, ref, x, y, side="F"):
+        """A footprint that exists only on the board (no schematic symbol): holes, fiducials."""
         fp = self.load_footprint(fpid)
         fp.SetReference(ref)
-        fp.SetPosition(vec(x, y))
+        fp.SetAttributes(fp.GetAttributes() | pcbnew.FP_BOARD_ONLY | pcbnew.FP_EXCLUDE_FROM_BOM
+                         | pcbnew.FP_EXCLUDE_FROM_POS_FILES)
         self.board.Add(fp)
+        if side == "B":
+            fp.Flip(fp.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
+        fp.SetPosition(vec(x, y))
+        self.footprints[ref] = fp
         return fp
+
+    def mounting_hole(self, x, y, fpid="MountingHole:MountingHole_2.2mm_M2", ref="H"):
+        return self.board_only(fpid, ref, x, y)
 
     def set_origin(self, x, y):
         """Drill/place (aux) origin, used for gerber and pick-and-place coordinates."""
@@ -337,6 +346,68 @@ def import_ses(pcb_path, ses_path, out_path=None):
     b = pcbnew.LoadBoard(pcb_path)
     if not pcbnew.ImportSpecctraSES(b, ses_path):
         raise RuntimeError("SES import failed")
+    dedupe_tracks(b)
+    trim_dangling(b)
     out_path = out_path or pcb_path
     pcbnew.SaveBoard(out_path, b)
     refill(out_path)
+
+
+def trim_dangling(b, tol=2000):
+    """Cut a segment's open end back to the last T-junction on it (the router often joins a pre-routed
+    stub part-way along instead of at its end)."""
+    segs = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_TRACE_T]
+    vias = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_VIA_T]
+    trimmed = 0
+    for t in segs:
+        for end in ("start", "end"):
+            p = t.GetStart() if end == "start" else t.GetEnd()
+            q = t.GetEnd() if end == "start" else t.GetStart()
+            net, layer = t.GetNetCode(), t.GetLayer()
+            joined = any(o is not t and o.GetNetCode() == net and o.GetLayer() == layer and
+                         ((o.GetStart() - p).EuclideanNorm() < tol or (o.GetEnd() - p).EuclideanNorm() < tol)
+                         for o in segs)
+            joined = joined or any(v.GetNetCode() == net and (v.GetStart() - p).EuclideanNorm() < tol for v in vias)
+            joined = joined or any(pad.GetNetCode() == net and pad.IsOnLayer(layer) and pad.HitTest(p)
+                                   for fp in b.GetFootprints() for pad in fp.Pads())
+            if joined:
+                continue
+            # T-junctions: other segments' ends (or vias) lying on this segment
+            seg = pcbnew.SEG(p, q)
+            taps = [x for o in segs if o is not t and o.GetNetCode() == net and o.GetLayer() == layer
+                    for x in (o.GetStart(), o.GetEnd()) if seg.Distance(x) < tol]
+            taps += [v.GetStart() for v in vias if v.GetNetCode() == net and seg.Distance(v.GetStart()) < tol]
+            if not taps:
+                continue
+            cut = min(taps, key=lambda x: (x - p).EuclideanNorm())
+            if (cut - q).EuclideanNorm() < tol:
+                continue
+            n = max(2, int((cut - p).EuclideanNorm() / 50000))  # never cut away a pad the removed piece touches
+            piece = [pcbnew.VECTOR2I(int(p.x + (cut.x - p.x) * k / n), int(p.y + (cut.y - p.y) * k / n)) for k in range(n)]
+            if any(pad.GetNetCode() == net and pad.IsOnLayer(layer) and pad.HitTest(x, t.GetWidth() // 2)
+                   for fp in b.GetFootprints() for pad in fp.Pads() for x in piece):
+                continue
+            if end == "start":
+                t.SetStart(cut)
+            else:
+                t.SetEnd(cut)
+            trimmed += 1
+    return trimmed
+
+
+def dedupe_tracks(b):
+    """Drop exact duplicate segments/vias (a re-route of an already routed board re-imports the old wiring)."""
+    seen, dup = set(), []
+    for t in b.GetTracks():
+        s, e = t.GetStart(), t.GetEnd()
+        ends = tuple(sorted(((s.x, s.y), (e.x, e.y))))
+        via = t.Type() == pcbnew.PCB_VIA_T
+        width = (t.GetWidth(pcbnew.F_Cu), t.GetDrillValue()) if via else t.GetWidth()
+        key = (t.GetClass(), t.GetLayer(), t.GetNetCode(), width, ends)
+        if key in seen:
+            dup.append(t)
+        else:
+            seen.add(key)
+    for t in dup:
+        b.Delete(t)
+    return len(dup)
