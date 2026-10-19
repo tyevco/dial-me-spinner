@@ -1,10 +1,14 @@
 ** Drc report for dial-me-spinner-base.kicad_pcb **
-** Created on 2026-10-19T02:01:28+0000 **
+** Created on 2026-10-19T02:26:37+0000 **
 ** Report includes: Errors **
 
 ** Found 0 DRC violations **
 
-** Found 0 unconnected pads **
+** Found 1 unconnected pads **
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(109.5844 mm, 108.5444 mm): Track [VBAT] on F.Cu, length 1.1012 mm
+    @(111.2923 mm, 106.2000 mm): Track [VBAT] on F.Cu, length 0.6364 mm
 
 ** Found 0 Footprint errors **
 
