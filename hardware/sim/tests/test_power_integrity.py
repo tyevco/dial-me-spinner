@@ -77,6 +77,12 @@ SRC_NRF_VIL = "nRF52840 PS v1.1 6.9.3.1 VIL = 0.3 x VDD"
 SRC_NEG = "BQ25180 DS SLUSE99C 7.1 / nRF52840 PS v1.1 9: pins >= -0.3 V"
 SRC_LSW = "TPS22917 DS SLVSDW8B 7.1 IPLS 2.5 A (pulse < 300 us, 2 % duty)"
 SRC_VIN55 = "TPS22917 DS SLVSDW8B 7.3 VIN <= 5.5 V; RT9080 DS9080-09 12 VIN <= 5.5 V"
+SRC_CSYS_MIN = "BQ25180 DS SLUSE99C 6 Pin Functions SYS: connect at least 10 uF ceramic; 9.2.2.3 Table 9-2 CSYS nom 10 uF"
+SRC_CSYS_MAX = "BQ25180 DS SLUSE99C 9.2.2.3 Table 9-2 CSYS max 100 uF"
+SRC_CBAT = "BQ25180 DS SLUSE99C 9.2.2.3 Table 9-2 CBAT min 1 uF"
+SRC_CIN = "BQ25180 DS SLUSE99C 9.2.2.3 Table 9-2 CIN 1-10 uF"
+SRC_MAIN_BYPASS = ("RT9080 DS9080-09 8 Functional Pin Description VIN 1 uF; TPS22917 SLVSDW8B 11 Power Supply "
+                   "Recommendations CIN 1 uF; DRV8837 SLVSBA4F 5 Pin Functions VM 0.1 uF")
 
 WS_VDD_MIN, WS_VDD_MAX = 3.3, 5.3
 V3V3_MIN = 2.7
@@ -205,6 +211,33 @@ def is_cap(ref: str) -> bool:
     return ref[0] == "C" and ref[1:2].isdigit()
 
 
+def part_tol(d: Design, ref: str) -> float:
+    return cap_tol(d, ref) if is_cap(ref) else d.tol(ref)
+
+
+def tol_extremes(d: Design, refs):
+    """All 2^n tolerance corners {ref: 1 +/- tol} (like Design.extremes, with MPN capacitor tolerances)."""
+    import itertools
+    refs = list(refs)
+    for signs in itertools.product((-1, 1), repeat=len(refs)):
+        yield {r: 1.0 + sgn * part_tol(d, r) for r, sgn in zip(refs, signs)}
+
+
+def tol_draws(d: Design, refs, n: int, seed: int):
+    """n uniform tolerance draws {ref: factor} (like Design.monte_carlo, with MPN capacitor tolerances)."""
+    import random
+    rng = random.Random(seed)
+    refs = list(refs)
+    for _ in range(n):
+        yield {r: 1.0 + rng.uniform(-part_tol(d, r), part_tol(d, r)) for r in refs}
+
+
+def pi_caps(d: Design, nets) -> list:
+    """Fitted capacitors with every pin on the PI-path nets of this board."""
+    return sorted(r for r in d.comps if is_cap(r) and d.fitted(r) and d.pins.get(r)
+                  and all(n in nets for n in d.pins[r].values()))
+
+
 # =========================================================================================== loads
 @dataclass
 class Loads:
@@ -309,9 +342,12 @@ class System:
         sc = {}
         if self.c.caps == "min":
             sc = {r: 1.0 - cap_tol(d, r) for r in d.comps if is_cap(r)}
+        # verifier: an explicit factor is relative to the NETLIST value and replaces the corner's -tol (it used to
+        # multiply onto it, so the 'extremes' of C7/C8/C9 at the worst corner spanned 0.81..0.99 instead of
+        # 1 -/+ tol and never reached the high end of C8/C9)
         for r, f in (extra or {}).items():
             if r in d.comps:
-                sc[r] = sc.get(r, 1.0) * f
+                sc[r] = f
         return sc or None
 
     # ------------------------------------------------------------------ physical values
@@ -802,7 +838,7 @@ def test_led_rail_inrush(main, base, check, cname):
     loads = Loads(led_on_at=100e-6, oled_icc=OLED_ICC_MAX, oled_ripple=False)
     worst = dict(ibat=0.0, ilsw=0.0, v3v3=9.0, vsys=9.0)
     refs = [r for r in ("C7", "C8", "C9") if r in main.comps]
-    for sc in (main.extremes(refs) if cname == "worst" else [None]):
+    for sc in (tol_extremes(main, refs) if cname == "worst" else [None]):
         r = run_tran(s.deck("inrush", loads, vbat=3.7, scale=sc), stop=2.8e-3, tmax=2e-6)
         worst = dict(ibat=max(worst["ibat"], r["ibat_max"]), ilsw=max(worst["ilsw"], r["ilsw_max"]),
                      v3v3=min(worst["v3v3"], r["v3v3_min"]), vsys=min(worst["vsys"], r["vsys_min"]))
@@ -818,9 +854,10 @@ def test_mlcc_dc_bias_stress(main, base, check):
     droop is set by the battery path, so the minimums must not move materially."""
     s = System(main, base, NOMINAL)
     vbat, cap, icc, motor = fw_scenarios(s.n_led)["full@3.70"]
-    half = {r: 0.5 for d in (main, base) for r in d.comps if r[0] == "C" and r[1:2].isdigit()}
-    r = run_tran(s.deck("dc-bias stress", fw_loads(s.n_led, cap, icc, motor, sync=True), vbat=vbat, scale=half),
-                 stop=1.2e-3)
+    half_m = {r: 0.5 for r in main.comps if is_cap(r)}
+    half_b = {r: 0.5 for r in base.comps if is_cap(r)}
+    r = run_tran(s.deck("dc-bias stress", fw_loads(s.n_led, cap, icc, motor, sync=True), vbat=vbat, scale=half_m,
+                        scale_base=half_b), stop=1.2e-3)
     tag = "all MLCC x0.5, full@3.70 nominal, aligned PWM"
     check_supply(check, s, r, tag, extra=[(f"{tag}: GND offset main-base, peak", max(r["gnd_max"], -r["gnd_min"]),
                                            None, BQ_VIL, "V", SRC_BQ_VIL + " (offset alone)")])
@@ -847,6 +884,105 @@ def test_fault_stiff_i2c_pullup_detected(main, base, check):
     r = run_op(s.deck("R53 1k", hw_loads(sync=False), vbat=3.7, logic=True), logic=True)
     check("FAULT R53 = 1k: SCL low seen at BQ25180 exceeds VIL (detected)", r["scl"], lo=BQ_VIL, unit="V",
           source=SRC_BQ_VIL)
+
+
+# ------------------------------------------------------------------ decoupling vs datasheet minimums / maximums
+def net_cap(d: Design, net: str, sign: int = 0) -> float:
+    """Sum of fitted capacitors between `net` and GND on one board, at nominal (sign 0) or +/- tolerance."""
+    tot = 0.0
+    for r in d.on_net(net, "C"):
+        if is_cap(r) and d.fitted(r) and set(d.pins[r].values()) == {net, "GND"}:
+            tot += d.value(r) * (1 + sign * cap_tol(d, r))
+    return tot
+
+
+def decoupling_items(main: Design, base: Design) -> list:
+    n_drv = len(main.find("DRV8837"))
+    n_lsw = len(main.find("TPS22917"))
+    need_main = 1e-6 + n_lsw * 1e-6 + n_drv * 0.1e-6
+    vbus = net_cap(base, "VBUS", +1) + (net_cap(main, "VBUS", +1) if "VBUS" in main.nets else 0.0)
+    return [
+        ("BQ25180 SYS, base-board VSYS caps (nominal)", net_cap(base, "VSYS"), 10e-6, None, "F", SRC_CSYS_MIN),
+        ("BQ25180 SYS, all VSYS caps on both boards at +tol (behind-switch VLED/OLED_VIN caps excluded)",
+         net_cap(base, "VSYS", +1) + net_cap(main, "VSYS", +1), None, 100e-6, "F", SRC_CSYS_MAX),
+        ("BQ25180 BAT, base-board VBAT caps at -tol", net_cap(base, "VBAT", -1), 1e-6, None, "F", SRC_CBAT),
+        ("BQ25180 IN, base-board VBUS caps at -tol", net_cap(base, "VBUS", -1), 1e-6, None, "F", SRC_CIN),
+        ("BQ25180 IN, VBUS caps on both boards at +tol", vbus, None, 10e-6, "F", SRC_CIN),
+        (f"main VSYS caps at -tol vs local-bypass minimums (RT9080 1 uF + {n_lsw} x TPS22917 1 uF + "
+         f"{n_drv} x DRV8837 0.1 uF = {need_main * 1e6:.1f} uF)", net_cap(main, "VSYS", -1), need_main, None, "F",
+         SRC_MAIN_BYPASS),
+    ]
+
+
+def test_vsys_decoupling_vs_datasheets(main, base, check):
+    """Netlist capacitance on the power path against the datasheet minimums and the BQ25180 CSYS maximum
+    (verifier addition: the PI transients barely move when bulk caps are left off, because the droop is set by
+    the battery path, so missing or excessive decoupling needs its own datasheet check)."""
+    check_all(check, decoupling_items(main, base))
+
+
+def rewire(d: Design, ref: str, pin: str, net: str):
+    """Fault injection for a wrong connection: move one pin of `ref` to `net` (in-memory netlist only)."""
+    old = d.pins[ref][pin]
+    d.nets[old] = [x for x in d.nets[old] if not (x[0] == ref and x[1] == pin)]
+    d.pins[ref][pin] = net
+    d.nets.setdefault(net, []).append((ref, pin, ""))
+    return d
+
+
+@pytest.mark.fault
+def test_fault_base_sys_caps_low_detected(main, base, check):
+    """FAULT (value off by 10x): base C2/C4 fitted as 1 uF instead of 10 uF -> the BQ25180 SYS pin has 2 uF:
+    the decoupling check must flag it (the transient PI checks do not, the droop is battery-path limited)."""
+    for r in base.on_net("VSYS", "C"):
+        base.override(r, "1u")
+    items = decoupling_items(main, base)
+    name, v, lo, hi, unit, src = items[0]
+    check(f"FAULT base SYS caps 1 uF: {name} below the DS minimum (detected)", v, hi=0.999 * lo, unit=unit,
+          source=src)
+
+
+@pytest.mark.fault
+def test_fault_main_vsys_bulk_missing_detected(main, base, check):
+    """FAULT (parts left off): the main-board VSYS bulk MLCCs (every VSYS cap of 1 uF or more) are not fitted ->
+    only the 100 nF bypass caps remain at the RT9080 / TPS22917 / DRV8837 inputs: the decoupling check must
+    flag it."""
+    for r in main.on_net("VSYS", "C"):
+        if set(main.pins[r].values()) == {"VSYS", "GND"} and main.value(r) >= 1e-6:
+            main.remove(r)
+    name, v, lo, hi, unit, src = decoupling_items(main, base)[-1]
+    check(f"FAULT main VSYS bulk off: {name} (detected)", v, hi=0.999 * lo, unit=unit, source=src)
+
+
+@pytest.mark.fault
+def test_fault_battery_connector_single_contact_detected(main, base, check):
+    """FAULT (wrong connection): the battery connector's second VBAT contact left unconnected, so the whole pack
+    current runs through one JST SH contact: the per-contact current check of the uncapped case must flag it."""
+    s0 = System(main, base)
+    rewire(base, s0.bat_ref, [p for p, n in base.pins[s0.bat_ref].items() if n == "VBAT"][-1], "BATT_NC")
+    s = System(main, base, NOMINAL)
+    assert s.n_bpos == s0.n_bpos - 1
+    r = run_op(s.deck("J2 single contact", hw_loads(sync=False), vbat=4.2))
+    check("FAULT battery connector, one VBAT contact: current per contact exceeds the rating (detected)",
+          r["ibat"] / min(s.n_bpos, s.n_bneg), lo=CONTACT_A[s.bat_series], unit="A",
+          source=f"JST {s.bat_series} DS current rating per contact")
+
+
+@pytest.mark.fault
+def test_fault_shorted_led_detected(main, base, check):
+    """FAULT (shorted LED): one WS2812C fails VDD-GND short (20 mOhm) while the rail runs the firmware full budget
+    at 3.70 V: the I(BAT) <= IBAT_OCP check must flag it (the BQ25180 BATOCP hiccup is then the only protection:
+    U2 has no current limit, so the VSYS bulk discharges through it far above IPLS before BATOCP acts)."""
+    s = System(main, base, NOMINAL)
+    vbat, cap, icc, motor = fw_scenarios(s.n_led)["full@3.70"]
+    d = s.deck("shorted LED", fw_loads(s.n_led, cap, icc, motor, sync=False), vbat=vbat)
+    d += ["Vsh shc 0 PULSE(0 1 200u 100n 100n 1 2)",
+          f"Bshort {s.m('VLED')} gm I = {{ v(shc) * (v({s.m('VLED')}) - v(gm)) / 0.02 }}"]
+    r = run_tran(d, stop=0.5e-3, tmax=0.05e-6)
+    check("FAULT shorted LED: I(BAT) peak exceeds IBAT_OCP (detected)", r["ibat_max"], lo=IBAT_OCP, unit="A",
+          source=SRC_OCP)
+    check("FAULT shorted LED: TPS22917 U2 current peak exceeds IPLS (no current limit; detected)", r["ilsw_max"],
+          lo=LSW_IPLS, unit="A", source=SRC_LSW)
 
 
 @pytest.mark.xfail(strict=True, reason=(
@@ -918,16 +1054,19 @@ def test_proposed_peak_cap_fix(main, base, check, vbat):
 
 @pytest.mark.slow
 def test_monte_carlo_capacitors_sync_pwm(main, base, check):
-    """Monte Carlo (200 draws) over every capacitor on the PI path (netlist tolerances), firmware full budget
-    with aligned LED/motor PWM edges, VBAT 3.7 V nominal corner: VLED and +3V3 minimums and ground offset."""
+    """Monte Carlo (200 draws) over every capacitor on the PI path of BOTH boards (tolerances from the value
+    string or the MPN tolerance letter), firmware full budget with aligned LED/motor PWM edges, VBAT 3.7 V nominal
+    corner: VLED and +3V3 minimums and ground offset.
+    (Verifier: the base-board SYS/BAT/VBUS caps were missing, and the main-board draws leaked onto the base parts
+    with the same references C1-C4.)"""
     s = System(main, base, NOMINAL)
-    caps = sorted({r for r in main.comps if r[0] == "C" and r[1:2].isdigit()
-                   and all(n in System.MAIN_NETS for n in main.pins.get(r, {}).values())})
+    caps_m = pi_caps(main, System.MAIN_NETS)
+    caps_b = pi_caps(base, System.BASE_NETS)
     vbat, cap, icc, motor = fw_scenarios(s.n_led)["full@3.70"]
     loads = fw_loads(s.n_led, cap, icc, motor, sync=True)
     vled, v3, gnd = [], [], []
-    for sc in main.monte_carlo(caps, 200, seed=7):
-        r = run_tran(s.deck("mc", loads, vbat=vbat, scale=sc), stop=0.6e-3)
+    for sm, sb in zip(tol_draws(main, caps_m, 200, seed=7), tol_draws(base, caps_b, 200, seed=8)):
+        r = run_tran(s.deck("mc", loads, vbat=vbat, scale=sm, scale_base=sb), stop=0.6e-3)
         vled.append(r["vled_min"]), v3.append(r["v3v3_min"]), gnd.append(max(r["gnd_max"], -r["gnd_min"]))
     check("MC 200: VLED min (worst draw)", min(vled), lo=WS_VDD_MIN, unit="V", source=SRC_WS)
     check("MC 200: +3V3 min (worst draw)", min(v3), lo=V3V3_MIN, unit="V", source=SRC_3V3)

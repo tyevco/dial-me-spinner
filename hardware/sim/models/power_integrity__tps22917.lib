@@ -11,6 +11,8 @@
 *              VIN 5.0 V: 80 typ / 100 max (25 C) / 120 max (-40..85 C) mOhm
 *              VIN 3.6 V: 90 typ / 110 max (25 C) / 140 max (-40..85 C) mOhm
 *              VIN 1.8 V: 120 typ / 150 max (25 C) / 175 max (-40..85 C) mOhm
+*            (verifier: the hot corner uses the -40..85 C band maximum; the DS guarantees no lower value
+*            at 60 C, so the earlier linear interpolation between 25 C and 85 C was dropped)
 *   Turn-on slew from the CT capacitor (CT pin to VIN, pin table): the CT node is pulled down from VIN by an
 *     internal current KCT, VOUT follows VIN - V(CT). KCT = 1.9 uA at VIN 3.6 V and 2.3 uA at 5.0 V reproduce
 *     7.6 SRON = 1900 / 2300 (mV/us)*pF for CT >= 100 pF; CTPAR = 43 pF reproduces SRON = 44 mV/us with

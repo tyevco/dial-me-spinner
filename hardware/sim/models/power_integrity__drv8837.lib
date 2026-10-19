@@ -13,8 +13,9 @@
 *     rDS(on) (about 20 Ohm per phase, detent research). The test passes RCOIL.
 *   PWM drive with slow decay (IN1/IN2 1,0 -> 1,1, firmware.md 5.3): the coil current ICOIL is ~constant
 *     over a 40 us PWM period (L/R >> 40 us is assumed), VM sees ICOIL while the bridge drives and 0 while it
-*     brakes. FPWM = 25 kHz (firmware), edges TEDGE = 30 ns (6.6 t11/t12 output rise/fall 30 typ /
-*     188 max ns -> the fast end is used). Both drivers share one PWM instance, so their edges are aligned
+*     brakes. FPWM = 25 kHz (firmware), edges TEDGE = 30 ns (6.6 t11/t12 output rise/fall 30 min /
+*     188 max ns -> the fast end is used; verifier: the DS columns are MIN/MAX, not typ/max).
+*     Both drivers share one PWM instance, so their edges are aligned
 *     (worst case for di/dt on VSYS).
 *   IDC: optional steady VM current (the PWM average) for operating-point runs.
 * NOT MODELLED: coil inductance / back-EMF (no motor datasheet), current ripple within a PWM period,

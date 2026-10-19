@@ -705,14 +705,10 @@ def pwm_hold_ctrl(theta_deg, d_pk, t_start, t_hold, fpwm=25e3):
     return tr, t_start + n * tpwm
 
 
-@pytest.mark.parametrize("theta", [0, 45], ids=["full-step-position", "mid-step-45deg"])
-def test_firmware_drive_coast_kick(main, base, check, theta):
-    """Verifier addition. The drive firmware.md §5.3 actually uses (8-µstep sine, slow decay, d = 160 mA x 20.3 Ohm /
-    VSYS_idle) held at one field angle, then coast: the IDLE entry after SETTLE (θ = 0, one coil at the full-step
-    position) or an MCU reset / brown-out / HardFault mid-move (θ = 45°, both coils at 0.71 x), where the nRF pins
-    float, the DRV8837 pulldowns give IN = 00 and nSLEEP = 0, and firmware cannot brake first. Worst corner: USB, charge
-    done (BATFET off), -10 C, coil -10 %, L 10 mH, VSYS MLCCs at vendor DC bias minus tolerance, 3 mA other load."""
-    sup, temp, tol, lph = SUP["VBUS5.5-done"], -10, -0.10, L_MAX
+def firmware_coast_peak(main, base, theta, *, sup=None, temp=-10, tol=-0.10, lph=L_MAX):
+    """Firmware drive (firmware.md §5.3: slow-decay PWM, d = 160 mA x 20.3 Ohm / VSYS_idle) held at field angle theta,
+    then all IN low + nSLEEP low (coast). Returns (coil current vector before the coast, VSYS peak on either board)."""
+    sup = sup or SUP["VBUS5.5-done"]
     d_pk = min(1.0, FW_I_TARGET * FW_R_COIL / sup.vsys_idle)
     t_on, t_e = 50e-6, 100e-6
     tr, t_x = pwm_hold_ctrl(theta, d_pk, t_e, max(3e-3, 6 * lph / 15))
@@ -734,11 +730,34 @@ def test_firmware_drive_coast_kick(main, base, check, theta):
     w = res["waves"]
     t = w["time"]
     i0 = math.hypot(float(np.interp(t_x - 1e-6, t, w["i(via)"])), float(np.interp(t_x - 1e-6, t, w["i(vib)"])))
-    check("firmware drive: coil current vector before coast", i0, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT")
     m = t >= t_x - 1e-4
-    vmax = float(max(w[f"v({vs})"][m].max(), w["v(nb_vsys)"][m].max()))
+    return i0, float(max(w[f"v({vs})"][m].max(), w["v(nb_vsys)"][m].max()))
+
+
+@pytest.mark.parametrize("theta", [0, 45], ids=["full-step-position", "mid-step-45deg"])
+def test_firmware_drive_coast_kick(main, base, check, theta):
+    """Verifier addition. The drive firmware.md §5.3 actually uses (8-µstep sine, slow decay, d = 160 mA x 20.3 Ohm /
+    VSYS_idle) held at one field angle, then coast: the IDLE entry after SETTLE (θ = 0, one coil at the full-step
+    position) or an MCU reset / brown-out / HardFault mid-move (θ = 45°, both coils at 0.71 x), where the nRF pins
+    float, the DRV8837 pulldowns give IN = 00 and nSLEEP = 0, and firmware cannot brake first. Worst corner: USB, charge
+    done (BATFET off), -10 C, coil -10 %, L 10 mH, VSYS MLCCs at vendor DC bias minus tolerance, 3 mA other load.
+    Margin is thin (about 50 mV): X5R ageing and the -10 C bias-TCC (not modelled) take it to about 5.53 V."""
+    i0, vmax = firmware_coast_peak(main, base, theta)
+    check("firmware drive: coil current vector before coast", i0, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT")
     check("VSYS peak after coast from the firmware drive (IDLE entry / MCU reset)", vmax, None, SYS_ABS_MAX, "V",
           f"{DS_BQ} Table 7.1 SYS abs max 5.5 V")
+
+
+@pytest.mark.fault
+def test_fault_c74_left_off_is_detected(main, base, check):
+    """Fault (verifier addition): C74, the shared 10 uF VM bulk cap (SPEC §5.6), left off. Before the vendor DC-bias
+    derating and the firmware-drive coast test, no check in this file noticed it. The firmware-drive coast check must
+    now catch it (mid-step reset, worst corner)."""
+    main.remove("C74")
+    i0, vmax = firmware_coast_peak(main, base, 45)
+    assert vmax > SYS_ABS_MAX, f"fault not detected: VSYS peak {vmax} V"
+    check("FAULT C74 left off: VSYS peak after a mid-step coast (must exceed 5.5 V)", vmax, SYS_ABS_MAX, None, "V",
+          f"{DS_BQ} Table 7.1 SYS abs max (fault detected when above)")
 
 
 # ------------------------------------------------ firmware drive: 25 kHz slow-decay 8-µstep sine

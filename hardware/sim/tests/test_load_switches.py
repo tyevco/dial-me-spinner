@@ -189,7 +189,9 @@ def mlcc_data(main, ref):
 def dcbias_caps(main, refs, scale=None, temp=25):
     """Charge-based voltage-dependent capacitors (one per node and MPN): Q(V) = C0 * integral(1 + dC(v)/100) dv with
     the Samsung DC-bias curve, C0 = sum of netlist values x tolerance multiplier x (1 + TCC(temp)/100).  ngspice:
-    E source = normalised charge Q/C0, a C0 capacitor across it, and its current mirrored onto the real node by F."""
+    a linear part C0*kmin (kmin = smallest 1 + dC/100 up to 6 V) stays a real capacitor on the node (ngspice stalls at
+    the turn-off edge when a node has no linear capacitance); the rest, C0*(k(V) - kmin) >= 0, is an E source = its
+    normalised charge, a C0 capacitor across it, and that capacitor's current mirrored onto the node by F."""
     groups = {}
     for ref in refs:
         pins = main.pins[ref]
@@ -202,15 +204,18 @@ def dcbias_caps(main, refs, scale=None, temp=25):
         groups[key][2].append(ref)
     out = []
     for i, ((a, b, _), (data, c0, members)) in enumerate(groups.items()):
-        q, pts, v, step = 0.0, [(-1.0, -1.0), (0.0, 0.0)], 0.0, 0.05
-        while v < 6.0 - 1e-9:
-            k0 = 1 + _interp(v, data["dcb"]) / 100
-            k1 = 1 + _interp(v + step, data["dcb"]) / 100
+        step = 0.05
+        grid = [j * step for j in range(int(round(6.0 / step)) + 1)]
+        kmin = min(1 + _interp(v, data["dcb"]) / 100 for v in grid)
+        q, pts = 0.0, [(-1.0, 0.0), (0.0, 0.0)]
+        for v in grid[1:]:
+            k0 = 1 + _interp(v - step, data["dcb"]) / 100 - kmin
+            k1 = 1 + _interp(v, data["dcb"]) / 100 - kmin
             q += 0.5 * (k0 + k1) * step
-            v += step
             pts.append((v, q))
         tab = ", ".join(f"{x:.3g},{y:.6g}" for x, y in pts)
-        out += [f"* DC-bias capacitor group {i}: {' '.join(members)} (C0 {c0:.6g} F at {temp} C)",
+        out += [f"* DC-bias capacitor group {i}: {' '.join(members)} (C0 {c0:.6g} F at {temp} C, kmin {kmin:.4f})",
+                f"CDCBL{i} {a} {b} {c0 * kmin:.6g}",
                 f"EDCB{i} n_dcb{i}_q 0 vol = 'pwl(V({a},{b}), {tab})'",
                 f"VDCB{i} n_dcb{i}_q n_dcb{i}_c 0",
                 f"CDCB{i} n_dcb{i}_c 0 {c0:.6g}",
