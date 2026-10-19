@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:   # a new push supersedes the running suite (it takes ~20 min)
+  group: sim-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   spice:
     runs-on: ubuntu-24.04
