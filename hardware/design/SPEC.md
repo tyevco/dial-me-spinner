@@ -38,7 +38,7 @@ The magnet track does double duty:
 | Board | Shape | Layers | Contents |
 |---|---|---|---|
 | **main** (`hardware/kicad/main`) | Ø64 mm disc, centre hole Ø5 plus 3× M2 on r = 6.5 mm (spindle flange) | 4 (1.6 mm, ENIG) | nRF52840 module, 32 kHz crystal, QSPI flash, 3V3 LDO, OLED ZIF, 13 V boost, 48 RGB LEDs, LED load switch, TMAG5273, LIS2DW12, piezo, 2× DRV8837, DRV5032 home Hall, motor connector, link connector, SWD Tag-Connect |
-| **base** (`hardware/kicad/base`) | Ø44 mm disc plus a tab to the USB-C at θ = 0° | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
+| **base** (`hardware/kicad/base`) | Ø40 mm disc plus a tab to the USB-C at θ = 0° | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
 
 **Link** = 12-way JST SH (1.0 mm), vertical `BM12B-SRSS-TB` (KiCad `Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical`) on both boards. A
 12-wire harness runs through the spindle bore. Pinout (identical on both
@@ -223,3 +223,55 @@ Boost:
   magnet track (r = 29 ± 2 mm under the board) or the TMAG5273.
 * Net names are defined in `nets.py`. Use them exactly. Do not invent new
   inter-sheet nets.
+
+## 8. Mechanical stack-up (shared by the PCB layout and the enclosure model)
+
+z is measured from the desk (0) upward. θ = 0° is the USB-C direction; angles
+increase counter-clockwise when the device is viewed from the top. All
+dimensions are in mm.
+
+| z range | Part | Radii / notes |
+|---|---|---|
+| 0.0–1.0 | 3× rubber/micro-suction feet | r = 28 |
+| 1.0–2.5 | base cup floor (PA12/PETG) | cup OD Ø70, wall 1.6, wall top z = 14.3 |
+| 2.5–9.0 | LiPo bay, protected 603450-class pack ≤ 6.3 thick | long axis along θ = 90°/270° |
+| 1.0–2.0 | **2.4 GHz flex antenna** (Molex 146153-0050) lying on the floor, along the chord x = −26 (θ ≈ 180°) | ≥ 13 mm below the ring, ≥ 4.5 mm from the battery side; coax up through the spindle |
+| 9.5–11.1 | **base board** (Ø40 disc + USB tab to r = 35 at θ = 0°, 1.6 mm) | 3× M2 bosses at r = 15 (θ = 60°/180°/300°) |
+| 11.1–12.6 | press switch TS-1187A (1.5 tall) at the base-board centre | |
+| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly), r ≤ 30, centre boss over the switch (pre-gap 0.15) | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
+| 12.8–29.1 | hollow spindle Ø8 × 1.0 wall (316 or titanium), bore Ø6 for link harness + antenna coax | clamped to the lower plate and to the main board |
+| 15.6–25.6 | **rotor**: 316L ring OD 70 / ID 54, on a PA12-GF carrier web (z 17–19, r 11–27) holding the 608 outer race | ring top face z = 25.6 carries the 48-magnet track (Ø2×2, pockets 2.05 deep, R_t = 29.0) |
+| 18.0–25.0 | 608 bearing on the spindle; ≥ 2.5–3 N wave-spring axial preload | outer race r = 11 |
+| 19–29.1 | "bowl" under the main board, r 12–27: detent actuator (micro linear stepper, chord placement near θ = 90°) | stationary, hangs from the main-board bottom |
+| 26.6–28.6 | detent magnet Ø3×2 N52 on carriage, 1.0 mm above the track; slides r = 29.0 (click) → 21.5 (free) along θ = 90° | carriage plate 0.5 mm, rail fixed to the main-board bottom |
+| 29.1–30.7 | **main board** Ø64 (r ≤ 32), 4-layer 1.6 mm | centre Ø5 hole + 3× M2 at r = 6.5 (spindle flange), 2× M2 at r = 17 θ = 60°/120° (actuator bracket) |
+| 30.7–31.6 | LEDs (48× WS2812C-2020) at r = 28.5 | |
+| 31.6–34.2 | LED light box (white interior, opaque exterior) r 27–30 | |
+| 33.0–34.7 | OLED glass 33.8 × 34.0 (active-area centre on axis) on a bracket; FPC folded under to the ZIF | |
+| 34.2–36.0 | diffuser ring (opal PMMA, r 27–30) + top cover (stationary) with Ø30 OLED window, cover OD r = 32.5 | |
+
+The ring's visible surfaces are the knurled side (z 15.6–25.6) and a top rim
+band at r 32.5–35. Overall size is Ø70 × 36 mm.
+
+**Main-board PCB rules that come from the stack**
+* No copper pours on **B.Cu or In2.Cu** for r ≥ 26 (this annulus faces the
+  magnet track, so pours there add eddy drag). F.Cu/In1.Cu pours are allowed,
+  since the track is 3.5–5 mm away. Traces and pads are allowed everywhere.
+* Bottom side keep-outs:
+  * sector θ = 60°–120°, r 12–32: actuator and detent carriage, no components;
+  * the spindle flange area r ≤ 8.5.
+* TMAG5273 on the **bottom** side at (r = 29, θ = 270°). Its long axis is
+  radial. Nothing ferromagnetic and no inductor may sit within 10 mm of it.
+* DRV5032 on the **top** side at (r = 21.5, θ = 90°).
+* LEDs on the **top** side, centred on r = 28.5, with LED1 at θ = 0° and
+  numbering increasing CCW. Each LED's 100 nF cap goes radially inward (r ≈ 26).
+* The OLED ZIF sits on the **top** side under the glass, toward θ = 270° (the
+  FPC side). The 13 V boost also sits on the top side under the glass and must
+  be ≥ 10 mm from the TMAG5273.
+* MDBT50Q module on the **bottom** side, r 8–22, sector θ ≈ 180°–250°. Its u.FL
+  end faces the centre so the coax runs straight into the spindle bore.
+* The link connector J1 (vertical JST SH) sits on the **bottom** side next to
+  the centre hole.
+* The piezo goes on the **bottom** side (sound vents through the board).
+* The TC2030 pads go on the top side under the OLED glass, so they are
+  reachable before the OLED is fitted.

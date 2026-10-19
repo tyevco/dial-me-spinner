@@ -34,7 +34,13 @@ def load_netlist(path):
             for f in find_all(fl, "field"):
                 name = str(find(f, "name")[1])
                 fields[name] = str(f[2]) if len(f) > 2 else ""
-        props = {str(find(p, "name")[1]): str(find(p, "value")[1]) for p in find_all(c, "property")}
+        props = {}
+        for p in find_all(c, "property"):
+            v = find(p, "value")
+            props[str(find(p, "name")[1])] = str(v[1]) if v else ""
+        for k in ("MPN", "LCSC", "Manufacturer", "DNP"):
+            if props.get(k) and not fields.get(k):
+                fields[k] = props[k]
         sp = find(c, "sheetpath")
         comps[ref] = dict(
             ref=ref,
@@ -180,7 +186,7 @@ class BoardBuilder:
         z.SetDoNotAllowTracks(tracks)
         z.SetDoNotAllowVias(vias)
         z.SetDoNotAllowPads(pads)
-        z.SetDoNotAllowZoneFills(pours)
+        z.SetDoNotAllowCopperPour(pours)
         z.SetDoNotAllowFootprints(footprints)
         if name:
             z.SetZoneName(name)
