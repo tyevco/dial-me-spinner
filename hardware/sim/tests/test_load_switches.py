@@ -152,11 +152,83 @@ def tps22917(deck, main, ref, ron_add=0.0, isd_out=0.0, vin_node=None):
     return deck
 
 
-def led_rail(deck, main, duty=0.0, esd=None):
-    """U2's load: every fitted R/C on VLED / QOD / CT and each WS2812C pixel from the netlist."""
+# MLCC DC-bias and temperature data, Samsung Electro-Mechanics component library, MLCC characteristic data sheet
+# (https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=<MPN>, read 2026-10-19): "DCBias" curve
+# (% capacitance change vs DC volts, 25 C) and "TCC" curve (% vs 25 C, no bias).  Keyed by MPN without the packaging
+# letter; a VLED capacitor whose MPN is not listed raises KeyError, so a BOM change forces new data.
+MLCC_DCB = {
+    "CL21A226MAQNNN": dict(dcb=[(0, 0.0), (0.5, 1.09), (1, -1.08), (1.5, -6.9), (2, -13.5), (2.5, -20.71),
+                                (3, -28.12), (3.5, -34.96), (4, -41.05), (4.5, -46.52), (5, -51.3), (5.5, -55.49),
+                                (6, -59.22)],
+                           tcc={-10: -4.0, 25: 0.0, 60: -3.5}),
+    "CL05B104KO5NNN": dict(dcb=[(0, 0.0), (0.5, 0.11), (1, 0.17), (1.5, -0.17), (2, -0.78), (2.5, -1.83),
+                                (3, -3.1), (3.5, -4.51), (4, -6.14), (4.5, -7.8), (5, -9.54), (5.5, -11.32),
+                                (6, -13.14)],
+                           tcc={-10: -1.34, 25: 0.0, 60: -2.74}),
+}
+
+
+def _interp(x, pts):
+    xs, ys = zip(*pts)
+    if x <= xs[0]:
+        return ys[0]
+    for i in range(1, len(xs)):
+        if x <= xs[i]:
+            return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1])
+    return ys[-1]
+
+
+def mlcc_data(main, ref):
+    mpn = main.mpn(ref).upper()
+    for key, data in MLCC_DCB.items():
+        if mpn.startswith(key):
+            return data
+    raise KeyError(f"{ref}: no Samsung DC-bias data for MPN {mpn!r}; add it to MLCC_DCB")
+
+
+def dcbias_caps(main, refs, scale=None, temp=25):
+    """Charge-based voltage-dependent capacitors (one per node and MPN): Q(V) = C0 * integral(1 + dC(v)/100) dv with
+    the Samsung DC-bias curve, C0 = sum of netlist values x tolerance multiplier x (1 + TCC(temp)/100).  ngspice:
+    E source = normalised charge Q/C0, a C0 capacitor across it, and its current mirrored onto the real node by F."""
+    groups = {}
+    for ref in refs:
+        pins = main.pins[ref]
+        a, b = (spicelib.node_name(pins[p]) for p in sorted(pins))
+        data = mlcc_data(main, ref)
+        key = (a, b, id(data))
+        c0 = main.value(ref) * (scale or {}).get(ref, 1.0) * (1 + _interp(temp, sorted(data["tcc"].items())) / 100)
+        groups.setdefault(key, [data, 0.0, []])
+        groups[key][1] += c0
+        groups[key][2].append(ref)
+    out = []
+    for i, ((a, b, _), (data, c0, members)) in enumerate(groups.items()):
+        q, pts, v, step = 0.0, [(-1.0, -1.0), (0.0, 0.0)], 0.0, 0.05
+        while v < 6.0 - 1e-9:
+            k0 = 1 + _interp(v, data["dcb"]) / 100
+            k1 = 1 + _interp(v + step, data["dcb"]) / 100
+            q += 0.5 * (k0 + k1) * step
+            v += step
+            pts.append((v, q))
+        tab = ", ".join(f"{x:.3g},{y:.6g}" for x, y in pts)
+        out += [f"* DC-bias capacitor group {i}: {' '.join(members)} (C0 {c0:.6g} F at {temp} C)",
+                f"EDCB{i} n_dcb{i}_q 0 vol = 'pwl(V({a},{b}), {tab})'",
+                f"VDCB{i} n_dcb{i}_q n_dcb{i}_c 0",
+                f"CDCB{i} n_dcb{i}_c 0 {c0:.6g}",
+                f"FDCB{i} {a} {b} VDCB{i} 1"]
+    return out
+
+
+def led_rail(deck, main, duty=0.0, esd=None, dcbias=None):
+    """U2's load: every fitted R/C on VLED / QOD / CT and each WS2812C pixel from the netlist.
+
+    dcbias: None (capacitors at their netlist value), or dict(temp=..., scale={ref: k}) to replace every VLED
+    capacitor by its Samsung DC-bias / TCC capacitance (tolerance multipliers from scale)."""
     deck.include(LIB_WS)
+    vled_caps = [r for r in main.on_net("VLED", "C") if main.fitted(r)] if dcbias is not None else []
     deck += main.passives(nets={"VLED", "GND", "LSW_QOD", "LSW_CT", "VSYS", "LED_PWR_EN"},
-                          exclude=_vsys_only(main))
+                          exclude=_vsys_only(main) + vled_caps)
+    if dcbias is not None:
+        deck += dcbias_caps(main, vled_caps, scale=dcbias.get("scale"), temp=dcbias.get("temp", 25))
     esd = esd or {}
     extra = " ".join(f"{k}={v:.6g}" for k, v in esd.items())
     for ref in main.find("WS2812C"):
@@ -393,15 +465,16 @@ def test_fault_ct_cap_missing_inrush(main, base, check):
 
 
 # ======================================================================================== 3. U2 off: QOD discharge of VLED
-def u2_turn_off(main, base, corner="bat4.2", temp=25, t_off=5e-3, stop=50e-3, ideal_vsys=None):
-    """U2 on, then LED_PWR_EN low at t_off: time until VLED < 10 % (datasheet tFALL end point)."""
+def u2_turn_off(main, base, corner="bat4.2", temp=25, t_off=5e-3, stop=50e-3, ideal_vsys=None, dcbias=False):
+    """U2 on, then LED_PWR_EN low at t_off: time until VLED < 10 % (datasheet tFALL end point).
+    dcbias=True replaces the VLED capacitors by their Samsung DC-bias / TCC capacitance at `temp`."""
     d = Deck(f"U2 QOD {corner}")
     if ideal_vsys is None:
         vsys_network(d, main, base, corner, temp)
     else:                                                  # fast variant for Monte Carlo
         d += [f"VSYSI n_vsys 0 {ideal_vsys}", f"B3V3 n_p3v3 0 V = min(3.3, V(n_vsys) - {I_3V3 * LDO_RDO:.6g})"]
     tps22917(d, main, "U2")
-    led_rail(d, main)
+    led_rail(d, main, dcbias=dict(temp=temp) if dcbias else None)
     d += f"VCTL n_ctl_led 0 PWL(0 0 0.1m 0 0.1001m 1 {t_off} 1 {t_off + 1e-7} 0)"
     d += "VOE n_oe_led 0 1"
     gpio(d, main, "LED_PWR_EN", "n_ctl_led", "n_oe_led")

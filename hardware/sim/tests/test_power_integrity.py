@@ -165,7 +165,12 @@ CORNERS = {c.name: c for c in (NOMINAL, WORST, COLD)}
 
 
 def lsw_ron(vin: float, c: Corner) -> float:
-    """TPS22917 RON at VIN (interpolated in VIN), typ at 25 C or DS max at the corner temperature."""
+    """TPS22917 RON at VIN (interpolated in VIN), typ at 25 C or DS max at the corner temperature.
+
+    The DS gives max RON only at 25 C and as one band maximum for -40..+85 C, so above 25 C the band maximum is
+    the only guaranteed value (verifier: the earlier linear interpolation to 60 C, 127.5 mOhm at 3.6 V, was not
+    datasheet-backed; the band max is 140 mOhm). At or below 25 C RON falls with temperature, so max25 is a
+    conservative bound."""
     ks = sorted(LSW_RON)
     vin = min(max(vin, ks[0]), ks[-1])
     for a, b in zip(ks, ks[1:]):
@@ -175,8 +180,29 @@ def lsw_ron(vin: float, c: Corner) -> float:
             break
     if c.fet == "typ":
         return typ25
-    t = min(max(c.temp, 25.0), 85.0)
-    return max25 + (max85 - max25) * (t - 25.0) / 60.0
+    return max85 if c.temp > 25.0 else max25
+
+
+def cap_tol(d: Design, ref: str) -> float:
+    """Capacitor tolerance: from the value string when it carries one ('10u 5%'), else from the tolerance letter
+    of the MPN (Samsung CL.., Yageo CC.., Fenghua 0402..: K = 10 %, M = 20 %, J = 5 %), else the harness default.
+    (Verifier: Design.tol() falls back to 10 % for every capacitor, but C1/C8/C9 on main and C2 on base are
+    M-grade, +/-20 %.)"""
+    import re
+    if "%" in d.comps[ref]["value"]:
+        return d.tol(ref)
+    mpn = d.mpn(ref).upper()
+    pats = (r"^CL\d\d[A-Z]\d{3}([FGJKMZ])", r"^CC\d{4}([FGJKMZ])", r"^\d{4}[A-Z]{1,2}\d{3}([FGJKMZ])\d{3}",
+            r"^TAJ[A-Z]\d{3}([JKM])")
+    for p in pats:
+        mm = re.match(p, mpn)
+        if mm:
+            return {"F": 0.01, "G": 0.02, "J": 0.05, "K": 0.10, "M": 0.20, "Z": 0.20}[mm.group(1)]
+    return d.tol(ref)
+
+
+def is_cap(ref: str) -> bool:
+    return ref[0] == "C" and ref[1:2].isdigit()
 
 
 # =========================================================================================== loads
@@ -278,9 +304,11 @@ class System:
         return out
 
     def _scale(self, d: Design, extra: dict | None):
+        """Per-board scale. `extra` belongs to THIS board only (verifier: the references overlap between the
+        boards, C1-C4 and R1-R4 exist on both, so one shared dict scaled base parts with main-board draws)."""
         sc = {}
         if self.c.caps == "min":
-            sc = {r: 1.0 - d.tol(r) for r in d.comps if r[0] == "C" and r[1:2].isdigit()}
+            sc = {r: 1.0 - cap_tol(d, r) for r in d.comps if is_cap(r)}
         for r, f in (extra or {}).items():
             if r in d.comps:
                 sc[r] = sc.get(r, 1.0) * f
@@ -312,7 +340,9 @@ class System:
     # ------------------------------------------------------------------ deck
     def deck(self, title: str, loads: Loads, vbat: float | None = 3.7, vbus: float | None = None,
              ilim=BQ_ILIM500[0], vsysreg=BQ_VSYSREG, logic: bool = False, scale: dict | None = None,
-             led_ich_scale: float = 1.0):
+             led_ich_scale: float = 1.0, scale_base: dict | None = None, bq_extra: dict | None = None):
+        """scale: {ref: factor} for MAIN-board parts, scale_base: the same for BASE-board parts.
+        bq_extra: BQ25180_PP parameter overrides (e.g. a deeply discharged pack: no supplement, precharge)."""
         c, M, B = self.c, self.main, self.base
         typ = c.fet == "typ"
         d = Deck(title)
@@ -341,11 +371,12 @@ class System:
         bq = dict(VSYSREG=vsysreg, ILIM=ilim, RON_IN=BQ_RON_IN[0 if typ else 1],
                   RON_BAT=BQ_RON_BAT[0 if typ else 1] if vbat is not None else 1e6,
                   ICHG=BQ_ICHG if vbat is not None else 0.0)
+        bq.update(bq_extra or {})
         ps = " ".join(f"{k}={x:.6g}" for k, x in bq.items())
         d += [f"Xbq {self.bpin('U1', 'IN')} bq_sys {self.bpin('U1', 'BAT')} {self.bpin('U1', 'GND')} "
               f"BQ25180_PP {ps}", f"Visys bq_sys {self.bpin('U1', 'SYS')} 0"]
         # ---- base passives
-        d += self._remap(B.passives(nets=self.BASE_NETS, scale=self._scale(B, scale)), "b_", "0", "b")
+        d += self._remap(B.passives(nets=self.BASE_NETS, scale=self._scale(B, scale_base)), "b_", "0", "b")
         # ---- harness: VSYS and GND bundles (conductor count from the netlist), loop L split evenly
         rcond, lh = self.conductor_r(), self.loop_l() / 2
         d += [f"Vilink {self.b('VSYS')} hv1 0", f"Rh_vsys hv1 hv2 {rcond / self.n_vsys:.6g}",
@@ -417,6 +448,12 @@ class System:
               self.m("OLED_VIN"): v if loads.oled_icc > 0 else 0.0,
               self.mpin("U21", "CT"): 0.0 if loads.oled_icc > 0 else v}
         ns[self.b("VBAT")] = vbat if vbat is not None else 4.2   # no pack: the charger holds BAT at VBATREG
+        # verifier: the floating main-board ground had no initial guess; Newton then needed source stepping on
+        # every DC run and failed outright (garbage op, e.g. I(BAT) 9.8 A) after harmless netlist changes such as
+        # R53 = 1k on an otherwise unconnected I2C node. A small positive guess (main GND sits above base GND by
+        # I_load x R_gnd) makes the op converge directly; nodesets are only initial guesses, results are unchanged.
+        ns["gm"] = 0.02
+        ns[self.m("VSYS_SENSE")] = v * M.value("R2") / (M.value("R1") + M.value("R2"))
         d += [".nodeset " + " ".join(f"v({k})={x:.4g}" for k, x in ns.items())]
 
         # ---- probes (differential voltages as B-source nodes)

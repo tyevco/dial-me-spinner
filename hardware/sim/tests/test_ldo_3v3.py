@@ -702,6 +702,9 @@ def test_quiescent_current_typical(main, check):
     """No load, VBAT 3.7 V: the LDO's own draw from VSYS (DS IQ, typical part) against SPEC 3."""
     r = _iq_deck(main, TYP).run()
     check_clean(r)
+    # the Iq reading only means something if U1 is actually on and regulating (an off LDO also draws ~0)
+    check("+3V3 in regulation during the Iq measurement", r["op_1"], ldo_vnom(main) * 0.98, ldo_vnom(main) * 1.02,
+          "V", f"{DS} Table 14 accuracy +/-2 %")
     check("LDO quiescent current, typ part, no load", r["op_0"], 0, SPEC_IQ_MAX * 1.001, "A",
           f"SPEC.md 3 LDO Iq <= 2 uA ({DS} Table 14 IQ 2 uA typ)")
 
@@ -798,7 +801,7 @@ def _reverse_run(main, base, case):
         r["_errors"] = [e for e in r["_errors"] if "tclose" not in e]
         r["_missing"] = [m for m in r.get("_missing", []) if m != "tclose"]
     check_clean(r, exc=RuntimeError)   # a simulator failure must not pass as an expected (xfail) check failure
-    if not r["vpre"] > 3.3:
+    if not r["vpre"] > 0.97 * ldo_vnom(main):
         raise RuntimeError(f"+3V3 not settled before the event: {r['vpre']}")
     return r
 
@@ -879,7 +882,7 @@ def test_fault_en_strapped_to_gnd(main, check):
     deck += "VSYS n_vsys 0 3.7"
     lines, n_out = ldo_lines(main, "n_vsys")
     deck += lines
-    deck += f"ILOAD {n_out} 0 {TX}"
+    deck += f"RLOAD {n_out} 0 {ldo_vnom(main) / TX:.6g}"   # TX load as a resistor (a current source drags an off rail <0)
     deck.op()
     deck.print_op(f"v({n_out})")
     r = deck.run()
