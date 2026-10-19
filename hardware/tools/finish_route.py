@@ -578,7 +578,7 @@ class Router:
         self.added.append((net.GetNetname(), [t.m_Uuid.AsString() for t in items]))
         return items
 
-    def open_connections(self, skip=("GND",), only=None):
+    def open_connections(self, skip=(), only=None):
         """[(net, cluster_a, cluster_b)] nearest-first between the clusters of every net with more than one
         (only the nets in `only`, when given: KiCad's own list of unconnected nets)."""
         todo = []
@@ -675,7 +675,7 @@ def drc_uuids(path):
     return bad, len(d.get("unconnected_items", [])), open_nets
 
 
-def finish(path, log=print, grid=0.025, margin=0.6, skip=("GND",), max_rounds=30, max_ripups=40):
+def finish(path, log=print, grid=0.025, margin=0.6, skip=(), max_rounds=30, max_ripups=40):
     """Route every open connection of the board at `path` (in place). Returns the remaining unconnected count.
 
     Each round re-reads the board, routes every open connection it can without disturbing other nets, then checks
