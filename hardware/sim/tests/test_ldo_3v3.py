@@ -813,9 +813,9 @@ def test_reverse_bias_usb_unplug_at_buvlo(main, base, check):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="DESIGN ISSUE: any VSYS collapse with VSYS-side load (shorted LED behind U2, "
-                                       "BATOCP trip on a VSYS overload) drives U1 to VOUT - VIN ~0.9-1.2 V, above the "
-                                       "DS9080-09 0.3 V abs max; ~19 uF of +3V3 dumps 0.2-1.4 A through the PMOS body "
-                                       "diode (no reverse-current path besides it)")
+                                       "BATOCP trip on a VSYS overload) drives U1 to VOUT - VIN ~0.9-1.8 V, above the "
+                                       "DS9080-09 0.3 V abs max; the +3V3 capacitors dump 0.3-4.3 A through the PMOS "
+                                       "body diode (no other reverse-current path)")
 @pytest.mark.parametrize("case", ["batocp trip", "led short"])
 def test_reverse_bias_on_vsys_collapse(main, base, check, case):
     """Fault conditions: VSYS is pulled down by a VSYS-side fault while the charger disconnects the battery."""

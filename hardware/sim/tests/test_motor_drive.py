@@ -172,6 +172,36 @@ def vsys_caps(d):
     return [r for r in d.on_net("VSYS", "C") if set(d.pins[r].values()) <= {"VSYS", "GND"}]
 
 
+def mlcc_tol(d, ref):
+    """Capacitance tolerance from the Samsung MPN code (10th character: K = 10 %, M = 20 %); the value string carries
+    none, and the harness default (10 %) would understate the M-grade 22 uF (C1) and base C2."""
+    mpn = d.mpn(ref)
+    if mpn.startswith("CL") and len(mpn) >= 10 and mpn[9] in "KM":
+        return {"K": 0.10, "M": 0.20}[mpn[9]]
+    return d.tol(ref)
+
+
+def mlcc_dcbias(d, ref, v):
+    key = d.mpn(ref)[:14]
+    if key not in MLCC_DCBIAS:
+        raise KeyError(f"{d.board} {ref} MPN {d.mpn(ref)!r}: no DC-bias data in MLCC_DCBIAS (add the vendor curve)")
+    return 1.0 + float(np.interp(v, [0.5 * k for k in range(13)], MLCC_DCBIAS[key])) / 100.0
+
+
+def vsys_cscale(main, base, v, worst=True):
+    """Per-part scale for every VSYS MLCC on both boards: vendor DC-bias derating at v, times (1 - tolerance) if worst.
+    Keys as power() expects them (main refs plain, base refs as 'base:<ref>')."""
+    cs = {r: mlcc_dcbias(main, r, v) * ((1 - mlcc_tol(main, r)) if worst else 1.0) for r in vsys_caps(main)}
+    cs.update({"base:" + r: mlcc_dcbias(base, r, v) * ((1 - mlcc_tol(base, r)) if worst else 1.0)
+               for r in vsys_caps(base)})
+    return cs
+
+
+def vsys_ceff(main, base, cs):
+    return (sum(main.value(r) * cs[r] for r in vsys_caps(main))
+            + sum(base.value(r) * cs["base:" + r] for r in vsys_caps(base)))
+
+
 def new_deck(title):
     deck = Deck(title)
     # 1 nA absolute current tolerance: the default 1 pA stalls the timestep on the near-idle cell branch in USB
@@ -504,6 +534,8 @@ def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, 
                  ilim=ILIM_MIN, t_tail=1e-3):
     ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end, t_tail=t_tail)
     deck = new_deck(f"full step {pps} PPS {sup} {temp}C")
+    if cscale is None:      # worst-case VSYS capacitance at the operating point (vendor DC bias, minus tolerance)
+        cscale = vsys_cscale(main, base, sup.vsys_idle, worst=True)
     power(deck, main, base, sup, temp, other=other, cscale=cscale, aged=aged, ilim=ilim)
     ts = tm["ts"]
     drivers(deck, main, temp, rds=rds, tol=tol, lph=lph, ke=0.0 if stall else ke, pps=pps, t0=tm["t0"] - ts,
@@ -701,7 +733,7 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)
     ctrl["MOT_NSLEEP"] = _pwl([(t_on, 1)])
     deck = new_deck(f"microstep {cid}")
-    power(deck, main, base, sup, temp)
+    power(deck, main, base, sup, temp, cscale=vsys_cscale(main, base, sup.vsys_idle, worst=True))
     # rotor turns from the first µstep on, field angle 11.25 deg per µstep -> emf phase reference t_s0
     drivers(deck, main, temp, rds=RDS_MAX, ke=KE_MAX, pps=pps, t0=t_s0, tg=t_s0, tstop=t_end)
     for net, pts in ctrl.items():
