@@ -22,7 +22,10 @@ the risks, the open decisions and a rough cost.
   independent reviewer then checked the research against datasheets. This
   document uses the reviewer's **corrected** values. Values marked
   *estimate* are engineering estimates. Values marked *to verify on
-  prototype* have not been measured yet and must be.
+  prototype* have not been measured yet and must be. Values cited as
+  "(hardware/sim, ID)" come from the netlist-driven SPICE suite
+  ([docs/simulation.md](simulation.md), [results page](../hardware/sim/results/report.md));
+  ID is the finding or test name there.
 
 Status: rev A. The schematics are captured (ERC clean) and both boards are
 placed by `hardware/design/layout.py`; routing and DRC are being closed.
@@ -60,8 +63,8 @@ clicks. A tiny linear stepper slides a magnet over a 48-magnet track on the
 ring, which switches the ring between **free spin** and **24 clicks per turn**
 (the click strength is variable). The stepper holds its position with zero
 power. A 3D Hall sensor reads the same magnet track to measure rotation. An
-nRF52840 handles BLE and USB. A ~1000 mAh LiPo and the USB-C charger sit in the
-base.
+nRF52840 handles BLE, USB and NFC tag emulation (through a coil in the top
+cover). A ~1000 mAh LiPo and the USB-C charger sit in the base.
 
 It serves three use cases with the same hardware:
 
@@ -86,8 +89,9 @@ It serves three use cases with the same hardware:
 | Inputs | Press (0.3–0.5 mm travel), rotation, IMU tap and pick-up | SPEC §1, §5.5 |
 | Audio | Magnet-free piezo, about 72 dB(A) at 10 cm (research figure; *to verify* with the 470 Ω series resistors, [§6.4](#64-led-ring-and-audio)) | LED research |
 | Radio | nRF52840 module MDBT50Q-U1MV2 with u.FL, and an off-board flex antenna in the base. TX at +8 dBm by default | SPEC §5.2, §8, [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) |
+| NFC | NFC-A tag emulation (Type 2 / Type 4) on the nRF52840 NFCT (P0.09/P0.10), 13.56 MHz coil in the top cover on pads J11 | SPEC §4, [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) |
 | Battery | 1S LiPo, about 1000 mAh with protection board, ≤ 6.0 mm thick so the swelling gap to the base board stays ≥ 1 mm (D8). BQ25180 charger, 400 mA charge (about 3 h) | SPEC §3, §8, power research |
-| Runtime (estimates, [§8](#8-power-budget-and-battery-life)) | Game about 9 h continuous. Desk use about 4 weeks per charge. Sleep about 32 µA | this document |
+| Runtime (estimates, [§8](#8-power-budget-and-battery-life)) | Game about 9 h continuous. Desk use about 4 weeks per charge. Sleep about 38 µA (25 °C typical) | this document |
 
 ---
 
@@ -109,8 +113,8 @@ cases, and rows **D** requirements derived from them.
 | U1 | Game / decision spinner | Free or click spin, an LED wheel plus a 30–60 fps OLED wheel, piezo ticks synced to detent crossings, stop prediction from the measured spin-down, phone app over the custom GATT | [§6](#6-subsystem-design-decisions) | Game demo firmware |
 | U2 | Surface-Dial-like controller | Composite HID: Windows Radial Controller (0.1° units, 150 units per detent), Consumer Control and Mouse wheel, over BLE and USB. Press = button | [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) | Windows Wheel settings, Linux `evtest`, Android |
 | U3 | Fidget toy | Long free spins, clicky mode, spin counter and RPM, wake on pick-up or tap | [§6.1](#61-rotation-sensing), [§6.2](#62-detents-mechanism-and-actuator) | User testing |
-| D1 | Battery powered, USB-C charging | BQ25180 power-path charger, USB-C sink (Rd 5.1 kΩ), ESD/TVS | SPEC §3, §6 | Charge from empty, check temperature |
-| D2 | Long standby, instant wake | About 32 µA sleep floor. Wake on rotation (TMAG Wake-up&Sleep mode), press, pick-up (IMU) or USB. Ship mode about 6 µA | [§8](#8-power-budget-and-battery-life) | PPK2 sleep-current measurement |
+| D1 | Battery powered, USB-C charging | BQ25180 power-path charger, USB-C sink (Rd 5.1 kΩ), ESD/TVS at the connector, plus a 4.7 Ω VBUS series resistor (R12) and a second USBLC6 (U12) at the nRF on the main board | SPEC §3, §6, [§7](#7-power-tree) | Charge from empty, check temperature |
+| D2 | Long standby, instant wake | About 38 µA sleep floor (25 °C typical, [§8.2](#82-per-subsystem-currents)). Wake on rotation (TMAG Wake-up&Sleep mode), press, pick-up (IMU) or USB. Ship mode about 6 µA | [§8](#8-power-budget-and-battery-life) | PPK2 sleep-current measurement |
 | D3 | Firmware updates without a debugger | MCUboot with its secondary slot on QSPI flash, SMP over BLE and USB, USB serial recovery | [§6.6](#66-mcu-module-rfantenna-and-firmware-platform) | DFU test on each OS |
 | D4 | Audible ticks (magnetic detents are silent) | Piezo driven by complementary PWM, triggered on each detent crossing the encoder reports | SPEC §5.5 | Listening test |
 | D5 | No magnetic interference with the detents or encoder | Alternating track (zero DC field). Ferrous and inductor keep-out ≥ 10 mm from the track and Hall sensor. No copper pours on B.Cu/In2.Cu at r ≥ 26 mm | SPEC §7, §8 | No preferred rest angle in free mode (histogram of 50 rests) |
@@ -136,6 +140,7 @@ flowchart TB
   subgraph FA["Floating assembly: does not rotate, moves 0.3-0.5 mm on press"]
     subgraph MAIN["Main board: Ø64, 4 layers, parts on both sides"]
       LDO["RT9080-33 LDO<br/>+3V3, always on"]
+      USBP["R12 4.7 Ω VBUS series + C12 (VBUS_NRF)<br/>U12 USBLC6-2SC6 at the module D+/D-"]
       MCU["MDBT50Q-U1MV2<br/>nRF52840 + u.FL, bottom side"]
       FLASH["W25Q128JV<br/>16 MB QSPI"]
       LSW["TPS22917 U2<br/>LED load switch"]
@@ -150,6 +155,7 @@ flowchart TB
     end
     MOTOR["Micro linear stepper<br/>self-locking M2x0.4 screw"]
     CARR["Carriage with N52 Ø3x2<br/>detent magnet"]
+    NFCC["NFC coil, 13.56 MHz flex<br/>in the top cover, tail on pads J11"]
   end
 
   subgraph ROTOR["Rotor: spins on one 608 bearing"]
@@ -167,7 +173,10 @@ flowchart TB
   LINK -->|"VSYS"| LSW
   LINK -->|"VSYS"| BOOST
   LINK -->|"VSYS as motor VM"| DRV
-  LINK <-->|"USB, I2C, interrupts"| MCU
+  LINK -->|"VBUS, USB D+/D-"| USBP
+  USBP -->|"VBUS_NRF, USB"| MCU
+  LINK <-->|"I2C, CHG_INT_N, BTN_N"| MCU
+  MCU <-->|"NFC1/NFC2 (NFCT tag), C16/C17 180 pF"| NFCC
   LDO -->|"+3V3"| MCU
   MCU -->|"QSPI"| FLASH
   MCU -->|"SPIM3"| OLED
@@ -200,26 +209,26 @@ the flash, TMAG, IMU, OLED logic, DRV8837 VCC and DRV5032.
 
 | Board | Where | Moves on press? | Contents | Why it lives there |
 |---|---|---|---|---|
-| **main**: Ø64 mm, 4 layers (In1 = GND plane), 1.6 mm, ENIG, parts on both sides | Top of the FA, z 29.1–30.7 mm, 3.5 mm above the ring's magnet face | Yes, with the rotor | nRF52840 module, crystal, QSPI flash, 3V3 LDO, OLED ZIF + 13 V boost with its load switch, 48 LEDs + load switch, TMAG5273 + encoder ESD, LIS2DW12, piezo, 2× DRV8837, DRV5032, motor and link connectors, SWD pads | Every part that interacts magnetically with the rotor (encoder, detent carriage, home sensor) rides on the same body as the rotor's bearing, so magnet gaps stay constant during a press and no magnetic force crosses the press suspension. The OLED and LEDs sit directly under the top cover. The u.FL end of the module faces the spindle bore. |
-| **base**: Ø46 mm plus a tab to r = 35 at θ = 0° for the USB-C, 2 layers, 1.6 mm, ENIG, parts on the top side only | Base cup, z 9.5–11.1 mm. Supports: one M2 boss (H1) at r = 20, θ 270° (outside the pack), a printed rib under the θ 90° edge (y 17.75–18.75, between the pack and the antenna shelf) and the USB-C shell clamped in the cup wall | No | USB-C, USBLC6, SMF5.0A, BQ25180 U1 (r 19.5, θ 255°, off the pack), battery connector J2 (r 17, θ 222°), NTC RT1 (top, r 8, θ 200°), centre press switch SW1, BSS138DW wake network, link connector J3 | The USB-C port must not float, or cable force would bias the click. The battery goes low, as about 20 g of ballast. Charger heat (0.5–0.8 W) stays away from the magnets and the Hall sensor. ENIG is needed for the 0.4 mm-pitch DSBGA charger. |
+| **main**: Ø64 mm, 4 layers (In1 = GND plane), 1.6 mm, ENIG, parts on both sides | Top of the FA, z 29.1–30.7 mm, 3.5 mm above the ring's magnet face | Yes, with the rotor | nRF52840 module, crystal, QSPI flash, 3V3 LDO, VBUS series resistor R12 + second-stage USB ESD U12, OLED ZIF + 13 V boost with its load switch, 48 LEDs + load switch, TMAG5273 + encoder ESD, LIS2DW12, piezo, 2× DRV8837, DRV5032, NFC tuning caps + coil pads J11, motor and link connectors, SWD pads | Every part that interacts magnetically with the rotor (encoder, detent carriage, home sensor) rides on the same body as the rotor's bearing, so magnet gaps stay constant during a press and no magnetic force crosses the press suspension. The OLED, LEDs and NFC coil sit directly under the top cover. The module's u.FL end faces outward (u.FL at r ≈ 23); the coax runs back under the board beside the module to the spindle's top slot ([§6.6](#66-mcu-module-rfantenna-and-firmware-platform)). |
+| **base**: Ø46 mm plus a tab to r = 35 at θ = 0° for the USB-C, 4 layers (In1 = GND plane, In2 = signals/power), 1.6 mm, ENIG, parts on the top side only | Base cup, z 9.5–11.1 mm. Supports: one M2 boss (H1) at r = 20, θ 270° (outside the pack), a printed rib under the θ 90° edge (y 17.75–18.75, between the pack and the antenna shelf) and the USB-C shell clamped in the cup wall | No | USB-C, USBLC6, SMF5.0A, BQ25180 U1 (r 19.5, θ 255°, off the pack), side-entry battery connector J2 (JST SH SM04B-SRSS-TB, r 17, θ 222°), NTC RT1 (top, r 8, θ 200°), centre press switch SW1, BSS138DW wake network, link connector J3 | The USB-C port must not float, or cable force would bias the click. The battery goes low, as about 20 g of ballast. Charger heat (0.5–0.8 W) stays away from the magnets and the Hall sensor. ENIG is needed for the 0.4 mm-pitch DSBGA charger. |
 
 ### 4.2 The link
 
 A 12-wire harness with a JST SH (1.0 mm) side-entry `SM12B-SRSS-TB` (LCSC
 C160411, about 2.95 mm tall) on each board, entry facing the board centre:
-main J1 on the bottom side at r = 17.5 mm, θ = 330°, and base J3 on the top
+main J1 on the bottom side at r = 19.5 mm, θ = 330°, and base J3 on the top
 side at r ≈ 15.5 mm, θ = 120°. The harness runs through the Ø6 bore of the
 stationary spindle and enters and leaves it through side slots. The pinout is
 the same on both boards (SPEC §2, `nets.py` `LINK_PINOUT`):
 
 | Pin | Net | Direction / notes |
 |---|---|---|
-| 1, 2 | VSYS | Base → main. 3.0–4.5 V (VBAT on battery, 4.5 V on USB) |
+| 1, 2 | VSYS | Base → main. 3.0–4.4 V (VBAT on battery; SYS regulated to 4.4 V on USB, [§6.5](#65-power-and-charger)) |
 | 3, 4, 8 | GND | Three returns |
-| 5 | VBUS | Base → main. nRF USB detect and USB PHY supply only (a few mA) |
-| 6, 7 | USB_DM, USB_DP | ESD protection sits at the connector on the base |
+| 5 | VBUS | Base → main. nRF USB detect and USB PHY supply only (a few mA), through R12 4.7 Ω on main (net VBUS_NRF at the module) |
+| 6, 7 | USB_DM, USB_DP | ESD protection at the connector on the base (U2) and again at the module on main (U12) |
 | 9, 10 | I2C_SCL, I2C_SDA | System TWIM1. The BQ25180 at 0x6A is on the base; the 4.7 kΩ pull-ups are on main |
-| 11 | CHG_INT_N | BQ25180 /INT, open drain, 10 kΩ pull-up on main |
+| 11 | CHG_INT_N | BQ25180 /INT, open drain, 10 kΩ pull-up on main, nRF P1.03 |
 | 12 | BTN_N | Press, open drain (Q1B, the second FET of the BSS138DW Q1 on the base), 100 kΩ pull-up on main |
 
 Electrical notes:
@@ -232,9 +241,15 @@ Electrical notes:
   hardware worst case without the firmware caps is about 1.35 A with the 5 mA
   LEDs and about 2.35 A with the 12 mA WS2812B-2020-V6 drop-in. **The LED
   brightness cap is therefore a hardware protection function, not a styling
-  choice.**
+  choice.** It MUST be active from the first frame after reset, in the MCUboot
+  and USB-recovery images too, and those images MUST keep LED_PWR_EN,
+  OLED_VCC_EN and MOT_NSLEEP low (their pull-downs R3, R25 and R70 hold them
+  off through reset), because without the limiter the rails cannot be held
+  (hardware/sim, PI-1). The average cap alone is not enough: see the
+  instantaneous budget in [§8.4](#84-peak-current).
 * **IR drop.** The real route through the spindle side slots (SPEC §8) makes
-  the harness about 50–80 mm long. At 80 mm in 28 AWG (0.21 Ω/m) the two VSYS
+  the harness about 50–80 mm long (the CAD path is 43 mm and the wires are
+  cut to 58 mm, `hardware/mechanical/calcs_output.txt` §12). At 80 mm in 28 AWG (0.21 Ω/m) the two VSYS
   wires give about 8.5 mΩ and the three GND wires about 5.7 mΩ, so about 10 mV
   at 0.7 A. (In 32 AWG it would be about 25 mV.) Either is negligible.
 * **USB.** Full speed (12 Mbit/s) tolerates 50–80 mm of unshielded,
@@ -255,15 +270,19 @@ Electrical notes:
     parts from the plate, so **no plate window is needed**. J3 sits in the
     θ 120° sector, and its top (about z 14.05) is about 2.95 mm below the
     rotor carrier web (z 17), or about 2.45 mm with the FA pressed 0.5 mm.
-    *To verify in CAD.* The open sectors do not clear the carrier web for a
-    tall part: the CAD clash check puts the battery connector J2 (about
-    5.5 mm tall) 0.1 mm into the pressed web and its plug into the spider's
-    outer ring (risk R36).
-  * On the main board J1 hangs only about 2.95 mm (to z ≈ 26.15) at r = 17.5,
-    clear of the 608. The CAD clash check still puts the back of its mated
-    plug at r 11.9, only 0.15 mm above the rotating hub, against ≥ 0.3 mm
-    needed (risk R25). The harness lies flat against the board bottom into
-    the upper slot.
+    The open sectors clear only the FA plate, not the carrier web, so the
+    battery connector J2 is also a side-entry JST SH (SM04B-SRSS-TB, 2.95 mm
+    tall, pins 1–2 BAT+, 3–4 GND). The PH header it replaced (about 5.5 mm)
+    reached 0.1 mm into the pressed web (risk R36, closed). The pack is
+    re-terminated with 28 AWG pre-crimped SH leads, two per rail, which run
+    beside the pack at z ≈ 10 under the spider and come up over the board
+    edge at θ ≈ 222°.
+  * On the main board J1 hangs only about 2.95 mm (to z ≈ 26.15) at r = 19.5,
+    clear of the 608, and the back of its mated plug stays outside the
+    rotating hub zone (r 9.5–12.5; risk R25, closed). The harness lies flat
+    against the board bottom into the upper slot. The CAD clash check passes
+    on the current boards with only the intended contacts
+    ([docs/mechanical.md §3B](mechanical.md#3b-current-pcb-placement-for-the-layout-owner-from-board_partsscad-and-the-clash-check)).
   * The harness and coax cross from the stationary base to the floating FA.
     They need a **service loop of about 5 mm or more** to absorb the 0.3–0.5 mm
     press travel (up to about 0.75 mm at the rim) without pre-loading the
@@ -382,7 +401,11 @@ passes a few millimetres below it.
   3.1 kSPS. The internal oscillator is untrimmed, so measure the sample rate
   at run time. Reads use the 1-byte frame (about 163 µs) on the dedicated
   TWIM0, triggered by INT through PPI and DMA, so the CPU does no per-sample
-  work.
+  work. Firmware MUST write TWIM0 FREQUENCY = 0x06200000 after init
+  (nRF52840 errata 219): at the stock 400 kHz setting SCL low is only
+  1.25 µs, under the 1.3 µs tLOW minimum of the TMAG5273 and of I2C Fast
+  mode (hardware/sim, NF-1). The system bus TWIM1 runs at 250 kHz or
+  100 kHz for the same reason.
 * Speed limits: at 30 rev/s the electrical advance is 84° per sample. The
   aliasing limit is about 65 rev/s (43 rev/s with a conservative 120°-per-sample
   tracker). A hand-flicked ring reaches about 5–20 rev/s.
@@ -435,8 +458,11 @@ passes a few millimetres below it.
 * The carriage is driven by a **micro PM linear stepper with a self-locking
   M2×0.4 lead screw** (VIC-TECH VSM08102 class, or its 10 mm sibling) through
   **2× DRV8837** and a side-entry JST SH 4-pin connector (J40, SM04B-SRSS-TB,
-  main-board bottom at r 25.5, θ 132°, just outside the θ 60–120° actuator
-  corridor, which stays free of parts). A **DRV5032FA** Hall switch (U42, top
+  main-board bottom at r 25.5, θ 132°). The θ 60–120° sector stays free of
+  parts. J40 sits inside the wider actuator corridor (θ 30–160°, r 8.5–27,
+  where bottom parts must be ≤ 1.3 mm tall, SPEC §8), so its clearance to
+  the actuator was checked part by part in
+  `hardware/mechanical/calcs_output.txt` §11. A **DRV5032FA** Hall switch (U42, top
   side at r 21.5, θ 90°) above the park position confirms homing.
 * Holding position takes zero power: the lead angle (4.2°) is below the
   friction angle (about 9.8°), and both end positions are magnetically
@@ -467,7 +493,9 @@ passes a few millimetres below it.
 * Actuator load. The research said ≤ 0.55 N; the verifier corrected it to a
   worst case of **0.8–1.15 N** once guide friction on both preloaded faces and
   the anti-lash spring are included. That is **above the 8 mm VSM08102's
-  0.78 N minimum thrust**, which is rated only at 500 PPS.
+  0.78 N minimum thrust**, which is rated only at 500 PPS. The SPICE motor
+  model puts its thrust at 0.93 N at best from any battery VSYS, so no
+  driver change closes the gap (hardware/sim, MD-4; risk R4, still open).
   * Either use the 10 mm sibling (about 1.7 N claimed, not yet confirmed by a
     vendor datasheet).
   * Or reduce preloads to about 0.4–0.5 N on a PTFE/POM pair, make the
@@ -529,14 +557,23 @@ controller:
 * Panel VCC: 13.0 V from a **TPS61040** boost (U20; R26 499 kΩ 0.5 % /
   R27 52.3 kΩ 0.1 % divider) behind a **TPS22917** input load switch (U21:
   VIN = VSYS with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down,
-  C37 1 nF from CT to VIN for about a 4 ms ramp, QOD open, VOUT = OLED_VIN).
-  With OLED_VCC_EN low the boost input is disconnected and draws 0 µA, and
-  the panel's VCC floats. Without the switch, a disabled TPS61040 would still
-  pass VSYS minus a diode drop to VCC through L20 and D21. The TPS22917 also
-  blocks reverse current at all times (IIN,RCB ≤ 1 µA,
+  C37 1 nF from CT to VIN for about a 4 ms ramp, QOD tied to VOUT =
+  OLED_VIN). The TPS61040's EN is tied to its own VIN (OLED_VIN).
+  With OLED_VCC_EN low the boost input is disconnected, and the QOD holds
+  OLED_VIN at about 0 V (0.05–5.4 mV over −10…60 °C), so the TPS61040 is
+  provably in shutdown in sleep and through an MCU reset (OLED_VIN below
+  0.4 V within 1.6 ms of reset) (hardware/sim, LSW-1/SLP-1). With QOD open,
+  D21's reverse leakage floated OLED_VIN up to the boost's UVLO and the
+  boost hiccupped in sleep. The panel's VCC still floats, because D21
+  blocks; the panel's VCI→VCC ESD path holds it at about 2.7 V, and the
+  price of the fix is D21's reverse leakage through the QOD in sleep
+  ([§8.2](#82-per-subsystem-currents)). Without the switch, a disabled
+  TPS61040 would still pass VSYS minus a diode drop to VCC through L20 and
+  D21. The TPS22917 also blocks reverse current at all times (IIN,RCB ≤ 1 µA,
   [SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.5), so
   OLED_VIN cannot back-feed VSYS. It replaces the earlier AO3401A + 2N7002
-  disconnect, which had no controlled slew.
+  disconnect, which had no controlled slew. L20 is rated Isat 0.72 A
+  (0.92 A typical), against a 0.49 A peak need (`display` sheet).
 
 **Why.**
 * It is the only colour OLED whose full frame (32 KiB, 12.5 % of RAM) fits the
@@ -567,13 +604,23 @@ controller:
 * Wake latency: about 200–400 ms. The vendor sequence needs 200 ms after VCC
   comes up before display-on (command AFh), plus about 200 ms before the panel
   scans.
-* Sleep: about 10–12 µA typical, 35–40 µA maximum. That is ICI 4 µA, plus about
+* Sleep: about 17.6 µA typical at 25 °C. That is ICI 4 µA, plus about
   5 µA leaking from VCI through the panel's internal ESD path into the boost
   feedback divider, plus 3.3 µA in the 1 MΩ RES# pull-down while RES# is held
-  high.
+  high, plus about 5.4 µA of D21 (B5819W) reverse leakage from the ESD-held
+  +13V_OLED through U21's QOD (about 30 µA at 60 °C, 1.0 µA at −10 °C). With
+  datasheet-maximum IC currents the OLED block draws 45.4 µA at 25 °C and
+  70.0 µA at 60 °C, budgeted as 46 / 72 µA in [§8.2](#82-per-subsystem-currents)
+  (hardware/sim, SLEEP BUDGET).
 * Boost headroom: at VBAT 3.0 V and the minimum current limit, the TPS61040
-  delivers only about 33–35 mA. That is not enough for a guaranteed full-white
-  screen, so firmware caps master current and white area below 3.4 V.
+  delivers only about 33–35 mA, and at 3.6 V the worst-case stack (ILIM,
+  L20 −20 %, DCR and U21 RON at their limits) still cannot supply the 42 mA
+  full-white maximum at VCC ≥ 12.5 V. Firmware MUST therefore cap master
+  current at C7 ≤ 08h and white area at ≤ 30 % below a rested VBAT of 3.75 V,
+  and whenever the LED current is above its 150 mA sustained cap
+  (hardware/sim, OLED-BST-2). This is the same threshold as
+  [firmware.md §7.4](firmware.md#74-burn-in-mitigation-and-power-caps)
+  (OLED-V4).
 
 **Firmware notes.**
 * The panel runs on **SPIM3 at 16 MHz** on P0.13–P0.16 (SPEC §4), with the
@@ -609,16 +656,25 @@ controller:
   (C101–C148). That is 7.5° per LED, 2 per detent, D101 at θ = 0°, numbered
   CCW.
 * **Supply:** VSYS directly, through a **TPS22917** load switch (U2: C7 = 1 nF
-  from CT to VIN, about 4 ms turn-on; QOD through R4 = 100 Ω to VLED; R3
-  100 kΩ pull-down on ON; C8/C9 2 × 22 µF bulk). No 5 V boost.
+  from CT to VIN, about 4 ms turn-on; QOD through R4 = 68 Ω to VLED, so VLED
+  falls to 10 % in about 20–27 ms, [§7](#7-power-tree); R3 100 kΩ pull-down
+  on ON; C8/C9 2 × 22 µF bulk). No 5 V boost.
 * **Data:** nRF **I2S0 SDOUT** (P0.06, LED_DIN_MCU) at 3.3 V logic, through
   R40 = 220 Ω to LED_DIN_R (SPEC §5.4; it limits DIN clamp current if P0.06 is
   ever high while VLED is off), then the fitted 0 Ω R43 to LED_DIN at D101.
+  R40 sits next to the nRF pin (U10 pad 22), so the long trace to D101 is
+  source-terminated (hardware/sim, LED-DATA-1). P0.06 MUST use
+  `nordic,drive-mode = <NRF_DRIVE_H0H1>` in its default pinctrl state:
+  standard drive does not guarantee the WS2812C timing windows
+  (hardware/sim, LED-DATA-V1).
   100 kΩ pull-downs on LED_DIN_R (R41) and on the last DO (R42, LED_D48, with
   TP40), because V6 DI/DO pins are auto-swappable. The DC drop across 220 Ω
   into the DI pull-down is about 6 mV. No level shifter is fitted by default.
   A **DNP SN74LV1T34** (U43, powered from VLED, with DNP C43) is the
   fallback: remove R43 and fit U43 and C43 if the margin test fails (R27).
+  BOM rule: D101–D148 MUST be V6 parts. A pre-V6 WS2812B needs
+  VIH = 0.7 × VDD, which the default path cannot meet, so any other LED
+  needs U43/C43 fitted and R43 removed (hardware/sim, LED-DATA-2).
 * **Optics:** a white-interior, opaque-exterior light box, about 2.7 mm of air,
   then an opal PMMA diffuser ring (r 27–30).
 * **Audio:** a magnet-free Murata **PKMCS0909E4000-R1** piezo (BZ1, main-board
@@ -643,30 +699,42 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 
 * Data timing: I2S at SCK 3.2 MHz, nibble 0x8 for a 0 and 0xC for a 1, gives
   T0H 312 ns and T1H 625 ns, inside the V6 windows. Use a reset delay of
-  ≥ 300 µs and the HFXO clock source. A frame of 48 LEDs takes about 1.74 ms
+  ≥ 300 µs. The I2S clock MUST come from the HFXO: firmware requests the
+  HFXO and waits for it to start before every LED frame, and releases it
+  afterwards, because the HFINT's ±8 % breaks the T1H/T0L windows
+  (hardware/sim, LED-DATA-V2). The tightest width is T1H, with about 15 ns
+  of margin (LED-DATA-2). A frame of 48 LEDs takes about 1.74 ms
   (575 fps maximum at line rate).
-* Logic margin: at VSYS 4.5 V (on USB) the input threshold VIH is
-  0.55–0.6 × VDD = 2.48–2.7 V. The nRF's guaranteed VOH is VDD − 0.4 V
-  (nRF52840 PS, standard drive). With the RT9080 at its −2 % limit
-  (3.23 V, [DS9080-09](https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf))
-  that is about 2.83 V, so the **worst-case margin is about 0.1–0.2 V** at
-  VSYS 4.5 V, before any SYS-regulation tolerance (each +1 % on VSYS costs
-  about 27 mV). On battery (VSYS ≤ 4.2 V, VIH ≤ 2.52 V) it is ≥ 0.3 V. The DI
-  input draws only µA, so the real VOH sits close to VDD and the typical margin
-  is about 0.6 V or more; the guaranteed figure is what is thin. This is why the
-  nRF runs at 3.3 V ([§6.5](#65-power-and-charger)), and it is listed as risk
-  R27. The DNP U43 level shifter is the hardware fallback.
+* Logic margin: the LED's input threshold VIH is 0.55–0.6 × VLED, and
+  VLED = VSYS is highest on USB. The nRF's guaranteed VOH is VDD − 0.4 V (nRF52840 PS). With the RT9080 at
+  its −2 % limit (3.23 V, [DS9080-09](https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf))
+  that is about 2.83 V. At VSYS 4.59 V (SYS_REG 4.5 V at +2 %) the SPICE
+  suite gives a DC margin of about +427 mV with realistic parts and +41 mV
+  with every PS limit stacked; adding the RT9080's cold drift and load
+  transients, the combined worst case is about 40–55 mV (hardware/sim,
+  LED-DATA-2, LDO-2). Firmware therefore MUST set SYS_REG to 4.4 V on USB
+  ([§6.5](#65-power-and-charger)), which raises the worst-case DC margin to
+  about +116 mV (0.6 × 4.488 V + 0.4 V = 3.093 V needed at VDD), and MUST
+  never set it above 4.5 V while the LEDs may run (LED-DATA-V3). On battery
+  (VSYS ≤ 4.2 V, VIH ≤ 2.52 V) the margin is ≥ 0.3 V. H0H1 drive and the HFXO
+  are requirements for these figures, not optional mitigations. This is why
+  the nRF runs at 3.3 V ([§6.5](#65-power-and-charger)), and it is listed as
+  risk R27. The DNP U43 level shifter is the hardware fallback.
 * Diffuser uniformity: at 3.73 mm pitch and about 2.7 mm gap (pitch/height
   about 1.4), an ideal Lambertian diffuser gives roughly 0.75–0.8 min/max
   brightness along the ring. Expect slight beading; *to verify on prototype*.
-* Firmware power limit: 300 mA burst, 150 mA sustained, derate at 3.50 V,
-  red-only below 3.40 V.
+* Firmware power limit: 300 mA burst, 150 mA sustained (average), 100 mA
+  below 3.60 V, a dim red cue only below 3.53 V
+  ([firmware.md §6.3](firmware.md#63-power-limiter)), plus the instantaneous
+  lit-channel budget of [§8.4](#84-peak-current). When the loaded VSYS falls
+  below about 3.3 V (the LED VDD minimum), firmware MUST send an all-zero
+  frame and then drop LED_PWR_EN (hardware/sim, LED-DATA-3).
 
 **Alternatives considered.**
 
 | Option | Why rejected |
 |---|---|
-| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit. Fitting it makes the firmware cap mandatory from first boot. |
+| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit, and with aligned PWM its ring peak is 1.73 A even under the 300 mA average cap. Fitting it requires the instantaneous lit-channel cap (sum of lit channels × 12 mA within the [§8.4](#84-peak-current) budget, about 1.0 A at full battery) from first boot; otherwise it has to be dropped from the SPEC §5.4 alternates (hardware/sim, PI-3). |
 | Legacy WS2812B-2020 | 3.7 V minimum supply, about 0.6 mA idle per LED, discontinued. |
 | SK6805-EC15 / EC20, SK6812MINI-E | VIH 0.78 × VDD (needs a level shifter) or VDD ≥ 3.5–3.7 V, 1 kHz PWM, about 0.5 mA idle per LED. |
 | APA102-2020 / SK9822 (clocked) | 5 V class, so a boost plus a level shifter; about 1 mA idle per LED. Worth it only for high-speed video. |
