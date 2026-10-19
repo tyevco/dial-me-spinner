@@ -922,8 +922,7 @@ values from the verified research, with the two SPICE-driven changes
     MCUboot from a real build (about 64 KB with USB CDC serial recovery), which
     leaves a primary slot of about 928 KB.
   * Updates: SMP over BLE and USB CDC.
-  * UI: LVGL on SPIM3 at 16 MHz (D6). LEDs: `worldsemi,ws2812-i2s`. NFC:
-    `nfc_t2t` / `nfc_t4t` on the NFCT.
+  * UI: LVGL on SPIM3 at 16 MHz (D6). LEDs: `worldsemi,ws2812-i2s`.
   * HID: `bt_hids` and Zephyr USB HID with one composite report map:
     * ID 1: Windows Radial Controller, 0.1° units, 150 units per detent;
     * ID 2: Consumer Control;

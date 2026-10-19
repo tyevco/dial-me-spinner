@@ -5,9 +5,12 @@
 Controller. **Hardware:** [`hardware/design/SPEC.md`](../hardware/design/SPEC.md)
 rev A, its net names in [`nets.py`](../hardware/design/nets.py) and the
 generated sheets in [`sheets/`](../hardware/design/sheets/). Where this
-document and SPEC disagree, SPEC wins, except where the sheets are already
-ahead of SPEC (the OLED boost-input switch U21 and the piezo resistors). The
-disagreements found are listed in [§18](#18-open-items-and-to-verify-list).
+document and SPEC disagree, SPEC wins; where SPEC and the sheets disagree, the
+sheets and the netlist win. The disagreements found are listed in
+[§18](#18-open-items-and-to-verify-list). Firmware rules that come from the
+SPICE suite ([`hardware/sim`](../hardware/sim), described in
+[simulation.md](simulation.md)) cite its finding id, e.g.
+"(hardware/sim, LSW-3)".
 
 This document is written for the person who will implement and bring up the
 firmware. Each section gives the decision, the numbers behind it, and what
@@ -107,8 +110,8 @@ both used, so **SPIM0 and SPIM1 are unavailable**.
 |---|---|---|
 | RADIO, TIMER0, RTC0, some PPI channels and SWI/EGU | MPSL/SDC | Reserved. Never touch them. |
 | RTC1 | Zephyr kernel timer | LFXO 32.768 kHz, 20 ppm |
-| TWIM0 (ID 3, shares with SPIM0) | Encoder driver, through nrfx directly | Dedicated to the TMAG5273, 400 kHz. The Zephyr I2C driver must **not** bind ([§3](#3-devicetree-and-kconfig)). |
-| TWIM1 (ID 4, shares with SPIM1) | Zephyr I2C | LIS2DW12 (0x19) and BQ25180 (0x6A, over the link), 400 kHz |
+| TWIM0 (ID 3, shares with SPIM0) | Encoder driver, through nrfx directly | Dedicated to the TMAG5273, about 390 kHz (FREQUENCY = 0x06200000, errata 219, [§4.4](#44-zero-cpu-acquisition-chain)). The Zephyr I2C driver must **not** bind ([§3](#3-devicetree-and-kconfig)). |
+| TWIM1 (ID 4, shares with SPIM1) | Zephyr I2C | LIS2DW12 (0x19) and BQ25180 (0x6A, over the link), 250 kHz (errata 219, [§3.1](#31-board-dts-draft)) |
 | SPIM2 (ID 35) | Spare | Same-pin fallback for the OLED (8 MHz, [§7.1](#71-spi-link-and-the-spim3-errata)), or for the LEDs (`worldsemi,ws2812-spi`, MOSI only on P0.06) if I2S cannot run with SDOUT alone. It can serve only one of the two. |
 | SPIM3 (ID 47) | OLED, through `zephyr,mipi-dbi-spi` | 16 MHz (SPEC §4). Anomalies 198 and 195 apply, with their workarounds ([§7.1](#71-spi-link-and-the-spim3-errata)). Fallback: SPIM2 at 8 MHz on the same pins. |
 | I2S (ID 37) | LED ring, `worldsemi,ws2812-i2s` | The nRF52840 has only one I2S |
@@ -121,12 +124,12 @@ both used, so **SPIM0 and SPIM1 are unavailable**.
 | SAADC | VSYS_SENSE on AIN0 | |
 | TIMER1 | Encoder batch timestamps, 1 MHz | Runs only while tracking |
 | TIMER2 | Encoder sample counter (low-power counter mode) | Runs only while tracking |
-| TIMER3, TIMER4 | Spare | |
+| TIMER3, TIMER4 | Spare | The nrfx NFCT driver may claim one for its field-detect workaround on the nRF52840; check which instance the NCS NFC platform selects |
 | GPIOTE | 1 IN channel for TMAG_INT_N while tracking | Every other interrupt pin uses PORT/SENSE |
 | PPI | 2 channels + 1 fork for the encoder, via `nrfx_gppi` | Allocate at run time; the SDC reserves its own |
 | WDT | Task watchdog | |
 | POWER (POF) | Power manager | POF warning at 2.9 V on VDD |
-| NFCT | Disabled | P0.09/P0.10 used as GPIO (UICR) |
+| NFCT | NFC tag emulation, NCS `nfc_t2t` / `nfc_t4t` ([§9.7](#97-nfc-tag-emulation)) | P0.09/P0.10 = NFC1/NFC2; UICR NFCPINS stays in NFC mode; field sense in sleep |
 | CC310 | MCUboot signature check, BLE crypto | |
 
 ### 1.3 GPIO configuration
