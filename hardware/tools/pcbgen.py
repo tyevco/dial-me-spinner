@@ -331,8 +331,34 @@ class BoardBuilder:
         """Save; zone filling only works on a board loaded from disk, so reload first."""
         self.board.SetFileName(path)
         pcbnew.SaveBoard(path, self.board)
+        unique_uuids(path)
         if fill:
             refill(path)
+
+
+def unique_uuids(path):
+    """Give every repeated UUID in a saved board a fresh one. Footprints copied from a library keep the library's
+    pad and graphic UUIDs, so every 0402 shares its pad UUIDs with every other; KiCad's DRC report then resolves a
+    violating pad to the wrong part. Deterministic (uuid5 of the reference and position in the file)."""
+    import uuid as _uuid
+    lines = open(path).read().split("\n")
+    seen, ref, changed = set(), "", 0
+    for i, ln in enumerate(lines):
+        st = ln.lstrip()
+        if st.startswith('(property "Reference" "'):
+            ref = st.split('"')[3]
+        elif st.startswith('(uuid "'):
+            u = st.split('"')[1]
+            if u in seen:
+                nu = str(_uuid.uuid5(_uuid.NAMESPACE_URL, f"dial-me-spinner/{os.path.basename(path)}/{ref}/{i}"))
+                lines[i] = ln.replace(u, nu)
+                u = nu
+                changed += 1
+            seen.add(u)
+    if changed:
+        with open(path, "w") as f:
+            f.write("\n".join(lines))
+    return changed
 
 
 def refill(path):
@@ -617,8 +643,10 @@ def fanout_vias(b, net_name="GND", pads=None, via=0.5, drill=0.25, track=0.25, c
         near = sorted((v for v in vias if v.GetNetCode() == code),
                       key=lambda v: (v.GetStart() - c0).EuclideanNorm())
         if near and (near[0].GetStart() - c0).EuclideanNorm() <= reach + MM(1.0):
-            if (near[0].GetStart() - c0).EuclideanNorm() <= reach or seg_ok(c0, near[0].GetStart(), layer, pd):
-                if (near[0].GetStart() - c0).EuclideanNorm() > reach:
+            # the via's copper must really overlap the pad (a narrow pad's half-length is not a radius)
+            touching = pd.HitTest(near[0].GetStart(), near[0].GetWidth(pcbnew.F_Cu) // 2 - MM(0.02))
+            if touching or seg_ok(c0, near[0].GetStart(), layer, pd):
+                if not touching:
                     add_track(c0, near[0].GetStart(), layer)
                 done += 1
                 continue

@@ -27,6 +27,7 @@ import pcbnew  # noqa: E402
 
 import pcbgen  # noqa: E402
 import silk  # noqa: E402
+import finish_route  # noqa: E402
 from placer import Placer  # noqa: E402
 
 CX, CY = 100.0, 100.0          # board centre in KiCad page coordinates (mm)
@@ -1035,6 +1036,34 @@ def route(path, minutes=30, threads=1, optimizer_passes=20, drop_nets=()):
     return True
 
 
+def gnd_plane_fixup(path):
+    """GND pads with no path to the In1 plane (no via, through-hole pad or track to one) get a fan-out via."""
+    b = pcbnew.LoadBoard(path)
+    net = b.FindNet("GND")
+    if net is None:
+        return 0, []
+    lonely = []
+    for cl in finish_route.net_clusters(b, net.GetNetCode(), (pcbnew.In1_Cu,)):
+        on_plane = any(isinstance(it, pcbnew.PAD) and it.GetAttribute() == pcbnew.PAD_ATTRIB_PTH or
+                       not isinstance(it, pcbnew.PAD) and it.Type() == pcbnew.PCB_VIA_T for it in cl)
+        if not on_plane:
+            lonely += [it for it in cl if isinstance(it, pcbnew.PAD)]
+    done, left = pcbgen.fanout_vias(b, "GND", pads=lonely) if lonely else (0, [])
+    pcbnew.SaveBoard(path, b)
+    pcbgen.refill(path)
+    return done, left
+
+
+def complete_routing(board, out):
+    """After Freerouting: GND pads off the plane get a via, then the grid router (finish_route) joins what is left."""
+    done, left = gnd_plane_fixup(out)
+    if done or left:
+        print(f"[{board}] GND plane fix-up: {done} pads given a via, {len(left)} without room")
+    left = finish_route.finish(out, log=lambda m: print(f"[{board}] {m}", flush=True))
+    print(f"[{board}] finish_route: {left} unconnected")
+    return left
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--board", choices=sorted(BOARDS))
@@ -1044,12 +1073,23 @@ def main():
     ap.add_argument("--finish", action="store_true", help="only clean up an already routed board (no re-placement)")
     ap.add_argument("--resume", action="store_true",
                     help="continue routing the board as it is (no re-placement, no new fan-out), then finish it")
+    ap.add_argument("--complete", action="store_true",
+                    help="only complete the routed board with the grid router (no Freerouting), then finish it")
     a = ap.parse_args()
     for board in BOARDS:
         if a.board and board != a.board:
             continue
         if a.finish:
             out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            finish(board, out)
+            warn = {}
+            rpt, counts = drc(out, warn)
+            print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
+            continue
+        if a.complete:
+            out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            complete_routing(board, out)
+            add_pours(board, out)
             finish(board, out)
             warn = {}
             rpt, counts = drc(out, warn)
@@ -1078,6 +1118,8 @@ def main():
                 print(f"[{board}] route attempt {attempt + 1}: {left} unconnected")
                 if not left:
                     break
+            if left:
+                complete_routing(board, out)
             add_pours(board, out)
             finish(board, out)
             print(f"[{board}] routed")
