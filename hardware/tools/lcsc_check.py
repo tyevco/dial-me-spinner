@@ -62,6 +62,8 @@ def main():
         for ref, c in comps.items():
             if "exclude_from_bom" in c["props"] or not c["footprint"]:
                 continue
+            if "dnp" in c["props"] or c["fields"].get("DNP"):
+                continue
             key = (c["fields"].get("LCSC", ""), c["fields"].get("MPN", ""), c["value"])
             groups.setdefault(key, []).append(ref)
         for (code, mpn, value), refs in sorted(groups.items()):
@@ -92,7 +94,10 @@ def main():
         for r in rows:
             if r[1] != "OK":
                 print(r[1], r[2], r[5], r[6], r[7], r[9])
-    print(f"{len(rows)} BOM lines, {problems} flagged", file=sys.stderr)
+    kinds = {}
+    for r in rows:
+        kinds[r[8] or "?"] = kinds.get(r[8] or "?", 0) + 1
+    print(f"{len(rows)} BOM lines, {problems} flagged; library types: {kinds}", file=sys.stderr)
 
 
 if __name__ == "__main__":

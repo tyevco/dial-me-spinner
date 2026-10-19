@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(HW, "tools"))
 import pcbnew  # noqa: E402
 
 import pcbgen  # noqa: E402
+import silk  # noqa: E402
 from placer import Placer  # noqa: E402
 
 CX, CY = 100.0, 100.0          # board centre in KiCad page coordinates (mm)
@@ -278,6 +279,15 @@ def build_main(bb, comps, nets):
         bb.text(pcbnew.F_Fab, label, x, y, 0.8)
 
 
+def add_fiducials(bb, placer, spots):
+    """1 mm fiducials (2 mm mask opening) at the nearest free spot to each (side, r, θ)."""
+    for i, (side, r, th) in enumerate(spots, start=1):
+        x, y = pol(r, th)
+        fp = bb.board_only("Fiducial:Fiducial_1mm_Mask2mm", f"FID{i}", x, y, side)
+        if not placer.place_near(fp, x, y, side, max_r=6, rotations=(0,)):
+            print("WARN: no room for fiducial", fp.GetReference())
+
+
 def pours_main(bb):
     """Outer-layer GND pours (added after routing): F.Cu everywhere, B.Cu only r < 26."""
     bb.zone("GND", [pcbnew.F_Cu], bb.circle_pts(CX, CY, MAIN_R - 0.3, 96), priority=0, clearance=0.25, name="GND_TOP")
@@ -409,12 +419,25 @@ def preroute_bga_escape(bb, ref):
             v.SetLocked(True)
             bb.board.Add(v)
 
+    # Each stub leaves the 0.23 mm NSMD land at 0.12 mm wide (about half the land, so no solder wicking or
+    # skew). Power stubs widen to 0.2 mm once they are clear of the array; (dc, dr) steps are in mm along
+    # (col, row).
+    neck = 0.35
     for k in ("A1", "B1", "C1", "D1"):             # signals: straight out, away from the power column
-        add(k, [(-0.8, 0)], 0.15)
-    add("A2", [(0, -0.8)], 0.2)                     # VBUS: out of the end row
-    add("B2", [(1.4, 0)], 0.2)                      # VSYS: long sideways stub
-    add("C2", [(0.7, 0), (0.45, 0.45)], 0.2)        # VBAT: short sideways, then angled away from VSYS
-    add("D2", [(0, 0.95)], 0.2, via=True)           # GND: out of the far end row into a via to the B.Cu pour
+        add(k, [(-0.8, 0)], 0.12)
+    power_routes = {
+        "A2": ((0, -neck), [(0, -0.45)], False),                   # VBUS: out of the end row
+        "B2": ((neck, 0), [(1.05, 0)], False),                     # VSYS: long sideways stub
+        "C2": ((neck, 0), [(0.35, 0), (0.45, 0.45)], False),      # VBAT: sideways, then angled off VSYS
+        "D2": ((0, neck), [(0, 0.6)], True),                       # GND: out of the far row into a via
+    }
+    for k, (first, rest, via) in power_routes.items():
+        add(k, [first], 0.12)
+        x0, y0 = P[k]
+        P[k + "_n"] = (x0 + pcbgen.MM(first[0] * col[0] + first[1] * row[0]),
+                       y0 + pcbgen.MM(first[0] * col[1] + first[1] * row[1]))
+        pads[k + "_n"] = pads[k]
+        add(k + "_n", rest, 0.2, via)
 
 
 def base_inside(x, y, side):
@@ -459,7 +482,9 @@ def base_post_fixed(bb, comps, fixed):
                     px, py = pcbnew.ToMM(pad.GetPosition().x), pcbnew.ToMM(pad.GetPosition().y)
                     dx, dy = px - CX, py - CY
                     dl = math.hypot(dx, dy)
-                    bb.text(pcbnew.F_SilkS, label, px + 2.6 * dx / dl, py + 2.6 * dy / dl, 0.8)
+                    ang = math.degrees(math.atan2(-dy, dx))  # read along the radius: the 2 mm pitch fits two lines
+                    ang = (ang + 90) % 180 - 90
+                    bb.text(pcbnew.F_SilkS, label, px + 3.4 * dx / dl, py + 3.4 * dy / dl, 0.8, angle=ang)
 
 
 def base_anchor_sides(comps):
@@ -519,10 +544,13 @@ def pours_base(bb):
 BOARDS = {
     "main": dict(layers=4, fixed=main_fixed, anchors=main_anchor_sides, inside=main_inside,
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
-                 post_fixed=main_post_fixed),
+                 post_fixed=main_post_fixed,
+                 fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
+                            ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
     "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
                  keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.4,
-                 post_fixed=base_post_fixed, post_place=base_post_place),
+                 post_fixed=base_post_fixed, post_place=base_post_place,
+                 fiducials=[("F", 19.5, 45), ("F", 19.5, 170), ("F", 19.5, 300)]),
 }
 
 
@@ -607,7 +635,8 @@ def generate(board, pours=True):
         anchors.append(fp)
     # everything else clusters around its schematic-group anchor (fallback: the part it shares most nets with)
     gmap = group_anchors(board)
-    rest = [fp for ref, fp in bb.footprints.items() if ref not in fixed and ref not in anchor_cfg]
+    rest = [fp for ref, fp in bb.footprints.items()  # board-only holes/fiducials stay where the builder put them
+            if ref in comps and ref not in fixed and ref not in anchor_cfg]
     # group anchors (ICs) first so their passives can cluster around them
     rest.sort(key=lambda fp: (0 if gmap.get(fp.GetReference()) == fp.GetReference() else 1,
                               -fp.GetPadCount(), refnum(fp.GetReference())))
@@ -631,8 +660,12 @@ def generate(board, pours=True):
             anchors.append(fp)
     if unplaced:
         print("WARN: unplaced:", ", ".join(unplaced))
+    if "fiducials" in cfg:
+        add_fiducials(bb, placer, cfg["fiducials"])
     if "post_place" in cfg:
         cfg["post_place"](bb, comps)
+    moved, hidden = silk.place_refs(bb.board)
+    print(f"[{board}] silk: {moved} references placed, {hidden} hidden (no room)")
     if pours:
         cfg["pours"](bb)
     out = os.path.join(pdir, project_name(board) + ".kicad_pcb")
