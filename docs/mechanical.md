@@ -12,14 +12,16 @@ magnetic detent, press-click suspension, antenna placement, assembly and mechani
   OpenSCAD 2021.01 model of the whole device. Every SPEC number is a named constant.
 * **Board parts come from the real PCBs.** [`extract_board_parts.py`](../hardware/mechanical/extract_board_parts.py)
   reads `hardware/kicad/{main,base}/*.kicad_pcb` (KiCad 9 `pcbnew`) and writes `board_parts.scad`/`.json`: one
-  oriented box per footprint (Fab outline × datasheet height), plus the mated plugs of the side-entry connectors
-  and the module's mated u.FL. So every clash check below tests the boards as they are placed now.
+  oriented box per footprint (Fab outline × datasheet height), plus the mated plugs of the side-entry connectors,
+  the module's mated u.FL and a solder-joint body on the NFC pads J11. So every clash check below tests the boards as
+  they are placed now.
 * **Calculations:** [`hardware/mechanical/calcs.py`](../hardware/mechanical/calcs.py) prints everything quoted here;
   the full output is in [`calcs_output.txt`](../hardware/mechanical/calcs_output.txt). Its section 11 reads the
   model's geometry directly (OpenSCAD `view="prims"` + `board_parts.json`).
 * **Interference check:** [`check_clashes.sh`](../hardware/mechanical/check_clashes.sh) runs CGAL booleans: rotor
   envelope, press travel, rest, and same-body pairs (board parts vs actuator, hub, harness, coax; battery leads vs
-  cup, plate and guide pins).
+  cup, plate and guide pins; NFC coil and tail vs the board, its top parts, the OLED bracket, glass, light box and
+  cover).
   Result: [`clash_report.txt`](../hardware/mechanical/clash_report.txt).
 * **Parts:** [`hardware/mechanical/stl/`](../hardware/mechanical/stl/) (binary STL, oriented for the bed).
   `render_all.sh` regenerates every render, STL and report.
@@ -49,7 +51,7 @@ The 12-way link and the 1.13 mm antenna coax pass through the hollow spindle, so
 | ![assembly](../hardware/mechanical/renders/assembly.png) | ![exploded](../hardware/mechanical/renders/exploded.png) |
 | Assembly (USB-C at θ = 0°, front right) | Exploded view, in assembly order (§12) |
 | ![main board underside](../hardware/mechanical/renders/board_bottom.png) | ![base, FA removed](../hardware/mechanical/renders/base_top.png) |
-| Main-board underside from below (parts from the PCB). Rotor envelope ghosted, SPEC keep-out in yellow, harness red, coax grey. | Base from above, FA plate ghosted: antenna shelf (top), J3 and J2 with their mated plugs, guide pins |
+| Main-board underside from below (parts from the PCB). Rotor envelope ghosted; SPEC §8 bottom rules outlined: keep-out θ 60–120° (yellow), actuator corridor θ 30–160° (orange), rotating hub zone r 9.5–12.5 (cyan); harness red, coax grey. | Base from above, FA plate ghosted: antenna shelf (top), J3 and J2 with their mated plugs, guide pins |
 
 Key numbers (from `calcs.py`):
 
@@ -97,9 +99,10 @@ z is measured from the desk. θ = 0° is the USB-C direction, CCW seen from abov
 | 30.7–32.2 | M4×0.5 brass nut, OD 7 | top r ≤ 4.6 kept free for it | on the board top under the OLED, in the bracket's centre hole |
 | 30.7–31.6 | 48 × WS2812C-2020 at r 28.5 | | from the PCB |
 | 31.7–34.2 | light box r 27–30, walls 0.6, 24 septa | 31.6–34.2 | walls stop 0.1 above the LED tops |
-| 31.8–32.8 | OLED bracket: rim under the glass edge + 3 spokes to the hub-screw bosses | | pocketed 0.3 mm round / 0.2 mm above every top part taller than 0.95 mm |
+| 31.8–32.8 | OLED bracket: rim under the glass edge + 3 spokes to the hub-screw bosses | | pocketed 0.3 mm round / 0.2 mm above every top part taller than 0.95 mm; **relief over J11** and the NFC tail (rim underside raised to z 32.3, 0.5 mm rim left, §9) |
 | 33.0–34.7 | OLED glass 33.8 × 34.0 | active-area centre on axis | glass centre at y −1.47; 0.2 mm foam tape |
-| 34.2–36.0 | diffuser r 27–30 + top cover r ≤ 32.5, Ø30 window | NFC flex coil in the cover, tail soldered to J11 on the main-board top (r 21.5, θ 222°) | **0.7 mm chemically strengthened cover glass Ø33** bonded in the cover (z 35.3–36.0); 0.6 mm air gap to the OLED glass. The NFC coil and its tail are not modelled yet (§9). |
+| 34.2–36.0 | diffuser r 27–30 + top cover r ≤ 32.5, Ø30 window | NFC flex coil in the cover, tail soldered to J11 on the main-board top (r 21.5, θ 222°) | **0.7 mm chemically strengthened cover glass Ø33** bonded in the cover (z 35.3–36.0); 0.6 mm air gap to the OLED glass. Underside raised to z 35.0 inside r 26.35 for the NFC coil (replaces the rectangular glass pocket); a 0.6 mm wall ring r 26.35–26.95 carries the 6 keys. |
+| 34.80–34.95 | **NFC coil**: annular flex Ø31/Ø52.5 × 0.15, copper turns r 24.9–26.15 | "the 13.56 MHz NFC flex coil sits in the cover" | bonded (0.05 PSA) to the cover ceiling, 0.1 above the OLED glass; tail = 2.0 mm tongue folded down at θ 222°, r 24.1, onto J11 (§9). Dimensions TVP. |
 
 **Running clearances (nominal, `calcs.py` §11).**
 
@@ -119,8 +122,8 @@ z is measured from the desk. θ = 0° is the USB-C direction, CCW seen from abov
 With the current boards everything clears except the intended contacts listed in `clash_legend.txt`: the plate
 under-bosses on the cup stop faces at full travel (hard stop), the SW1 actuator against the press pad, the bonded detent
 rails and saddle on the board bottom, and two near misses at 0.3 mm margin (the felt shoe resting on the ring, and the
-drop-stop flange 0.15 mm under the carrier lip). The PCB clashes found earlier are fixed (§3B). The tightest
-remaining gaps:
+drop-stop flange 0.15 mm under the carrier lip). The NFC coil and its tail are in the check too, and all their pairs are
+clear. The PCB clashes found earlier are fixed (§3B). The tightest remaining gaps:
 
 * **Antenna coax** between U12 and the module's inner corner: 0.13 mm to U12, 0.25 mm to U10 and 0.44 mm above the
   rotating cap ring (r 9–13). It must be tacked up with Kapton tape at assembly (§12 step 12.4).
@@ -130,6 +133,8 @@ remaining gaps:
 * **U10 MDBT50Q** to the rotor envelope: 0.90 mm; to the brass hub 1.05 mm.
 * **USB-C J1** (base) to the ring: 1.24 mm at rest, 0.74 mm pressed.
 * **Battery leads** to the pressed spider plate: 1.40 mm (r 30.2, θ 196°, z 10).
+* **NFC tail** beside the OLED glass edge: 0.34 mm, and 0.54 mm to the bracket rim. All three ride on the FA, and
+  the flex may touch the glass without harm. The J11 joint has 1.25 mm under the rim relief (0.75 mm without it).
 
 ![clash view](../hardware/mechanical/renders/clash.png)
 
@@ -162,8 +167,8 @@ remaining gaps:
 
 ### 3B. PCB placement findings (for the layout owner; from `board_parts.scad` and the clash check)
 
-All closed. The boards were re-extracted on 2026-10-19 (`board_parts.json` 08:17) and `check_clashes.sh` and
-`calcs.py` pass on them (§2). Re-run `extract_board_parts.py`, `check_clashes.sh` and `calcs.py` after every
+All closed. The boards were re-extracted on 2026-10-19 (`board_parts.json` 10:48: J11 added as a solder-joint body,
+no part moved) and `check_clashes.sh` and `calcs.py` pass on them (§2). Re-run `extract_board_parts.py`, `check_clashes.sh` and `calcs.py` after every
 placement change. Fixed earlier: J1 and J3 face the centre, J2 sits at θ 222° with its mouth outward, Q1 left the spoke
 zone, RT1 moved to the top side, the θ 90 base-board hole is gone and the antenna copper keep-out is in layout.py.
 
@@ -589,15 +594,60 @@ stops).
 * BLE RSSI at 1/3/10 m against the target (+8 dBm, 15 dB fade margin).
 * Spin-down with the coax routed (it must touch nothing that rotates).
 
-**NFC tag coil (13.56 MHz, SPEC §5.2/§8).** A flex coil (~1.4–1.5 µH assumed; C16/C17 180 pF are sized for it)
-lives in the top cover. Its tail solders to the flat pads J11 (NFC_COIL, no part fitted) on the main-board top at
-r 21.5, θ 222°. The pads (1.2 × 2.0 mm, 2.0 mm pitch, at x −15.3 / −16.7, y −15.1 / −13.6) lie under the OLED glass
-and under the OLED bracket rim (rim band |x| 14.7–16.7, z 31.8–32.8, 1.1 mm above the board), so the tail joint has
-only 1.1 mm of height there. The model does not contain the coil, a recess for it in the cover or the tail's
-path yet: the tail has to come down outside the glass edge (x < −16.9, inside the light box at r 27) and run under the
-rim to the pads, or the rim needs a relief at J11 (to add to the model and verify on the first build). Range and
-detuning (the coil sits close to the OLED, the main-board planes and the steel ring) are architecture risk R39:
-measure the coil's L and retune C16/C17 on the prototype (§15 #21).
+**NFC tag coil (13.56 MHz, SPEC §1/§5.2/§8).** SPEC fixes three things: the coil's place (in the top cover), its
+inductance (~1.4–1.5 µH, which C16/C17 180 pF tune) and its pads. The pads are J11 (NFC_COIL, no part fitted), flat
+pads on the main-board top at r 21.5, θ 222°: 1.2 × 2.0 mm at 2.0 mm pitch, at x −15.3 / −16.7, y −15.1 / −13.6. They
+lie under the OLED glass and the bracket rim. Everything else below is chosen in the model and tagged `TVP` there (to
+verify on prototype).
+
+![NFC tail section](../hardware/mechanical/renders/nfc.png)
+
+*Section on the J11 axis (θ 222°, the tail's centre line). r grows to the right. The glass edge is oblique to this
+plane: the closest tail-to-glass gap (0.34 mm) is at the tail's edge. On this plane the sheet is cut away between
+r 16.8 and the fold line at r 24.7, where the tail tongue came from.*
+
+* **Why not beside the glass:** between the glass's lower corners (r 25.03) and the cover's six locating keys
+  (r 26.4) there is only about 1.4 mm, and a recess there would cut the keys off the cover's centre part. So the
+  coil sits above the glass instead.
+* **Coil:** an annular 2-layer polyimide flex, ID 31 / OD 52.5 × 0.15 mm, black coverlay, with its copper turns in
+  the band r 24.9–26.15 (4 turns of 0.20/0.15, or 3 turns of 0.25/0.25).
+  * It is bonded with 0.05 mm PSA to the cover's ceiling at z 35.0, so it sits at z 34.80–34.95: 0.1 mm above the
+    OLED glass and 1.05 mm under the cover's top face.
+  * The cover's underside is raised to z 35.0 over the whole disc r ≤ 26.35. This replaces the rectangular glass
+    pocket, which lies inside it. The cover therefore no longer boxes the glass in, and the glass is placed on the rim
+    with a corner jig.
+  * A 0.6 mm wall ring (r 26.35–26.95) keeps the six keys attached to the cover's centre part. The sheet's inner edge
+    is hidden under the rim of the Ø30 window.
+* **Tail:** a 2.0 mm wide tongue cut from the sheet at θ 222° (two traces 0.4/0.4), widening to 3.4 mm over the pads.
+  * It folds down at r 24.7 (inner fold radius 0.45 mm; the tongue carries one copper layer) and drops vertically at
+    r 24.10–24.25. That is 0.34 mm outside the glass edge (x −16.9) and 0.54 mm outside the bracket rim.
+  * At the board it folds inward and runs flat (z 30.75–30.90) under the rim onto J11, where its lands are
+    lap-soldered on the pads.
+  * The path from the joint to the fold line is 5.6 mm. The developed tongue is 7.9 mm long, so its slot in the flat
+    sheet runs from r 16.8 to r 24.7.
+* **J11 relief:** the bracket rim's underside is raised from z 31.8 to 32.3 over J11 and the tail (±2.0 mm across the
+  pads, r 20.1–24.7 along θ 222°), which leaves 0.5 mm of rim under the glass. The J11 joint body (pads + solder +
+  tail end, 0.35 mm tall, from `extract_board_parts.py`) then has 1.25 mm of headroom instead of 0.75 mm, and the
+  tail's board run 1.40 mm.
+* **Metal around the coil (`calcs.py` §13):**
+  * The In1 GND plane covers the whole coil, 4.35 mm below the copper (top-layer copper 4.10 mm). It is the main
+    detuning and shielding element.
+  * The OLED glass is 0.10 mm below the copper. The copper band overlaps the glass footprint only at its two lower
+    corners, by 0.13 mm. A metal back on the panel, if it has one, would be 1.8 mm below the copper at those corners
+    and 6.4–9.4 mm away in plan elsewhere.
+  * The nearest LED lead frame is 3.5 mm away, the 316L ring and the track magnets 9.3 mm (behind the board) and the
+    brass M4 nut 21.6 mm. The plastic diffuser and light box are 0.9 and 1.0 mm away.
+* **Inductance and tuning (estimate):** the modified Wheeler formula gives 2.37 µH in free space for 4 turns (1.33 µH
+  for 3). The image in the GND plane takes N² × 39 nH, which leaves ≈ 1.75 µH over the board (0.98 µH for 3 turns).
+  * 4 turns would want C16/C17 ≈ 154 pF; the fitted 180 pF tunes 1.50 µH. Measure L in the closed device and retune
+    (§15 #21).
+  * If the read range is short, a 0.1 mm ferrite sheet under the copper band fits the 0.1 mm gap to the glass. It
+    raises L, so C16/C17 drop to ≈ 95–110 pF (display-study.md §3).
+* **Press stroke:** the coil, its tail, J11, the bracket, the glass and the cover all move together on the FA, so
+  nothing in this group moves relative to anything else. The clash check finds the coil and the tail clear of the
+  board, its top parts, the bracket, the glass, the light box and the cover.
+* **Assembly:** solder the tail before the bracket goes on, and lay the sheet in last (§12 step 14). Range and
+  detuning remain architecture risk R39.
 
 ---
 
@@ -708,11 +758,16 @@ of static friction, so the puck slides unless it is held or stuck.
 13. **First power-up.** Flash over the TC2030 (pads under the glass, so before step 14), home the actuator, run the
     encoder calibration spin and the detent f_n self-calibration, the spin-down gate (≥ 35 s; target ≥ 45 s) and the
     FREE-mode rest-angle histogram.
-14. **Optics.** Bond the light box (septa between LEDs). Bond the NFC coil into the top cover and solder its tail to
-    J11 while the pads are still uncovered, before the OLED bracket goes over them (§9; tail route to verify on the first
-    build). Fit the OLED bracket with 3× M2 × 6 brass CSK screws through the board into the hub. Fold the FPC into the
-    ZIF and stick the glass on the bracket rim (0.2 mm foam). Glue the diffuser into the cover (clear UV adhesive).
-    Bond the 0.7 mm cover glass into its recess. Snap the cover onto the light box.
+14. **Optics.** Bond the light box (septa between LEDs). Glue the diffuser into the cover (clear UV adhesive) and bond
+    the 0.7 mm cover glass into its recess.
+    1. **NFC tail.** While J11 is still uncovered, fold the coil sheet back outward over the light box, lay the tail's
+       lands on the pre-tinned J11 pads and reflow them with a fine iron (§9).
+    2. **Bracket.** Fit the OLED bracket with 3× M2 × 6 brass CSK screws through the board into the hub. Its rim relief
+       goes over the joint, and the tail leaves under the rim's outer edge.
+    3. **Glass.** Fold the FPC into the ZIF and stick the glass on the bracket rim (0.2 mm foam). Centre it with a corner
+       jig, because the cover no longer boxes it in.
+    4. **Cover.** Fold the coil sheet back over the glass and peel its PSA liner. Lower the cover and snap it onto the
+       light box, then press once over the glass border so that the PSA takes (the glass foam gives the 0.1 mm).
 15. **Feet.** Apply the arc pads.
 16. **Final tests.** Click force at the centre and 3 rim azimuths; BLE RSSI at 3 m; NFC tag read with a phone;
     ringing settles < 1 s at the default strength; ESD path < 10 MΩ; drop test on a test unit.
@@ -761,7 +816,7 @@ Prices are rough 2026 single-unit estimates. "NM" means it must be non-magnetic.
 | 34 | Adhesives | 2-part epoxy (3M DP420 / Loctite EA 9466); Loctite 638, 641, 222; UV glue; silicone adhesive | – | | $25 | |
 | 35 | Printed parts | `stl/`: base_cup, top_cover, light_box (black, interior painted white), fa_lower_plate, rotor_carrier (PA12-GF, machined after printing), detent_carriage, oled_bracket, stepper_saddle, carriage_rail | 1 set | JLC3DP / PCBWay **MJF PA12** or SLS PA12-GF | $25–45 | FDM for fit checks only |
 | 36 | Battery leads | 4 single **pre-crimped SH wires**, 28 AWG (SSH-003T-P0.2), two per rail, + 1 × SHR-04V-S housing for J2 (SM04B-SRSS-TB: pins 1–2 BAT+, 3–4 GND) | 1 | JST distributors / pre-crimped SH lead sets | $1–2 | replaces the pack's own leads/connector; check polarity |
-| 37 | NFC coil | 13.56 MHz flex coil, ~1.4–1.5 µH (C16/C17 are sized for it), tail to the J11 pads; fits the top cover | 1 (+1) | no part chosen yet (architecture BOM: no quote) | – | retune C16/C17 for the measured L (§9) |
+| 37 | NFC coil | Custom 13.56 MHz flex: 2-layer PI, Ø31/Ø52.5 × 0.15, black coverlay, 4 turns 0.20/0.15 at r 24.9–26.15 (≈ 1.75 µH over the board, estimate), 2.0 mm tongue tail with 3.4 × 2.2 lands for J11, 0.05 PSA on the top face (§9) | 1 (+1) | flex-PCB house, drawing from the model (no quote yet) | – | retune C16/C17 for the measured L (§9) |
 
 ---
 
@@ -827,6 +882,15 @@ mechanical) atan2 error. Correct it in firmware as a function of speed, or use Z
 **Cable constraint:** USB-C plugs with an overmold taller than 7 mm can touch the spinning ring while the dial is
 pressed.
 
+**NFC coil and tail (`calcs.py` §13, estimates).**
+
+| Item | Value |
+|---|---|
+| Coil | copper r 24.9–26.15 at z 34.80–34.95, 4.35 mm above the In1 GND plane |
+| L, 4 turns (3 turns) | 2.37 (1.33) µH free; ≈ 1.75 (0.98) µH over the GND plane |
+| C16/C17 for 4 turns | ≈ 154 pF (the fitted 180 pF tunes 1.50 µH) |
+| Tail to the glass edge / bracket rim / rim relief roof | 0.34 / 0.54 / 1.40 mm |
+
 ---
 
 ## 15. Prototype validation checklist
@@ -853,7 +917,7 @@ pressed.
 | 18 | ESD bleed path | Megohmmeter ring → GND, rotor turning slowly | < 10 MΩ |
 | 19 | Wave washer load and height | Scale + calipers | 30–50 N at 0.5 mm |
 | 20 | XZX speed-dependent ellipse | Encoder error vs speed on a turntable | < 0.2° after correction |
-| 21 | NFC coil fit, tail route to J11, tuning, read range (R39) | Trial fit in the cover with the OLED bracket on; LCR meter on the coil in the closed device; Android and iOS phones | tail clear of the bracket rim and the glass; C16/C17 retuned to the measured L; tag reads on both phones |
+| 21 | NFC coil fit, tail route to J11, tuning, read range (R39) | Trial fit with the bracket, glass and cover on (tail modelled 0.34 mm from the glass edge, joint 1.25 mm under the rim relief); LCR meter on the coil in the closed device (estimate ≈ 1.75 µH for 4 turns); Android and iOS phones | tail clear of the bracket rim and the glass, sheet flat on the cover ceiling; C16/C17 retuned to the measured L; tag reads on both phones |
 
 ---
 
@@ -861,13 +925,13 @@ pressed.
 
 | File | Purpose |
 |---|---|
-| `hardware/mechanical/dial_spinner.scad` | Parametric model. Views: `assembly`, `section`, `section_xz`, `exploded`, `board_bottom`, `base_top`, `clash`, `clash_geom`, `prims`, `part` |
+| `hardware/mechanical/dial_spinner.scad` | Parametric model. Views: `assembly`, `section`, `section_xz`, `exploded`, `board_bottom`, `base_top`, `clash`, `clash_geom`, `nfc` (section on the J11 axis), `prims`, `part` |
 | `hardware/mechanical/extract_board_parts.py` | KiCad boards → `board_parts.scad` / `board_parts.json` (needs KiCad 9 `pcbnew`) |
-| `hardware/mechanical/calcs.py` | All calculations in this document; writes `renders/calc_*.png`. §11 reads the model via `view="prims"`. |
+| `hardware/mechanical/calcs.py` | All calculations in this document; writes `renders/calc_*.png`. §11 and §13 (NFC coil and tail) read the model via `view="prims"`. |
 | `hardware/mechanical/check_clashes.sh [margin]` → `clash_check.py` | CGAL interference check (rotor, press, rest, FA-internal pairs); legend in `clash_legend.txt` |
 | `hardware/mechanical/export_stl.sh` | Exports the 15 printed/machined parts to `stl/` |
 | `hardware/mechanical/parts_plate.scad` | Overview render of the STLs (`renders/parts.png`) |
-| `hardware/mechanical/render_all.sh` | Regenerates everything (about 6 min) |
+| `hardware/mechanical/render_all.sh` | Regenerates everything, including `renders/nfc.png` (about 7 min) |
 
 ```
 cd hardware/mechanical

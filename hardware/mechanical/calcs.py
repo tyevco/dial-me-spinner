@@ -1101,14 +1101,18 @@ def nfc_section(bp, P, rc):
     a = math.radians(jphi)
     U, V = np.array([math.cos(a), math.sin(a)]), np.array([-math.sin(a), math.cos(a)])
     o = np.array([jx, jy])
-    tail = []
+    tail = []                                        # samples on both faces of the ribbon (offset +-t/2 along its normal)
     for (v0_, z0_), (v1_, z1_) in zip(path_vz[:-1], path_vz[1:]):
+        sl = math.hypot(v1_ - v0_, z1_ - z0_)
+        nv, nz = -(z1_ - z0_) / sl, (v1_ - v0_) / sl
         for t in np.linspace(0, 1, 12):
             v_, z_ = v0_ + t * (v1_ - v0_), z0_ + t * (z1_ - z0_)
             half = tw / 2 if v_ >= tv0 + 0.65 else (ju1 - (ju1 - tw / 2) * (v_ - tv0) / 0.65)
-            for u_ in np.linspace(-half, half, 11):
-                xy = o + u_ * U + v_ * V
-                tail.append((xy[0], xy[1], z_))
+            for side in (-1, 1):
+                vv, zz = v_ + side * nt / 2 * nv, z_ + side * nt / 2 * nz
+                for u_ in np.linspace(-half, half, 11):
+                    xy = o + u_ * U + vv * V
+                    tail.append((xy[0], xy[1], zz))
     tail = np.array(tail)
     rim = [["box", "rim_left", [-(oled_w - 0.4) / 2, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
            ["box", "rim_right", [(oled_w - 0.4) / 2 - 2.0, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
@@ -1152,9 +1156,9 @@ def nfc_section(bp, P, rc):
     ]
     table(rows, ["coil pair (mm)", "clearance", "note"])
     up = tail[:, 2] > tzb + 0.3                      # folds and vertical run (above the board run)
-    t_glass = float(sdf_prim(tail, glass).min()) - nt / 2
-    t_rim = float(min(sdf_prim(tail[up], r_).min() for r_ in rim)) - nt / 2
-    t_lb = float(sdf_prim(tail, lbox).min()) - nt / 2
+    t_glass = float(sdf_prim(tail, glass).min())
+    t_rim = float(min(sdf_prim(tail[up], r_).min() for r_ in rim))
+    t_lb = float(sdf_prim(tail, lbox).min())
     t_part, t_ref = nearest_part(tail, tops)
     rows = [
         ("tail - OLED glass edge (near edge of the vertical run)", f"{t_glass:+.2f}", "both on the FA, flex"),
@@ -1163,7 +1167,7 @@ def nfc_section(bp, P, rc):
          f"without the relief {rim_z0 - (tzb + nt / 2):+.2f}"),
         ("J11 joint top (z %.2f) - rim relief roof" % jtop, f"{rel_roof - jtop:+.2f}", f"without the relief {rim_z0 - jtop:+.2f}"),
         ("tail - light-box inner wall", f"{t_lb:+.2f}", ""),
-        (f"tail - nearest other top part ({t_ref})", f"{t_part - nt / 2:+.2f}", "3D"),
+        (f"tail - nearest other top part ({t_ref})", f"{t_part:+.2f}", "3D"),
         ("tail top fold - cover ceiling", f"{ceil_z - (prof[-1][1] + nt / 2):+.2f}", "at the root"),
     ]
     table(rows, ["tail pair (mm)", "clearance", "note"])

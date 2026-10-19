@@ -11,7 +11,7 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `check_clashes.sh [margin]` (→ `clash_check.py`) | CGAL interference check: rotor envelope, press travel, rest, FA-internal pairs (NFC coil and tail included) → `clash_report.txt` (legend: `clash_legend.txt`); margin > 0 checks the rotor envelope only (near misses) |
 | `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed; spindle, hub, spacer, cap ring are drawing aids for turned/cut metal) |
 | `parts_plate.scad` | Overview of the STLs → `renders/parts.png` |
-| `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib, ~6 min) |
+| `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib, ~7 min) |
 
 With the boards as placed (MDBT50Q at r 17.3 with its u.FL outward, J1 at r 19.5, side-entry SH SM04B J2 at r 17,
 θ 222°, R42 at r 24.1) the clash check shows only the intended contacts listed in `clash_legend.txt`. Re-run
@@ -23,7 +23,7 @@ tacked up with Kapton tape at assembly.
 The NFC tag coil is modelled (`nfc_coil()`, `nfc_tail()`, `renders/nfc.png`; `docs/mechanical.md` §9). It is an annular
 flex sheet, Ø31/Ø52.5 × 0.15 with its copper turns at r 24.9–26.15, bonded to the top cover's pocket ceiling (z 35.0,
 r ≤ 26.35) and 0.1 mm above the OLED glass. Its tail is a 2.0 mm tongue cut from the sheet at θ 222°. It folds down at
-r 24.1, 0.33 mm outside the glass edge, and runs under a relief in the OLED bracket rim (underside raised to z 32.3)
+r 24.1, 0.34 mm outside the glass edge, and runs under a relief in the OLED bracket rim (underside raised to z 32.3)
 onto the J11 pads at r 21.5. J11 is a 0.35 mm solder-joint body in `board_parts`, and the clash check tests the coil
 and the tail against the board, its top parts, the bracket, the glass, the light box and the cover. Coil and tail
 dimensions are tagged `TVP` (to verify on prototype). All renders and STLs were regenerated on 2026-10-19 from this

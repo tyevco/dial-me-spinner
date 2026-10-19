@@ -279,13 +279,13 @@ Main-board BOTTOM parts (z from the PCB; rotor clearance is exact, the rest samp
 Only parts with any clearance < 1.0 mm are listed; negative = interference.
 ref       value          r            z              rotor  hub/spacer  actuator@click        actuator@free         harness/coax 
 --------  -------------  -----------  -------------  -----  ----------  --------------------  --------------------  -------------
+R12       4.7            r 9.2-10.4   z 28.70-29.10  +2.70  +0.74       +20.44 saddle         +20.44 saddle         +0.45 harness
 C11       100n           r 9.2-10.2   z 28.55-29.10  +2.55  +0.70       +20.96 saddle         +20.96 saddle         +0.30 harness
 C13       12p C0G        r 9.3-9.9    z 28.55-29.10  +2.55  +0.79       +12.61 slider_nut     +6.91 link_plate      +8.68 harness
 C14       12p C0G        r 9.2-10.3   z 28.55-29.10  +2.55  +0.71       +10.84 slider_nut     +5.45 link_plate      +8.61 harness
-U10       MDBT50Q-U1MV2  r 9.5-25.6   z 26.90-29.10  +0.90  +1.05       +14.81 slider_nut     +8.58 link_plate      +0.25 coax   
 U12       USBLC6-2SC6    r 10.2-12.3  z 27.65-29.10  +1.65  +1.67       +22.37 saddle         +20.00 link_plate     +0.13 coax   
 C12       4.7u/16V       r 11.4-12.4  z 28.20-29.10  +2.20  +2.89       +22.70 saddle         +22.70 saddle         +0.70 harness
-R12       4.7            r 9.2-10.4   z 28.70-29.10  +2.70  +0.74       +20.44 saddle         +20.44 saddle         +0.45 harness
+U10       MDBT50Q-U1MV2  r 9.5-25.6   z 26.90-29.10  +0.90  +1.05       +14.81 slider_nut     +8.58 link_plate      +0.25 coax   
 J40       MOTOR          r 23.8-28.2  z 26.15-29.10  +0.55  +15.32      +0.35 slider_nut      +0.85 stepper_endtab  +10.99 coax  
 J40_plug  mated plug     r 28.1-31.2  z 26.15-29.10  +0.55  +19.58      +3.11 stepper_endtab  +3.11 stepper_endtab  +11.89 coax  
 Action needed: < 0.3 mm to a moving item (rotor, actuator), or any overlap with the hub or a wire (same body:
@@ -310,15 +310,15 @@ Battery leads under the FA spider: min gap to the plate pressed +1.40 mm at r 30
 Main-board TOP parts under the OLED bracket rim/spokes (z 31.8-32.8) and the glass (z 33.0):
 ref  value         height       under      clearance                     
 ---  ------------  -----------  ---------  ------------------------------
-D21  B5819W        top z 32.05  rim/spoke  pocketed: +0.20, rim left 0.55
+C32  4.7u/25V Ta   top z 32.50  rim/spoke  pocket cut through            
 U2   TPS22917DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
 U21  TPS22917DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
-C3   10u           top z 31.60  rim/spoke  +0.20                         
-U20  TPS61040DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
-C32  4.7u/25V Ta   top z 32.50  rim/spoke  pocket cut through            
 C35  4.7u/25V      top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
 C38  4.7u/25V      top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+D21  B5819W        top z 32.05  rim/spoke  pocketed: +0.20, rim left 0.55
 J20  OLED_ZIF30    top z 32.70  glass      +0.30                         
+C3   10u           top z 31.60  rim/spoke  +0.20                         
+U20  TPS61040DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
 The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller than 0.95 mm.
 
 ==============================================================================
@@ -347,5 +347,47 @@ The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller
   USB-C overmold 7.0 mm tall (top z 16.23) pressed: ring radius at that height 34.63 -> radial clearance to the plug face (r 35) 0.37 mm
   Carriage lash budget: slider nut preloaded (anti-backlash, verify <= 0.02 mm), spring pin in slot 0,
   FR4 link 0.8 x 3: in-plane deflection at 0.4 N over 20 mm 0.030 mm (PA12 0.5 strip was 0.56 mm); plate capture <= 0.02 (shimmed rails).
+
+==============================================================================
+13. NFC tag coil and tail to J11 (geometry from the model; L and tuning are estimates)
+==============================================================================
+Coil sheet (black-coverlay 2-layer PI flex, TVP): ID 31.0 / OD 52.5 x 0.15 mm at z 34.80-34.95, bonded (0.05 PSA) to the cover pocket ceiling z 35.00 (pocket r <= 26.35).
+Copper band r 24.90-26.15 (1.25 wide): 4 turns 0.20/0.15 or 3 turns 0.25/0.25 [TVP].
+Tail: tongue cut from the sheet at theta 222, 2.0 wide (3.4 over the J11 pads), inner fold radius 0.45; root (fold line) at r 24.70, vertical run r 24.10-24.25, board run at z 30.75-30.90 onto J11 (r 21.50).
+Tail path joint -> root 5.6 mm; developed tongue (J11 inner end -> root) 7.9 mm, so the tongue slot in the flat sheet runs r 16.8-24.7.
+
+Inductance [estimate]: modified Wheeler (circular, c1 1.00, c2 2.46, c4 0.20), d_avg 51.0 mm; image in the In1 GND plane 4.42 mm below (z 30.45): -N^2 x 38.6 nH.
+turns  L free uH  L over GND plane uH  C16/C17 for free L pF  C16/C17 over plane pF
+-----  ---------  -------------------  ---------------------  ---------------------
+3      1.33       0.98                 203                    276                  
+4      2.37       1.75                 112                    154                  
+C16/C17 = 180 pF tune 1.50 uH (Ctune = 2/(w^2 L) - Cint, coil self-capacitance ignored).  Start with
+4 turns; measure L in the closed device (LCR, 13.56 MHz) and retune C16/C17 (section 15 #21).  The plane also
+shields part of the phone's field: if the read range is short, a 0.1 mm ferrite sheet under the copper band
+(fits the 0.1 mm gap to the glass) restores it and needs C16/C17 ~ 95-110 pF (display-study.md section 3).
+coil pair (mm)                                                              clearance        note                                                     
+--------------------------------------------------------------------------  ---------------  ---------------------------------------------------------
+copper band - OLED glass top (they overlap in plan at the 2 lower corners)  +0.10            plan overlap 0.13 (glass corner r 25.03)                 
+copper band - display back plane z 33.0 (metal back, if the panel has one)  +1.80            at the corners; elsewhere the copper is outside the glass
+copper band inner edge - glass edge, plan, at theta 0/90/180/270            8.0/9.4/8.0/6.4                                                           
+copper band - main-board top copper (z 30.7)                                +4.10            F.Cu pours allowed there (SPEC)                          
+copper band - In1 GND plane                                                 +4.35            solid plane under the whole coil                         
+copper band - nearest LED (D126, WS2812 lead frame)                         +3.47            3D                                                       
+copper band - light-box inner wall (r 27)                                   +1.04            plastic                                                  
+copper band - diffuser inner face                                           +0.87            radial, plastic                                          
+copper band - 316L ring / track magnets (behind the board)                  +9.30            3D, (r, z) section                                       
+copper band - brass M4 nut                                                  +21.56           3D, inside the coil                                      
+coil sheet - cover ceiling (PSA layer) / pocket wall                        +0.05            wall +0.10 radial                                        
+tail pair (mm)                                          clearance  note                    
+------------------------------------------------------  ---------  ------------------------
+tail - OLED glass edge (near edge of the vertical run)  +0.34      both on the FA, flex    
+tail vertical run - bracket rim outer face              +0.54      lateral                 
+tail board run - rim relief roof (z 32.3)               +1.40      without the relief +0.90
+J11 joint top (z 31.05) - rim relief roof               +1.25      without the relief +0.75
+tail - light-box inner wall                             +2.34                              
+tail - nearest other top part (C131)                    +1.38      3D                      
+tail top fold - cover ceiling                           +0.05      at the root             
+Press stroke: the coil, its tail, J11, the bracket, the glass and the cover all ride on the FA, so nothing
+in this section moves relative to anything else; the rotor is below the main board (rotor check CLEAR).
 
 plots: renders/calc_spindown.png, renders/calc_detent.png, renders/calc_press.png

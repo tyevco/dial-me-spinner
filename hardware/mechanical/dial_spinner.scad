@@ -256,11 +256,11 @@ NFC_Z0      = OLED_Z0 + OLED_T + 0.1;   // TVP: 34.8, bonded (0.05 PSA) to the c
 NFC_POCKET_R = NFC_RO + 0.1;   // cover underside raised to z 35.0 inside r 26.35 (0.6 wall ring left to the diffuser bore)
 NFC_TAIL_W  = 2.0;      // TVP: tail width at the folds (2 traces 0.4/0.4 + 0.4 margins); 3.4 over the J11 pads
 NFC_TAIL_BR = 0.45;     // TVP: inner fold radius (3x t, one-time install fold, single copper layer in the tongue)
-NFC_TAIL_RV = 24.1;     // inner face of the vertical run, radius along theta 222: 0.33 outside the glass edge (x -16.9)
+NFC_TAIL_RV = 24.1;     // inner face of the vertical run, radius along theta 222: 0.34 outside the glass edge (x -16.9)
 J11P        = [for (p = MAIN_PARTS) if (p[0] == "J11") p][0];   // J11 joint body (pads + solder + tail end, from the PCB)
 J11_R       = norm([J11P[2], J11P[3]]);
 // OLED bracket rim relief over J11 (J11 frame: u along the pad row, v radially out): |u| <= 2.0, v -1.4..3.2, rim
-// underside raised from z 31.8 to 32.3 (0.5 mm rim left under the glass)
+// underside raised from z 31.8 to 32.3 (0.5 mm rim left under the glass).  TVP
 J11_RELIEF  = [2.0, -1.4, 3.2, 32.3];
 // tail centreline in the J11 frame (v, z): board run -> bottom fold -> vertical -> top fold -> root in the sheet
 NFC_TAIL_V0 = J11P[8] + 0.05;                    // starts 0.05 beyond the J11 joint body (its soldered end is that body)
@@ -1070,14 +1070,14 @@ module section_labels()
     }
 
 // ---------- NFC tail close-up: thin section on the vertical plane through the J11 axis (u = 0), seen from +u ----------
-// (the glass edge is oblique to this plane: the closest tail-to-glass gap, 0.33 mm, is at the tail's edge u = -1.0)
+// (the glass edge is oblique to this plane: the closest tail-to-glass gap, 0.34 mm, is at the tail's edge u = -1.0)
 module cut_j11(c, k)
     color(c) render(convexity = 6) intersection() {
         children();
         translate([J11P[2], J11P[3], 0]) rotate(J11P[4]) translate([-0.05 + k * 0.001, -100, -50]) cube([0.05, 200, 200]);
     }
 NFC_LABELS = [   // [text, point (v, z) in the J11 frame, text anchor (v, z), halign]; v = r - J11_R along theta 222
-    ["OLED glass (0.33 to the tail's near edge)", [-1.0, 33.85], [-4.5, 39.6], "right"],
+    ["OLED glass (0.34 to the tail's near edge)", [-1.0, 33.85], [-4.5, 39.6], "right"],
     ["top cover: pocket ceiling z 35.0, r ≤ 26.35", [-3.0, 35.6], [-4.5, 38.8], "right"],
     ["NFC coil sheet z 34.8–34.95 on the ceiling", [-5.6, 34.88], [-4.5, 38.0], "right"],
     [str("copper turns r ", NFC_CU[0], "–", NFC_CU[1]), [NFC_CU[0] + 0.6 - J11_R, 34.96], [1.5, 39.6], "left"],

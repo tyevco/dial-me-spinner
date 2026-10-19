@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate every render, STL, calculation output and clash report of hardware/mechanical/.
 # Needs OpenSCAD 2021.01, xvfb-run, python3 + numpy + matplotlib; KiCad 9 pcbnew (python3) to refresh
-# board_parts.scad from the PCBs (skipped with a warning if pcbnew is missing).  ~6 min on 4 cores.
+# board_parts.scad from the PCBs (skipped with a warning if pcbnew is missing).  ~7 min on 4 cores.
 set -eu
 cd "$(dirname "$0")"
 mkdir -p renders stl
