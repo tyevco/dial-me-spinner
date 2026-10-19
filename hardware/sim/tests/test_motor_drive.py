@@ -1021,15 +1021,15 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
 MD3_CASES = [  # id, idle VSYS (battery), temp, strict-xfail reason
     # the strict xfail's own corner
     ("VBAT3.7-60C", 3.7, 60, None),
-    # lowest idle VSYS a non-park move may start from (MD-2): d_peak is clamped at 1 there (MD-3 needs >= 3.69 V at 60 C)
+    # lowest idle VSYS a non-park move may start from (MD-2): d_peak clamps at 1 there (MD-3 needs >= 3.69 V at 60 C)
     ("VBAT3.55-60C", FW_VSYS_MOVE, 60, None),
     # coldest corner at the lowest non-park VSYS: the worst corner of the MD-3 rule
     ("VBAT3.55--10C", FW_VSYS_MOVE, -10,
      "DESIGN ISSUE (firmware rule insufficient): at -10 C the MD-3 duty d = I x (20 Ohm x (1 + 0.00393 x (T - 25 C)) "
      "+ 0.33 Ohm) / VSYS lowers the drive to 160 mA x 17.58 Ohm = 2.81 V, but the back-EMF (upper ke) and the cold "
-     "pack sag do not shrink with it, so at 446 PPS the current vector falls to about 121 mA and the thrust estimate to "
-     "about 0.493 N < the 0.5 N load budget at VSYS idle 3.55 V (about 0.495 N at 3.7 V, 0.498 N at 4.2 V). The pre-MD-3 "
-     "20.3 Ohm gave about 0.585 N; not reducing the duty below 25 C (T -> max(T, 25 C)) would keep it"),
+     "pack sag do not shrink with it, so at 446 PPS the current vector falls to about 121 mA and the thrust estimate "
+     "to about 0.493 N < the 0.5 N load budget at VSYS idle 3.55 V (about 0.495 N at 3.7 V, 0.498 N at 4.2 V). The "
+     "pre-MD-3 20.3 Ohm gave about 0.585 N; not reducing the duty below 25 C (T -> max(T, 25 C)) would keep it"),
 ]
 
 
