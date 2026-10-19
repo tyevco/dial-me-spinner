@@ -1,0 +1,39 @@
+* =====================================================================================================
+* sleep_current__tps61040.lib -- TPS61040 boost converter, DC input-current model for the sleep state
+*
+* Part      : Texas Instruments TPS61040DBVR (main board U20, 13 V OLED panel boost; EN tied to VIN)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf  (SLVS413L)
+*
+* Modelled (Section 7.5 Electrical Characteristics):
+*   ISD    shutdown current 0.1 uA typ / 1 uA max (EN = GND), drawn while VIN < VUVLO or EN < VIH
+*   IQ     operating quiescent current 28 uA typ / 50 uA max (IOUT = 0, not switching, VFB = 1.3 V), drawn
+*          once VIN > VUVLO and EN > VIH. Blended with tanh (20 mV) so .op converges.
+*   VUVLO  undervoltage lockout 1.5 V typ / 1.7 V max;  VIH (EN high) 1.3 V min
+*   IEN    EN input leakage 0.1 uA typ / 1 uA max (EN = GND or VIN)
+*   RSW    switch-node leakage: MOSFET leakage 1 uA typ / 10 uA max at VSW = 28 V, scaled linearly to the
+*          actual SW voltage (28 Mohm / 2.8 Mohm). Linear scaling is an assumption (spec is at 28 V only).
+*   RFB    FB input bias: 1 uA max at VFB = 1.3 V (1.3 Mohm equivalent, max corner only); typ not given -> off
+*   MAXC = 0 typical, 1 datasheet maximum.
+*
+* Why this model exists: in sleep the input switch U21 is off and OLED_VIN floats. Any current that reaches
+* OLED_VIN (U21 off-state leakage, reverse leakage of the rectifier D21 from +13V_OLED) can only leave
+* through this part. With EN tied to VIN the part enables as soon as VIN > VUVLO and then draws IQ (and
+* switches), so in DC the node settles where this input current equals the leakage that feeds it. That DC
+* point is the average of the real hiccup (VIN ramps to VUVLO, the part runs a few switching cycles, VIN
+* drops again); the energy those bursts push forward into +13V_OLED is NOT credited (conservative).
+*
+* NOT modelled: switching, current limit, soft start, regulation loop, the energy recycled to the output
+*   during the hiccup, temperature dependence (Figure 5-5 is IQ vs VIN/T in the switching-enabled state only).
+* =====================================================================================================
+.subckt SC_TPS61040 vin en sw fb gnd params: MAXC=0
+.param isd   = {MAXC > 0.5 ? 1u : 0.1u}
+.param iq    = {MAXC > 0.5 ? 50u : 28u}
+.param vuvlo = {MAXC > 0.5 ? 1.7 : 1.5}
+.param ien   = {MAXC > 0.5 ? 1u : 0.1u}
+.param rsw   = {MAXC > 0.5 ? 2.8meg : 28meg}
+.param rfb   = {MAXC > 0.5 ? 1.3meg : 1e15}
+Bq vin gnd I = 'isd + (iq - isd) * 0.25 * (1 + tanh((v(vin,gnd) - vuvlo)/0.02)) * (1 + tanh((v(en,gnd) - 1.3)/0.02))'
+Ben en gnd I = 'ien * tanh(v(en,gnd)/0.1)'
+Rsw sw gnd {rsw}
+Rfb fb gnd {rfb}
+.ends SC_TPS61040
