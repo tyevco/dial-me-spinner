@@ -20,15 +20,24 @@
 *   bex   beta ~ (T/298.15 K)^bex and rs ~ (T/298.15 K)^-bex, bex = -1.75: with the VGS(th) tempco this
 *         gives RDS(ON) @ VGS 4.5 V of x0.60 at -55 C, x1.19 at 60 C, x1.71 at 145 C vs Fig. 3
 *         (VGS 4.5 V, ID 75 mA): x0.66, ~x1.18, ~x1.85.
-*   cgs, cgd, cds  from Fig. 10 at VDS ~ 0 V: Ciss 45 pF, Crss 20 pF, Coss 25 pF -> 25 / 20 / 5 pF.
-*         cscale multiplies all three; the EC table maxima at VDS = 10 V (Ciss 50, Coss 25, Crss 8 pF)
-*         are up to ~1.7x the Fig. 10 curve, so cscale = 1.7 is the slow corner.
+*   capacitances  Fig. 10 (VGS = 0, f = 1 MHz), digitised (verifier, 300 dpi): Ciss 44.6 / 34 / 33 /
+*         31.7 pF, Coss 32.5 / 10.6 / 8.5 / 6.5 pF, Crss 22.3 / 5.2 / 3.3 / 2.1 pF at VDS 0 / 5 / 10 / 25 V.
+*     cgd0, vjgd, mgd  Cgd(VDG) = cgd0 / (1 + VDG/vjgd)^mgd for VDG > 0, = cgd0 for VDG < 0 (gate above
+*         drain), fitted to the Fig. 10 Crss curve: cgd0 = 22.3 pF, vjgd = 0.6 V, mgd = 0.64 (fit within
+*         +-7 % at 0/2.5/5/10/25 V). Charge-based (controlled sources), so the Miller charge of a 0 -> 3.3 V
+*         drain swing is 36 pC, not the 66 pC a constant 20 pF gives. (ddt() in a B source does not
+*         converge in ngspice 42, hence the 1 pF reference-capacitor construction.)
+*     cgs   Ciss - Crss, 22 pF at 0 V .. 29 pF at >= 5 V (Fig. 10) -> 25 pF constant.
+*     cds   Coss - Crss, 10 pF at 0 V .. 5.4 pF at 5 V (Fig. 10) -> 7.5 pF constant (mean over 0..3.3 V).
+*     cscale multiplies all three. Slow corner (set by the test from the EC table maxima at VDS = 10 V,
+*         "guaranteed by design": Ciss 50, Coss 25, Crss 8 pF): cgs = 50 - 8 = 42 pF, cds = 25 - 8 = 17 pF,
+*         cgd0 = 22.3 pF x 8 / 3.3 (the whole Crss curve scaled to 8 pF at 10 V) = 54 pF.
 *   idss  drain leakage, EC table IDSS 0.5 uA max (VDS = 50 V, 25 C); default 0 (no typ given).
 *         Applied as a constant bound at any VDS > ~0.1 V (conservative at 3.3 V; NOT temperature scaled).
 *   rgl   gate leakage resistor, EC table IGSS +-100 nA at VGS = +-20 V -> 200 MOhm (bound).
 *   body diode  Fig. 9 (25 C: ~1 mA at VSD 0.6 V): IS = 7e-14, N = 1.
 * NOT modelled: the subthreshold slope is not in the datasheet (n = 1.8 assumed, ~107 mV/dec at 25 C);
-*   bias dependence of the capacitances; BVDSS (50 V) breakdown; self-heating; leakage vs temperature;
+*   bias dependence of Cgs and Cds (Cgd is bias dependent); BVDSS (50 V) breakdown; self-heating; leakage vs temperature;
 *   saturation-region accuracy (only VGS(th) and linear-region RDS(ON) are fitted, which is all this
 *   circuit uses: the FETs only ever pull 30-60 uA through a few Ohm or sit off).
 * =====================================================================================================
@@ -36,7 +45,7 @@
 .model CTS_DBSS138 D(IS=7e-14 N=1 RS=0.3)
 
 .subckt CTS_BSS138DW_N d g s params: vth=1.2 beta=0.31 rs=1.0 n=1.8 tcv=-3.5m bex=-1.75 cscale=1
-+ idss=0 rgl=200Meg
++ idss=0 rgl=200Meg cgs=25p cgd0=22.3p vjgd=0.6 mgd=0.64 cds=7.5p
 .param vt25 = {0.0256926}
 .param s0 = {sqrt(250e-6/(2*n*beta*vt25*vt25))}
 .param vto25 = {vth - 2*n*vt25*ln(exp(s0) - 1)}
@@ -46,9 +55,14 @@ Bch di si I = 2*n*beta*pow((temper+273.15)/298.15, bex)*pow(8.617333e-5*(temper+
 + * ( pow(cts_sp((V(g,si) - vto25 - tcv*(temper-25))/n/(2*8.617333e-5*(temper+273.15))), 2)
 +   - pow(cts_sp((((V(g,si) - vto25 - tcv*(temper-25))/n) - V(di,si))/(2*8.617333e-5*(temper+273.15))), 2) )
 Bleak di si I = idss*tanh(V(di,si)/0.1)
-Cgs g si {25p*cscale}
-Cgd g di {20p*cscale}
-Cds di si {5p*cscale}
+Cgs g si {cgs*cscale}
+* Cgd(VDG) as a charge: Q/1pF on node qgd; the 1 pF reference cap turns it into dQ/dt, Fgd mirrors it di -> g
+Bqgd qgd 0 V = cgd0*cscale/1p*(vjgd/(1-mgd)*(pow(1 + 0.5*(V(di,g) + sqrt(V(di,g)*V(di,g) + 0.0025))/vjgd, 1-mgd) - 1)
++   + V(di,g) - 0.5*(V(di,g) + sqrt(V(di,g)*V(di,g) + 0.0025)))
+Vqgd qgd qgdc 0
+Cqgd qgdc 0 1p
+Fgd di g Vqgd 1
+Cds di si {cds*cscale}
 Rgl g si {rgl}
 Dbody si di CTS_DBSS138
 .ends CTS_BSS138DW_N
