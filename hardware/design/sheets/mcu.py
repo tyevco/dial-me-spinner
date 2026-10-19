@@ -8,7 +8,8 @@ Pinouts verified against primary datasheets:
   §8.3 "Reg0 DC/DC and LDO mode disabled" is the reference circuit followed here.
 * W25Q128JVSIQ: Winbond W25Q128JV datasheet Rev F, Fig. 1a / §3.3 (SOIC-8 208 mil):
   1 /CS, 2 DO(IO1), 3 /WP(IO2), 4 GND, 5 DI(IO0), 6 CLK, 7 /HOLD(IO3), 8 VCC.
-* SC-20S: SII spec sheet §[7] (outline, recommended pad layout 0.7 x 1.4 mm, 0.8 mm gap).
+* SC-20S 9 pF (C97603): SII SC-20S standard specification (CL 9 pF, R1 <= 90 kOhm, DLmax 0.5 uW;
+  pads 0.7 x 1.4 mm at 1.5 mm pitch, 0.8 mm gap; no copper under the part).
 * TC2030-IDC-NL: Tag-Connect TC2030-CTX: 1 VCC, 2 SWDIO, 3 nRESET, 4 SWCLK, 5 GND, 6 SWO.
 """
 
@@ -72,7 +73,7 @@ SYMBOLS = [
         name=XTAL_SYM,
         ref="Y",
         footprint="dial_spinner:" + XTAL_FP,
-        datasheet="https://atta.szlcsc.com/upload/public/pdf/source/20240416/BFC04A78B0E1C9E9B6060A4EC5547171.pdf",
+        datasheet="https://www.lcsc.com/datasheet/C97603.pdf",
         description="SII SC-20S 32.768 kHz tuning-fork crystal, 2.05x1.2 mm, non-polarised",
         pins=[
             (1, "~", "passive", "T"),
@@ -83,7 +84,7 @@ SYMBOLS = [
 
 
 def footprints(fpgen, lib_dir):
-    # SII SC-20S recommended pad layout (spec §[7]-4): two 0.7 x 1.4 mm pads, 0.8 mm gap
+    # SII SC-20S recommended soldering pattern (standard spec, C97603): two 0.7 x 1.4 mm pads, 0.8 mm gap
     # (centres at +/-0.75 mm). KiCad's generic 2012 crystal footprint uses smaller
     # 0.6 x 1.1 mm pads, so the vendor pattern is used instead.
     fp = fpgen.Footprint(XTAL_FP,
@@ -129,6 +130,7 @@ def build(d):
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
 
     d.group("32.768 kHz LFXO", "SC-20S CL 9 pF; Ccap = 2*CL - Cpin - Cpcb ~ 12 pF C0G.\n"
+            "R1 <= 90k (nRF RS_LFXO max 100k); DLmax 0.5 uW = nRF PD_LFXO.\n"
             "At pads 17/18, traces < 5 mm, symmetric, GND guard; no copper under Y1.")
     d.add("C13", "Device:C", "12p C0G", C0402, pins={"1": "XL1", "2": "GND"},
           fields={"MPN": "0402CG120J500NT", "Manufacturer": "FH (Guangdong Fenghua)", "LCSC": "C1547"})
@@ -153,7 +155,8 @@ def build(d):
           fields={"MPN": "0402WGF1002TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25744"})
 
     d.group("SWD debug (Tag-Connect TC2030-NL)",
-            "Footprint only (no BOM part), bottom side.\n"
+            "Footprint only (no BOM part), TOP side under the\n"
+            "OLED glass (SPEC section 8).\n"
             "Keep the 3 NPTH holes + cable-head area clear.\n"
             "No series parts on SWD. NRESET: internal pull-up,\n"
             "R11 is a DNP option.")
