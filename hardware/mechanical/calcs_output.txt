@@ -279,40 +279,38 @@ Main-board BOTTOM parts (z from the PCB; rotor clearance is exact, the rest samp
 Only parts with any clearance < 1.0 mm are listed; negative = interference.
 ref       value            r            z              rotor  hub/spacer  actuator@click        actuator@free         harness/coax 
 --------  ---------------  -----------  -------------  -----  ----------  --------------------  --------------------  -------------
-U40       DRV8837DSGR      r 17.6-20.4  z 28.30-29.10  +5.86  +9.09       +1.12 link_plate      +0.83 link_plate      +13.20 coax  
+U10       MDBT50Q-U1MV2    r 6.8-22.9   z 26.90-29.10  +0.90  -1.47       +13.70 slider_nut     +8.41 link_plate      +1.62 harness
+U10_uFL   mated U.FL plug  r 6.7-10.3   z 25.80-28.30  -0.20  -1.45       +17.59 slider_nut     +11.89 link_plate     +4.76 harness
+U41       DRV8837DSGR      r 15.8-18.5  z 28.30-29.10  +4.31  +7.34       +5.73 stepper_endtab  +0.80 link_plate      +13.36 coax  
+J1_plug   mated plug       r 11.9-16.5  z 26.15-29.10  +0.15  +3.42       +11.27 saddle         +11.27 saddle         +8.73 coax   
 J40       MOTOR            r 23.8-28.2  z 26.15-29.10  +0.55  +15.32      +0.35 slider_nut      +0.85 stepper_endtab  +10.99 coax  
 J40_plug  mated plug       r 28.1-31.2  z 26.15-29.10  +0.55  +19.58      +3.11 stepper_endtab  +3.11 stepper_endtab  +11.89 coax  
-C1        22u              r 11.2-13.6  z 27.65-29.10  +1.65  +2.72       +20.75 saddle         +20.75 saddle         +0.66 harness
-J1        LINK             r 10.0-24.7  z 26.15-29.10  +0.15  +1.54       +15.90 saddle         +15.90 saddle         +8.94 coax   
-J1_plug   mated plug       r 9.5-23.7   z 26.15-29.10  +0.15  +0.95       +12.94 saddle         +12.94 saddle         +8.38 coax   
-U10       MDBT50Q-U1MV2    r 6.8-22.9   z 26.90-29.10  +0.90  -1.47       +13.70 slider_nut     +8.41 link_plate      +1.57 harness
-U10_uFL   mated U.FL plug  r 6.7-10.3   z 25.80-28.30  -0.20  -1.45       +17.59 slider_nut     +11.89 link_plate     +4.71 harness
-U41       DRV8837DSGR      r 15.8-18.5  z 28.30-29.10  +4.31  +7.34       +5.73 stepper_endtab  +0.80 link_plate      +13.36 coax  
-Parts below 0.3 mm (action needed): J1, J1_plug, U10, U10_uFL
+U40       DRV8837DSGR      r 17.6-20.4  z 28.30-29.10  +5.86  +9.09       +1.12 link_plate      +0.83 link_plate      +13.20 coax  
+Parts below 0.3 mm (action needed): U10, U10_uFL, J1_plug
 
 Base-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap).
 ref      value           r            height       rotor rest  rotor pressed  plate rest  plate pressed
 -------  --------------  -----------  -----------  ----------  -------------  ----------  -------------
-J2       BATT            r 13.7-22.1  top z 16.60  +0.40       -0.10          -3.80       -4.30        
-J2_plug  mated plug      r 21.3-26.5  top z 16.60  +0.40       -0.10          -3.80       -4.30        
-R4       1M              r 5.3-6.3    top z 11.50  +6.55       +6.13          +1.30       +0.80        
 J1       TYPE-C-31-M-12  r 27.7-35.3  top z 14.36  +1.24       +0.74          -           -            
+R4       1M              r 5.6-6.8    top z 11.50  +6.30       +5.87          +1.30       +0.80        
 R3       1k              r 3.4-3.9    top z 11.50  +7.17       +6.69          +1.30       +0.80        
-Q1       BSS138DW        r 6.7-9.0    top z 12.20  +4.88       +4.39          +0.60       +0.10        
+RT1      10k B3435       r 7.4-8.6    top z 11.50  +5.65       +5.17          +1.30       +0.80        
+J2       BATT            r 13.8-21.9  top z 16.60  +0.40       -0.10          -           -            
+J2_plug  mated plug      r 21.4-26.3  top z 16.60  +0.40       -0.10          -3.80       -4.30        
 SW1 is handled by the pre-gap (section 7).  Rule from SPEC: parts under a spoke/hub <= 1.0 mm tall (gap 1.7 rest, 1.2 pressed).
 
 Main-board TOP parts under the OLED bracket rim/spokes (z 31.8-32.8) and the glass (z 33.0):
 ref  value         height         under                clearance                     
 ---  ------------  -------------  -------------------  ------------------------------
-C3   10u           top z 31.60    rim/spoke            +0.20                         
+D21  B5819W        top z 32.05    rim/spoke            pocketed: +0.20, rim left 0.55
 J20  OLED_ZIF30    top z 32.70    glass                +0.30                         
-R42  100k          r 30.44-31.05  cover skirt r>=30.6  -0.45 (radial)                
+C3   10u           top z 31.60    rim/spoke            +0.20                         
 C32  4.7u/25V Ta   top z 31.70    rim/spoke            pocketed: +0.20, rim left 0.90
+U20  TPS61040DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
 U21  TPS22917DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
 C38  4.7u/25V      top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
+R42  100k          r 30.44-31.05  cover skirt r>=30.6  -0.45 (radial)                
 U2   TPS22917DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
-U20  TPS61040DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
-D21  B5819W        top z 32.05    rim/spoke            pocketed: +0.20, rim left 0.55
 The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller than 0.95 mm.
 
 ==============================================================================
@@ -326,7 +324,7 @@ The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller
   route pre-crimped single wires (contacts only) and insert them into the housings afterwards.
   harness path (J3 plug -> J1 plug, as modelled) 85 mm -> cut 12 wires to 100 mm (+15 slack)
   coax path (antenna feed -> u.FL) 63 mm; 146153-0100 has 100 mm -> 37 mm to stow (one gentle loop in the base, theta 100-150, away from the antenna)
-  battery leads path 15 mm
+  battery leads path 20 mm
   window 0.7 mm chem.-strengthened glass  Ø30 simply supported,  4.4 N centre: deflection 0.025 mm (gap to OLED glass 0.6 mm)
   window 0.7 mm chem.-strengthened glass  Ø30 simply supported, 20.0 N centre: deflection 0.112 mm (gap to OLED glass 0.6 mm)
   window 1.0 mm PC                        Ø30 simply supported,  4.4 N centre: deflection 0.206 mm (gap to OLED glass 0.6 mm)

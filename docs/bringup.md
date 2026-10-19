@@ -555,7 +555,7 @@ test. (Only the TPS22918 alternate takes CT to GND.)
 `chain-length = <48>`, GRB, `lrck-period = <10>` (3.2 MHz), `nibble-zero = <0x8>`, `nibble-one = <0xC>` and
 `reset-delay = <300>` ([leds verifier](https://docs.zephyrproject.org/latest/build/dts/api/bindings/led_strip/worldsemi,ws2812-i2s.html)).
 The driver default nibble 0xE violates T1L, so it must be overridden. Scope LED_DIN at D101's DIN, after
-**R40 (220 Ω**, LED_DIN_MCU → LED_DIN_R) and the 0 Ω R43 (LED_DIN_R → LED_DIN). R40 is deliberately larger than
+**R40** (220 Ω, LED_DIN_MCU → LED_DIN_R) and the 0 Ω R43 (LED_DIN_R → LED_DIN). R40 is deliberately larger than
 a typical 33 Ω damping resistor: it limits the current into the DIN clamp diode if P0.06 is ever high while VLED
 is off (SPEC §5.4). With the DIN input capacitance it also slows the edges a little, so check the edges as well
 as the timing. If the level-shifter option is fitted (U43 instead of R43, B-9.8f), D101 sees U43's VLED-level
@@ -660,13 +660,13 @@ SPIM2 as the LED-driver fallback ([`firmware.md`](firmware.md) §7.1).
 
 | Test | Pass |
 |---|---|
-| Colour bars; solid R/G/B at C7 = 0x08 | Uniform |
+| Colour bars; solid R/G/B at `C7` = 0x08 | Uniform |
 | Single-pixel grid every 8 px | No missing rows or columns. Missing lines usually mean the FPC is not fully in the ZIF |
 | Orientation | Upright, centred on the active area (the 1.47 mm offset is mechanical) |
 | SCK at the ZIF on the scope | t_R/t_F ≤ 15 ns, t_CLKL/H ≥ 20 ns. If not, use H0H1 drive ([display verifier]) |
 | Current (battery side, VSYS 3.7 V): black with VCC on | ≈ 5 mA |
 | Typical dark UI | ≈ 14–26 mA |
-| Full white **only at C7 = 0x08, briefly** | Well under the ≈ 146 mA maximum-contrast figure ([display research]) |
+| Full white **only at `C7` = 0x08, briefly** | Well under the ≈ 146 mA maximum-contrast figure ([display research]) |
 | Below VSYS 3.4 V | Firmware caps brightness; the boost delivers only about 33–40 mA at 3.0 V |
 | Sleep: `AE`, `AB 00`, VCC_EN low, RES# held high | Panel ≈ 10 µA typ, 35–40 µA max (measured in B-10) |
 | Wake: `AB 01`, VCC on, ≥ 200 ms, `AF`, full redraw | Image back in about 0.2–0.4 s |
@@ -713,11 +713,11 @@ factory test 19 ([`firmware.md`](firmware.md) §5.4).
 | At the CLICK end (x = 0) | HOME_N high. **Required** (firmware test 19): a unit that reads HOME at click is rejected or reworked (firmware.md §18 item 2) |
 
 **Why a unit can read HOME at click.** SPEC puts the DRV5032 on the **top** side, so the die sits only
-≈ 2.4–2.8 mm above the magnet (firmware.md §5.4 stack-up), against the research's 3.0–3.5 mm. Moving toward click,
-HOME releases 4.1–5.0 mm from the stop, the field passes through zero about 5–6 mm out and then comes back with
-the opposite sign: |Bz| at full click is 1.0–1.4 mT for a 2.4–2.8 mm die (0.47 mT at 3.5 mm). The DRV5032FA is omnipolar with
-BOP 1.5 / 3 / 4.8 mT (min/typ/max, [DRV5032 SLVSDC7H](https://www.ti.com/lit/ds/symlink/drv5032.pdf)), so the margin
-to BOP min is only 0.1–0.5 mT, and a unit with a low die or a strong magnet may assert HOME at click. Firmware does
+≈ 2.4–2.8 mm above the magnet (firmware.md §5.4 stack-up), against the research's 3.0–3.5 mm. Moving toward
+click, HOME releases 4.1–5.0 mm from the stop, the field passes through zero about 5–6 mm out and then comes back
+with the opposite sign: |Bz| at full click is 1.0–1.4 mT for a 2.4–2.8 mm die (0.47 mT at 3.5 mm). The DRV5032FA
+is omnipolar with BOP 1.5 / 3 / 4.8 mT (min/typ/max,
+[DRV5032 SLVSDC7H](https://www.ti.com/lit/ds/symlink/drv5032.pdf)), so the margin to BOP min is only 0.1–0.5 mT, and a unit with a low die or a strong magnet may assert HOME at click. Firmware does
 not rely on HOME for position: the **mechanical stall at the park stop is the only position reference**, HOME only
 confirms it after the stall, and HOME is ignored at x < 2 mm in normal moves (firmware.md §5.4). Test 19 screens
 out units that assert at click, because firmware then takes "HOME asserted" to mean the park zone. Log the click
@@ -1007,10 +1007,10 @@ count.
 |---|---|---|---|---|
 | 1 | B-2 | BQ25180 X-ray | No bridges or opens | |
 | 2 | B-2 | MDBT50Q X-ray | No bridges or opens | |
-| 3 | B-2 | Visual: 48 LED orientation, polarised parts, ZIF type | All correct | |
+| 3 | B-2 | Visual: 48 LED orientation, polarised parts and IC pin 1 (incl. U21, U32), ZIF type, DNP parts absent and R43 fitted, side-entry link connectors | All correct | |
 | 4 | B-3a | VSYS, +3V3, VLED to GND | > 1 kΩ (no short) | |
 | 5 | B-3a | +13V_OLED to GND | 520–580 kΩ | |
-| 6 | B-3b | Pull resistors, per net | Within ±10 % of the B-3b per-net value (e.g. MOT_NSLEEP ≈ 33 kΩ, LED_PWR_EN 88–100 kΩ, VSYS_SENSE 0.7–1.0 MΩ), not of the bare resistor | |
+| 6 | B-3b | Pull resistors, per net | Within ±10 % of the B-3b per-net value (e.g. MOT_NSLEEP ≈ 33 kΩ, LED_PWR_EN and OLED_VCC_EN 88–100 kΩ, VSYS_SENSE 0.7–1.0 MΩ), not of the bare resistor | |
 | 7 | B-3c | CC1, CC2 to GND | 5.1 kΩ each | |
 | 8 | B-3c | TS/MR to GND | 8–13 kΩ at 20–30 °C | |
 | 9 | B-4a | Base VSYS on USB | 4.4–4.6 V; input < 5 mA | |
@@ -1039,17 +1039,17 @@ count.
 | 32 | B-9.6c | Track signal | 24 periods; Bz 12–25 mT; per-pole ±15 % | |
 | 33 | B-9.6d | W&S wake on a small rotation | INT latches; re-arm verified | |
 | 34 | B-9.7 | Piezo at 4 kHz | Clear tone, ≈ 72–79 dB(A) at 10 cm | |
-| 35 | B-9.8a | VLED rise time; tON; VSYS dip (C7 CT–VSYS fix fitted) | ≈ 1.5–2.5 ms; ≈ 3.8 ms recorded; ≤ 100 mV | |
+| 35 | B-9.8a | VLED rise time; tON; VSYS dip (C7 1 nF, CT to VSYS) | ≈ 1.5–2.5 ms; ≈ 3.8 ms recorded; ≤ 100 mV | |
 | 36 | B-9.8b | LED bit timing | Within the V6 windows | |
 | 37 | B-9.8c/d | Walk test, D101 at θ = 0° CCW to D148; 49th word at TP40 | All 48 correct | |
 | 38 | B-9.8e | Ring white at 10 % | ≈ 72 mA above baseline (±25 %) | |
-| 39 | B-9.8f | Logic margin at 4.6 V and 3.4 V | No glitches in 10 min | |
+| 39 | B-9.8f | Logic margin at 4.6 V and 3.4 V | No glitches in 10 min (else fit U43/C43, remove R43, retest); record which is fitted | |
 | 40 | B-9.9a | Bare boost output | 12.7–13.3 V | |
 | 41 | B-9.9b | OLED full test pattern, no missing lines | Pass | |
 | 42 | B-9.9b | SCK edges at the ZIF | t_R/t_F ≤ 15 ns | |
 | 43 | B-9.10a | DRV8837 truth table, both drivers | All five states | |
-| 44 | B-9.10c | HOME_N low near park (required); release at click (recorded) | Low within ≈ 4–5 mm of PARK. Click state logged, not pass/fail (BRP spread) | |
-| 45 | B-9.10d | 50 round trips | HOME error ≤ ±2 steps | |
+| 44 | B-9.10c | HOME_N near park and at click | Low within ≈ 4–5 mm of PARK; high at click (x = 0), else reject or rework (firmware test 19) | |
+| 45 | B-9.10d | 50 round trips | HOME asserted after every park stall; every edge inside its window (no E_DET_STEPS) | |
 | 46 | B-10 | Ship current (PPK2 on the breakout tail) | ≤ 4.5 µA | |
 | 47 | B-10 | System OFF, press wake only, panel fitted | ≤ 30 µA | |
 | 48 | B-10 | System ON idle, armed | ≤ 60 µA | |
@@ -1065,11 +1065,13 @@ count.
 
 ## Open [TVP] items for the first prototype
 
-1. VLED soft-start and inrush with C7 moved to CT–VSYS (B-9.8a). The sheet fix itself is not a TVP; it is
-   required before ordering (assembly §2.4 item 3).
-2. HOME_N release at the click end with the top-side DRV5032, given the BRP spread (B-9.10c).
-3. Antenna S11 and link margin with the desk-facing antenna, on wood and on metal (B-11), and how much the test
-   pigtail's shield current moves the result.
+1. VLED and OLED_VIN soft-start and inrush with 1 nF from CT to VSYS on both TPS22917 (C7 on U2, C37 on U21;
+   B-9.8a, B-9.9a). The sheet change is done (`main_power.py`, `display.py`; assembly §2.4 item 3); only the
+   measured timing is open.
+2. HOME_N at the click end with the top-side DRV5032: |Bz| 1.0–1.4 mT against BOP min 1.5 mT (B-9.10c, firmware
+   test 19).
+3. Antenna S11 and link margin with the antenna on its base-cup shelf (≈ 6 mm above the desk), on wood and on
+   metal (B-11), and how much the test pigtail's shield current moves the result.
 4. Which serial-recovery routes work on a closed unit, in particular whether the 20 s long-press reset fires with
    USB present (B-8.7; EN_PUSH wording in SLUSE99C).
 5. Windows Radial Controller units per detent, 100 vs 150 (B-12.6).
@@ -1078,3 +1080,5 @@ count.
 8. Absolute spin time, and whether the oil holds up (B-13).
 9. Register-level ID values (W25Q128 JEDEC, LIS2DW12 WHO_AM_I, TMAG IDs, BQ25180 power-on values), which were
    not confirmed against primary sources in the research set.
+10. LED data margin with the default 3.3 V drive at VSYS 4.6 V, and whether the DNP U43 level shifter has to be
+    fitted (B-9.8f).
