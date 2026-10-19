@@ -184,7 +184,7 @@ def motor_r_fw(temp: float) -> float:
 # firmware policy (docs/firmware.md 5.8, 6.3, 7.4, 12.4)
 FW_LED_BURST, FW_LED_SUST, FW_LED_LOW, FW_LED_MOVING, FW_LED_CUE = 0.300, 0.150, 0.100, 0.100, 0.002
 # VBAT measurement (R1; docs/firmware.md 12.4, VSENSE-1/4/5): the calibrated reading can be up to 72 mV HIGH (aged unit
-# at -10/60 C) and 78 mV LOW (fresh -10..60 C about +48/-54 mV, aged at 25 C about +30/-36 mV, fresh 15-35 C about
+# at -10/60 C) and 78 mV LOW (fresh -10..60 C about +48/-55 mV, aged at 25 C about +30/-36 mV, fresh 15-35 C about
 # +/-24 mV). Every firmware threshold that protects a datasheet limit compares a TRUE-cell value against
 # VBAT_est = reading - FW_VREAD_MARGIN, so the true VBAT is at least VBAT_est + 3 mV (fw_vtrue_min). The full +72 mV
 # goes with the worst corner (60 C, aged contacts).
@@ -215,7 +215,7 @@ FW_VSYS_PARK = 3.30
 # R3: a row whose documented-load case leaves VLED < 10 mV above 3.3 V at the worst corner is derated to 95 % of the
 # derived budget (test_led_peak_budget_vs_vbat), rounded down to 0.01 A. Only the 3.53 V row was affected: the
 # documented 3.53 V sustained load (100 mA, 0.28 A peak, OLED C7 <= 08h) left +3.0 mV at true 3.53 V and +6.2 mV at
-# true VBAT_est + 3 mV, so it is 0.95 x 0.2758 A = 0.262 -> 0.26 A (+13.4 / +16.5 mV). Every other documented-load
+# true VBAT_est + 3 mV, so it is 0.95 x 0.2756 A = 0.262 -> 0.26 A (+13.4 / +16.5 mV). Every other documented-load
 # case keeps >= 40.6 mV (worst corner), the 3.48 V row is used on USB only (+214 mV there).
 FW_PK_DERATE = 0.95
 FW_PK_ROWS = ((3.48, 0.19), (3.53, 0.26), (3.60, 0.33), (3.65, 0.42), (3.70, 0.51), (3.80, 0.69))
@@ -997,7 +997,7 @@ def test_led_peak_budget_table_with_fw_rule(main, base, check, vbat, phase):
     the row's lit-channel peak, 0.23 A less while moving, aligned LED / coil PWM, TX bursts and boost ripple. The pack
     sits at the row VBAT itself, 3 mV below the lowest true VBAT the rule picks the row at (R1: VBAT_est + 3 mV, see
     the reading-high guard below). R3 derating: the 3.53 V row was 0.28 A (sustained: VLED 3.3030 V, +3.0 mV < 10 mV)
-    and is 0.26 A (95 % of the derived 0.2758 A budget, rounded down): 3.3134 V, +13.4 mV."""
+    and is 0.26 A (95 % of the derived 0.2756 A budget, rounded down): 3.3134 V, +13.4 mV."""
     s = System(main, base, WORST)
     cap, icc, moving = fw_policy(vbat)[phase]
     pk = fw_peak_cap(vbat, s.n_led, moving)

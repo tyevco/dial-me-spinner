@@ -620,7 +620,8 @@ controller:
   delivers only about 33–35 mA, and at 3.6 V the worst-case stack (ILIM,
   L20 −20 %, DCR and U21 RON at their limits) still cannot supply the 42 mA
   full-white maximum at VCC ≥ 12.5 V. Firmware MUST therefore cap master
-  current at C7 ≤ 08h and white area at ≤ 30 % below a rested VBAT of 3.75 V,
+  current at C7 ≤ 08h and white area at ≤ 30 % below VBAT_est 3.75 V (the
+  rested reading less the 75 mV margin of firmware.md §12.4),
   and whenever the LED current is above its 150 mA sustained cap
   (hardware/sim, OLED-BST-2). This is the same threshold as
   [firmware.md §7.4](firmware.md#74-burn-in-mitigation-and-power-caps)
@@ -727,7 +728,8 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
   about 1.4), an ideal Lambertian diffuser gives roughly 0.75–0.8 min/max
   brightness along the ring. Expect slight beading; *to verify on prototype*.
 * Firmware power limit: 300 mA burst, 150 mA sustained (average), 100 mA
-  below 3.60 V and while the actuator moves, a dim red cue only below 3.53 V
+  below VBAT_est 3.60 V and while the actuator moves, a dim red cue only
+  below VBAT_est 3.53 V
   ([firmware.md §6.3](firmware.md#63-power-limiter)), plus the instantaneous
   lit-channel budget of [§8.4](#84-peak-current). When the loaded VSYS falls
   below about 3.3 V (the LED VDD minimum), firmware MUST send an all-zero
@@ -737,7 +739,7 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 
 | Option | Why rejected |
 |---|---|
-| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit, and with aligned PWM its ring peak is 1.73 A even under the 300 mA average cap. Fitting it requires the instantaneous lit-channel cap (sum of lit channels × 12 mA within the [§8.4](#84-peak-current) budget, about 1.0 A at full battery) from first boot; otherwise it has to be dropped from the SPEC §5.4 alternates (hardware/sim, PI-3). |
+| WS2812B-2020-V6 (12 mA, same footprint) | Allowed as a drop-in and now much better stocked (about 897k vs 47k at LCSC), but full white is 1.74 A, above the BQ25180's 1.5 A SYS limit, and with aligned PWM its ring peak is 1.73 A even under the 300 mA average cap. Fitting it requires the instantaneous lit-channel cap (sum of lit channels × 12 mA within the [§8.4](#84-peak-current) budget: 1.0 A only from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that) from first boot; otherwise it has to be dropped from the SPEC §5.4 alternates (hardware/sim, PI-3). |
 | Legacy WS2812B-2020 | 3.7 V minimum supply, about 0.6 mA idle per LED, discontinued. |
 | SK6805-EC15 / EC20, SK6812MINI-E | VIH 0.78 × VDD (needs a level shifter) or VDD ≥ 3.5–3.7 V, 1 kHz PWM, about 0.5 mA idle per LED. |
 | APA102-2020 / SK9822 (clocked) | 5 V class, so a boost plus a level shifter; about 1 mA idle per LED. Worth it only for high-speed video. |
@@ -778,11 +780,14 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
   * Battery voltage is read through an always-on divider (R1 2.2 MΩ, LCSC
     C11490; R2 1 MΩ; C5 100 nF) into AIN0 (P0.02), costing about 1.2 µA.
     After the one-point production calibration the reading is within
-    ±10 mV only at 25 ± 10 °C on a fresh board; over −10…60 °C and with
-    ageing it can drift by ±46 mV, which sets the 3.53 V SHIP threshold
+    about ±10 mV at 25 °C and ±24 mV at 15–35 °C on a fresh board; over
+    −10…60 °C it drifts by about +48/−55 mV, and an aged board read at −10
+    or 60 °C by about +73/−79 mV. Firmware therefore compares every
+    threshold that protects a datasheet limit against VBAT_est = reading
+    − 75 mV, which puts the SHIP point at a 3.54 V reading
     ([§7](#7-power-tree)) (hardware/sim, VSENSE-1/4). The VSYS_SENSE node is
-    high-impedance: 4.5 nA of surface leakage uses the whole ±10 mV budget,
-    so keep it away from other copper and clean (VSENSE-4).
+    high-impedance: 4.5 nA of surface leakage uses the whole ±10 mV (25 °C)
+    budget, so keep it away from other copper and clean (VSENSE-4).
 
 **Why normal-voltage mode, when the power research recommended high-voltage
 mode (VDDH = SYS, REG0 DC/DC → 3.0 V)?** SPEC chose normal mode, and the
@@ -848,12 +853,15 @@ values from the verified research, with the two SPICE-driven changes
   setting (hardware/sim, V-2).
 * **No supplement.** With the pack absent, below BUVLO or in precharge, the
   BQ25180 cannot supplement SYS from the battery, so every load must fit
-  under ILIM. Firmware MUST then run a "no supplement" profile: while ILIM
-  is the 100 mA code, LEDs off, OLED off or black, no flash erase, TX
-  0 dBm, total ≤ 70 mA; at the 500 mA code, no actuator moves, LEDs
-  ≤ 100 mA peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA. The POF handler
-  sheds the OLED as well as the LEDs and motor (hardware/sim, PI-4). The
-  OLED rule for this case is in [§7](#7-power-tree) (NEW-1).
+  under ILIM. Firmware cannot see an absent pack directly (CHG_STAT may then
+  read done), so the pack counts as absent until a battery-only reading in
+  this power-up. Firmware MUST then run a "no supplement" profile: while
+  ILIM is the 100 mA code, LEDs at most the ≤ 20 mA charging cue, OLED off,
+  no flash erase, TX 0 dBm, total ≤ 70 mA; at the 500 mA code, no actuator
+  moves, LEDs ≤ 100 mA peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA. The POF
+  handler sheds the OLED as well as the LEDs and motor (hardware/sim, PI-4),
+  after the 10 ms POF blanking of [§7](#7-power-tree). The OLED rule for
+  this case is in [§7](#7-power-tree) (NEW-1).
 
 **Alternatives considered.**
 
@@ -980,13 +988,13 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
 | Rail | Source | Voltage | Switched by | Design current | Notes |
 |---|---|---|---|---|---|
 | VBUS | USB-C | 4.5–5.25 V supported (USB 2.0); nRF VBUS minimum 4.35 V | none | ≤ 475 mA into the charger; a few mA to the nRF | The nRF VBUS absolute maximum is 5.8 V. R12 and C12 keep the hot-plug ring off the nRF pin (see VBUS protection below). |
-| VBAT | cell | 3.0–4.2 V | PCM / BQ25180 BATFET | 1.5 A (BATOCP) | Firmware enters ship mode below 3.53 V (rested estimate; raised from 3.48 V): the calibrated reading can be 46 mV high over −10…60 °C and with ageing, and the true VBAT must stay above the BQ25180 battery-only power-up threshold VBATPOR (3.46 V max, SLUSE99C) so a button press can wake it (hardware/sim, VSENSE-1/4). |
+| VBAT | cell | 3.0–4.2 V | PCM / BQ25180 BATFET | 1.5 A (BATOCP) | Firmware enters ship mode below VBAT_est 3.465 V, i.e. a rested reading below 3.54 V (VBAT_est = reading − 75 mV; it was a 3.53 V reading, and 3.48 V before that): an aged board read at −10 or 60 °C can over-read by about 72 mV, and the true VBAT must stay above the BQ25180 battery-only power-up threshold VBATPOR (3.46 V max, SLUSE99C) so a button press can wake it; the worst case is a true 3.4676 V (hardware/sim, VSENSE-1/4). |
 | VSYS | BQ25180 SYS | 3.0–4.4 V (4.4 V ± 2 % on USB) | ship / shutdown | 1.5 A DC, 2.5 A for < 20 ms | Unswitched capacitance is about 82 µF nominal, 93.6 µF at +tolerance (main C1, C2, C6, C41, C74, C70/C72; base C2, C4), against the BQ25180's 100 µF maximum (SLUSE99C Table 9-2): do not add VSYS bulk; if more is ever needed, put it behind U2 on VLED (hardware/sim, NF-2). The 10 µF parts main C2, C6, C41 and base C4 are 25 V CL10A106MA8NRNC (C96446), because a 10 V 0603 keeps only about 28 % of its value at 5 V; the effective VSYS capacitance at 5 V is still only 32.1 µF worst case (MD-5). |
 | +3V3 | RT9080-33 | 3.3 V; tracks VSYS minus dropout below about 3.35 V | always on | about 50 mA peak (TX + CPU + QSPI erase) | W25Q128 needs ≥ 2.7 V. With BUVLO at 3.0 V the rail stays ≥ 2.9 V. |
-| VLED | TPS22917 U2 | = VSYS | LED_PWR_EN (R3 100 kΩ pull-down) | 0.73 A hardware max; firmware cap 0.3 A burst, 0.15 A sustained | Load is about 49 µF nominal (2 × 22 µF + 48 × 100 nF). CT 1 nF (C7, from CT to VIN) gives a slew of about 1.9 V/ms, so about 90 mA of inrush, a 1.6 ms rise and a turn-on time tON of about 4 ms (3.8 µs/pF at 3.6 V, [SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.6). QOD goes through R4 = 68 Ω (RC0402FR-0768RL, C163455), in series with the internal ≈ 150 Ω (RDIS ≈ 218 Ω, SLVSDW8B §9.3.3), so the fall time is about 2.2 × 218 Ω × 49 µF ≈ 24 ms. SPICE puts VLED at 10 % after about 20–27 ms: about 24 ms nominal, 25.9 ms Monte Carlo maximum, 25.7 ms from 4.2 V, and 26.6 ms worst case (3.48 V start, C8/C9 +20 %, DC bias), inside the firmware's ≥ 30 ms wait (hardware/sim, LSW-2; it was 30.6 ms with R4 = 100 Ω). Bring-up measures tFALL, because the datasheet tFALL row implies a QOD of about 170 Ω (NEW-4). DC-bias derating of the 22 µF parts makes the real inrush lower. U2 has no current limit (see LED fault below). |
+| VLED | TPS22917 U2 | = VSYS | LED_PWR_EN (R3 100 kΩ pull-down) | 0.73 A hardware max; firmware cap 0.3 A burst, 0.15 A sustained | Load is about 49 µF nominal (2 × 22 µF + 48 × 100 nF). CT 1 nF (C7, from CT to VIN) gives a slew of about 1.9 V/ms, so about 90 mA of inrush, a 1.6 ms rise and a turn-on time tON of about 4 ms (3.8 µs/pF at 3.6 V, [SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.6). QOD goes through R4 = 68 Ω (RC0402FR-0768RL, C163455), in series with the internal ≈ 150 Ω (RDIS ≈ 218 Ω, SLVSDW8B §9.3.3), so the fall time is about 2.2 × 218 Ω × 49 µF ≈ 24 ms. SPICE puts VLED at 10 % after about 20–27 ms: about 24 ms nominal, 25.9 ms Monte Carlo maximum, 25.7 ms from 4.2 V, and 26.6 ms worst case (3.465 V start, C8/C9 +20 %, DC bias), inside the firmware's ≥ 30 ms wait (hardware/sim, LSW-2; it was 30.6 ms with R4 = 100 Ω). Bring-up measures tFALL, because the datasheet tFALL row implies a QOD of about 170 Ω (NEW-4). DC-bias derating of the 22 µF parts makes the real inrush lower. U2 has no current limit (see LED fault below). |
 | OLED_VIN | TPS22917 U21 | = VSYS | OLED_VCC_EN (R25 100 kΩ pull-down) | ≤ 0.2 A (boost input) | C37 1 nF from CT to VIN: tON about 4 ms. The inrush is about 0.3 A for about 2 ms with a 0.4 A peak, set by the TPS61040 soft start, not by C37: the boost (EN tied to OLED_VIN) starts at its UVLO while U21 is still ramping, so U21 carries the boost's current-limited charging current in its linear region and absorbs up to about 0.65 mJ per turn-on (hardware/sim, LSW-4, OLED-BST-3; SLVSDW8B gives no SOA data). Bring-up checks U21's temperature and the VSYS sag at the first OLED enable. C41 10 µF bypasses VIN. QOD is tied to OLED_VIN (VOUT): with OLED_VCC_EN low, OLED_VIN is held at about 0 V, the boost stays in shutdown (U21 itself draws 10 nA typical) and the panel VCC floats behind D21; reverse-current blocking keeps OLED_VIN from back-feeding VSYS (IIN,RCB ≤ 1 µA). The build's ERC waiver for the QOD–VOUT pin pair is documented in `hardware/design/build.py`. |
 | +13V_OLED | TPS61040 | 13.0 V (12.5–13.5 V window) | as above | ≤ 40 mA | The high-impedance FB divider (R26 499 kΩ / R27 52.3 kΩ) turns the TPS61040's FB bias current (1 µA max) into ±0.5 V on VCC, which uses up the whole window at the datasheet worst case. A lower divider would cost about 21 µA of sleep current, because the panel's ESD path holds VCC at about 2.7 V across it, so the parts stay and every board is screened for VCC 12.7–13.3 V at bring-up (B-9.9a) and in production (hardware/sim, OLED-BST-1, accepted risk). With the OLED off, FB − OLED_VIN is 0.26–0.29 V against the 0.3 V absolute maximum (R31). |
-| VM | VSYS | = VSYS | MOT_NSLEEP | 0.36–0.42 A for ≤ 0.9 s | Firmware starts a non-park move only from ≥ 3.55 V measured idle VSYS (was 3.40 V), so the coils still get their rated current under load (hardware/sim, MD-2). Every stop path, FAULT and abort included, MUST brake first (IN1 = IN2 = 1 on U40/U41 for ≥ 3 ms, then IN = 00 and nSLEEP low), and the drive stays sine microstepping, never full-current full steps on USB: a coast dumps the coil energy into VSYS, and on USB after charge termination only the ceramic capacitance absorbs it (MD-1). With the shared VM bulk C74 the worst coast peak is 5.31–5.36 V against the BQ25180 SYS 5.5 V absolute maximum; without C74 it is 5.42–5.48 V (MD-5). |
+| VM | VSYS | = VSYS | MOT_NSLEEP | 0.36–0.42 A for ≤ 0.9 s | Firmware starts a non-park move only from VSYS_est ≥ 3.54 V, i.e. an idle reading ≥ 3.615 V (it was 3.55 V measured, and 3.40 V before that), so the coils still get their rated current under load when the reading is 72 mV high (hardware/sim, MD-2). Every stop path, FAULT and abort included, MUST brake first (IN1 = IN2 = 1 on U40/U41 for ≥ 3 ms, then IN = 00 and nSLEEP low), and the drive stays sine microstepping, never full-current full steps on USB: a coast dumps the coil energy into VSYS, and on USB after charge termination only the ceramic capacitance absorbs it (MD-1). With the shared VM bulk C74 the worst coast peak is 5.31–5.36 V against the BQ25180 SYS 5.5 V absolute maximum; without C74 it is 5.42–5.48 V (MD-5). |
 
 **VBUS protection.**
 * R12 (4.7 Ω, FRC0402F4R70TS, LCSC C2909356) runs from link VBUS to the
@@ -1019,20 +1027,23 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
   OLED_VCC_EN, wait ≥ 200 ms, then send AFh. Rules:
   * Never set OLED_VCC_EN while the BQ25180 input limit is still the 100 mA
     code (TMR_ILIM = 0xC9) unless the battery can supplement (no BUVLO_STAT
-    and VBAT ≥ about 3.15 V). Until ILIM is 500 mA, show the charging cue on
+    and VBAT_est ≥ 3.21 V from a battery-only reading in this power-up; at
+    −10 °C the boost surge needs about a 3.204 V cell to keep the BQ25180
+    BAT pin above BUVLO). Until ILIM is 500 mA, show the charging cue on
     the LEDs (≤ 20 mA) instead. Otherwise a dead battery plus USB gives a
     reboot loop, exactly in the "battery empty, plug in" case
     (hardware/sim, NEW-1, OLED-V1).
-  * Do not toggle OLED_VCC_EN during an actuator move when VBAT < 3.6 V;
+  * Do not toggle OLED_VCC_EN during an actuator move when VBAT_est < 3.6 V;
     enable the OLED before the park move (NEW-2).
   * Record OLED_VCC_EN in retained RAM. If the next reset is a brown-out or a
     BAT_OCP_FAULT, leave the OLED off and show an error on the LEDs (OLED-V3).
 * **OLED off:** send AEh, then clear OLED_VCC_EN.
 * **LEDs on:** keep DIN (P0.06) low, set LED_PWR_EN and wait ≥ 10 ms with
   P0.06 still low (tON is about 4 ms; DIN must not go high before VLED has
-  reached about 2.5 V, because the DI absolute maximum is VDD + 0.7 V)
-  (hardware/sim, LED-DATA-V4). Request the HFXO and wait for it
-  (LED-DATA-V2), then send the first frame.
+  reached 2.67 V, because the DI absolute maximum is VDD + 0.7 V and +3V3
+  can be 3.366 V; VLED is at least 2.97 V at 10 ms) (hardware/sim,
+  LED-DATA-V4). Request the HFXO and wait for it (LED-DATA-V2), then send
+  the first frame.
 * **LEDs off:** send an all-zero frame, drive DIN low, then clear LED_PWR_EN.
   Allow ≥ 30 ms for the QOD discharge before treating VLED as off (VLED
   reaches 10 % in ≤ 26.6 ms, LSW-2). **Never drive DIN high while VLED is
@@ -1043,11 +1054,19 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
   hardware.
 * **LED fault:** U2 has no current limit, so a shorted LED or a VLED solder
   bridge is stopped only by the BQ25180 BATOCP and the pack PCM. If a
-  brown-out, POF or BAT_OCP_FAULT follows LED_PWR_EN within about 50 ms
-  twice, firmware MUST latch VLED off and show a service fault; after any
-  BAT_OCP_FAULT or brown-out with LED_PWR_EN set it keeps the LEDs off for
-  the session and logs a VLED fault (hardware/sim, NF-3, NEW-5). A
+  brown-out, POF (outside the POF blanking below) or BAT_OCP_FAULT follows
+  LED_PWR_EN within about 50 ms twice, firmware MUST latch VLED off and show
+  a service fault; after any BAT_OCP_FAULT or brown-out with LED_PWR_EN set
+  it keeps the LEDs off for the session and logs a VLED fault (hardware/sim,
+  NF-3, NEW-5). A
   current-limited switch for VLED is an option, not fitted.
+* **POF blanking:** firmware MUST ignore POFWARN for 10 ms after it raises
+  OLED_VCC_EN or LED_PWR_EN. Those enables can dip +3V3 to 2.87–3.02 V for up
+  to 5.8 ms (dead battery on USB at the 80 mA ILIM minimum with the charging
+  cue; the NEW-1 supplement branch), below the 3.045 V upper bound of the
+  2.9 V POF threshold but above VBOR and the W25Q128's 2.7 V, so without it
+  the handler sheds the load it has just enabled ([firmware.md §12.4](firmware.md#124-battery-measurement-and-low-battery-policy);
+  hardware/sim, NEW-1, PI-4).
 * **Charger:** write the BQ25180 registers before the first 160 s of I2C
   activity end. The watchdog starts at the first I2C transaction.
 
@@ -1058,7 +1077,7 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
 ### 8.1 Assumptions
 
 * **Cell:** about 1000 mAh nominal; **900 mAh usable** (*estimate*) to the
-  3.53 V rested SHIP threshold ([§7](#7-power-tree)), with some ageing
+  SHIP point, a rested reading of 3.54 V ([§7](#7-power-tree)), with some ageing
   margin. Currents are battery-side at VBAT ≈ 3.7 V and **25 °C typical**;
   [§8.2](#82-per-subsystem-currents) gives the temperature and maximum
   figures separately.
@@ -1206,13 +1225,17 @@ bias current already uses the whole VCC window (hardware/sim, OLED-BST-1).
   brightness and their 2 kHz PWM in phase, the ring draws 0.72 A for
   70–210 µs every 500 µs, and the battery path settles in about 150 µs, so
   VLED sags almost as far as at DC. Firmware MUST also cap the sum of lit
-  channels × 5 mA at 0.19 / 0.28 / 0.33 / 0.42 / 0.51 / 0.69 A for VBAT
+  channels × 5 mA at 0.19 / 0.26 / 0.33 / 0.42 / 0.51 / 0.69 A for VBAT_est
   3.48 / 3.53 / 3.60 / 3.65 / 3.70 / 3.80 V (the full ring is allowed from
-  3.90 V), minus about 0.23 A while the actuator moves. On USB VBAT cannot
-  be measured, so firmware MUST use the 3.48 V row until CHG_STAT reports
-  CV or done, or keep the total on-USB load ≤ 0.40 A (NF-1). Bring-up
-  scopes the summed VLED current after power-up to see whether the LED PWM
-  phases align.
+  3.90 V), minus about 0.23 A while the actuator moves. The rows assume the
+  OLED dimming below VBAT_est 3.75 V ([§6.3](#63-display)) and keep at least
+  +13 mV over the WS2812C VDD minimum at the worst corner. On USB VBAT
+  cannot be measured: while VBAT_est (the last battery-only estimate) is
+  ≥ 3.48 V, firmware MUST use the 3.48 V row until CHG_STAT reports CV or
+  done, or keep the instantaneous on-USB sum (lit channels × 5 mA + OLED
+  boost input + actuator, not an average) ≤ 0.40 A; below 3.48 V or with
+  VBAT_est unknown, only the charging cue (NF-1). Bring-up scopes the summed
+  VLED current after power-up to see whether the LED PWM phases align.
 * The BQ25180 limits are 1.5 A SYS DC (2.5 A for < 20 ms), with BATOCP set to
   1.5 A. **The C-variant LEDs keep the hardware worst case just inside the
   limit; the B variant does not** (PI-3, [§6.4](#64-led-ring-and-audio)).
@@ -1239,7 +1262,10 @@ bias current already uses the whole VCC window (hardware/sim, OLED-BST-1).
   * An open NTC (missing or cracked part, open joint) can disable TS
     monitoring altogether rather than read cold. Firmware MUST treat
     STAT0.TS_OPEN_STAT = 1 as a fault: set ICHG_CTRL.CHG_DIS = 1 and show
-    "temperature sensor fault" (hardware/sim, charger_ts-v1).
+    "temperature sensor fault" (hardware/sim, charger_ts-v1). A resistive,
+    partly open RT1 (about 46–90 kΩ) leaves TS_OPEN_STAT at 0, so firmware
+    SHOULD also treat a TS COLD state while the nRF52840 die reads above
+    about 10 °C as that fault.
   * Below about −11 °C the 38 µA bias drives TS/MR above VTS_ENZ, where
     SLUSE99C does not define the TS function. While VBUS is present,
     firmware MUST set CHG_DIS = 1 when the nRF52840 die temperature reads
@@ -1437,7 +1463,7 @@ L = likelihood, I = impact (H / M / L).
 | D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 10 mm sibling if the vendor datasheet confirms ≥ 1.2 N; design the mount for both. The 8 mm motor reaches at most 0.93 N from battery VSYS, below the 0.8–1.15 N worst-case load, so it works only with preloads cut to ≤ 0.5 N (hardware/sim, MD-4; R4). Chord path with an inclined-slot link in the mechanical model ([docs/mechanical.md](mechanical.md) A11) | Before mechanical CAD freeze |
 | D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N. Pick the lowest preload that stops rocking; it must meet the verified ≥ 45 s acceptance (R3). If no preload does both, the conflict goes back to SPEC | First rotor prototype |
 | D4 | Detent damping shoe | None, felt, UHMW | Make it removable and decide by feel | First rotor prototype |
-| D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the instantaneous lit-channel cap (about 1.0 A at full battery) implemented and verified, otherwise drop it from the alternates (hardware/sim, PI-3). Either way, V6 parts only (LED-DATA-2) | Before the PCBA order |
+| D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.91 V) implemented and verified, otherwise drop it from the alternates (hardware/sim, PI-3). Either way, V6 parts only (LED-DATA-2) | Before the PCBA order |
 | D6 | OLED SPI instance | SPIM3 at 16 MHz, SPIM2 at 8 MHz | **Decided: SPIM3 at 16 MHz** (SPEC §4) with the anomaly 198 and 195 workarounds ([§6.3](#63-display)). SPIM2 at 8 MHz on the same pins is the fallback | Done |
 | D7 | 3V3 LDO | RT9080-33 (2 µA typical, 4 µA max), TPS7A0233 (25 nA) | TPS7A0233 if stocked: −2 µA sleep. Pin-compatible SOT-23-5, so check the EN/NC pins. The rev-A sheet fits the RT9080-33GJ5 (U1, LCSC C841192); measure its ground current at the ~20 µA sleep load on the first boards and switch if it is above a few µA (hardware/sim, LDO-6/SLP-3) | Before the PCBA order |
 | D8 | Battery pack | Protected 603450-class ≤ 6.0 mm (SPEC), a thinner 503450-class (5.0 mm), a deeper bay | Get the vendor drawing with PCM and leads. SPEC §8 now sets the envelope: long axis along θ 0°/180°, \|x\| ≤ 27.5, \|y\| ≤ 17.25, leads at the θ 180° end, inside Ø66.8, clear of the θ 270° boss (r = 20), the θ 90° rib (y 17.75–18.75) and the antenna shelf. **Maximum drawing thickness ≤ 6.0 mm, which leaves ≥ 1 mm to the base-board underside as the swelling allowance.** A 6.3 mm pack does not fit. Nothing sits on the base-board underside. A 5.0 mm pouch holds roughly 15–20 % less (*estimate* by volume) | Before the base CAD freeze |
@@ -1708,7 +1734,7 @@ item 8, and item 9.
     LED-DATA-2, LED-DATA-V1/V2/V3, LDO-2). SPEC §3 now sets 4.4 V, and SPEC
     §5.4 carries the SPICE margins and these rules. SPEC §5.4 allowed the
     WS2812B-2020-V6 with a "≤ 0.75 A" ring cap; with aligned PWM it needs the
-    instantaneous lit-channel cap (about 1.0 A at full battery), and SPEC §5.4
+    instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.91 V), and SPEC §5.4
     now allows it only together with that cap (PI-3).
 
 ---

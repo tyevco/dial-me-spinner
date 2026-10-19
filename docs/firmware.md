@@ -409,7 +409,7 @@ against the current bindings.
 		compatible = "regulator-fixed";
 		regulator-name = "VLED";
 		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;   /* LED_PWR_EN -> U2 TPS22917 ON (R3 100 kΩ pull-down) */
-		startup-delay-us = <10000>;   /* >= 10 ms with P0.06 low before the first frame (hardware/sim, LED-DATA-V4);
+		startup-delay-us = <10000>;   /* >= 10 ms with P0.06 low before the first frame, so VLED >= 2.67 V (hardware/sim, LED-DATA-V4);
 		                               * U2 tON about 4 ms: C7 = 1 nF from CT to VIN (SPEC §5.1); scope it at test 12 */
 		off-on-delay-us = <30000>;    /* QOD via R4 68 Ω: VLED to 10 % in <= 26.6 ms worst case (SPEC §5.1; hardware/sim, LSW-2) */
 	};
@@ -526,7 +526,7 @@ against the current bindings.
 	/* nRF52840 errata 219: at 400 kHz the TWIM holds SCL low for only 1.25 µs, below the 1.3 µs tLOW of
 	 * the LIS2DW12 and BQ25180. Run at 250 kHz (K250, FREQUENCY = 0x04000000; write it after init if the
 	 * driver rejects 250000), or at I2C_BITRATE_STANDARD if the bring-up SCL rise time at J3 exceeds
-	 * 250 ns (hardware/sim, NF-1, PB-2). Never I2C_BITRATE_FAST. */
+	 * 250 ns (hardware/sim, NF-1, PB-2; the 100 kHz fallback is not simulated). Never I2C_BITRATE_FAST. */
 	clock-frequency = <250000>;
 	pinctrl-0 = <&i2c1_default>;
 	pinctrl-1 = <&i2c1_sleep>;
@@ -1050,7 +1050,7 @@ Each sample costs no CPU. The CPU runs once every 4 samples.
 |---|---|
 | GPIOTE IN channel (allocated with `nrfx_gpiote_channel_alloc`) | PSEL = P0.27, POLARITY = HiToLo, event only. Before using it, disable the Zephyr GPIO interrupt on this pin. |
 | PPI channel A | GPIOTE IN event → TWIM0.TASKS_STARTRX |
-| TWIM0 | ENABLE; ADDRESS = 0x35; **FREQUENCY = 0x06200000** (about 390 kHz), written after init and never K400: nRF52840 errata 219 makes K400 hold SCL low for only 1.25 µs, below the TMAG5273's 1.3 µs minimum (hardware/sim, NF-1; simulated tLOW 1.31 µs with this value); RXD.PTR = ring[0]; RXD.MAXCNT = 6 (or 8); **RXD.LIST = ArrayList** (the pointer advances by MAXCNT per transfer); SHORTS = LASTRX_STOP; INTEN = ERROR |
+| TWIM0 | ENABLE; ADDRESS = 0x35; **FREQUENCY = 0x06200000** (about 390 kHz), written after init and never K400: nRF52840 errata 219 makes K400 hold SCL low for only 1.25 µs, below the TMAG5273's 1.3 µs minimum (hardware/sim, NF-1; simulated tLOW 1.306–1.312 µs at the TMAG5273 with this value, only 6–12 ns over 1.3 µs, reading errata 219's "greater than 1.3 µs" as 1.30 µs); RXD.PTR = ring[0]; RXD.MAXCNT = 6 (or 8); **RXD.LIST = ArrayList** (the pointer advances by MAXCNT per transfer); SHORTS = LASTRX_STOP; INTEN = ERROR |
 | PPI channel B | TWIM0.EVENTS_STOPPED → TIMER2.TASKS_COUNT, **fork** → TIMER1.TASKS_CAPTURE[0] |
 | TIMER2 | Low-power counter mode, 16-bit, CC[0] = 4, SHORTS COMPARE0_CLEAR, INTEN COMPARE0 → `enc_isr` at IRQ priority 1 |
 | TIMER1 | Timer mode, 1 MHz, 32-bit, free-running while tracking |
@@ -1465,12 +1465,17 @@ sits in standby at 0.45 mA):
   the PWM sequence value's polarity bit.
 * **Amplitude** (voltage mode, scaled by measured VSYS and compensated for
   coil temperature, hardware/sim, MD-3):
-  d_peak = I_target × (20 Ω × (1 + 0.00393 × (T − 25 °C)) + 0.33 Ω) / VSYS,
-  with T the nRF die temperature (20.33 Ω at 25 °C, including RDS(on)).
+  d_peak = I_target × (20 Ω × (1 + 0.00393 × (max(T, 25 °C) − 25 °C)) + 0.33 Ω) / VSYS,
+  with T the nRF die temperature and VSYS the idle reading (20.33 Ω at 25 °C
+  and below, including RDS(on); 23.08 Ω at 60 °C). The compensation MUST NOT
+  lower the duty below 25 °C: with (T − 25 °C) the −10 °C drive fell to
+  160 mA × 17.58 Ω = 2.81 V while the back-EMF and the cold-pack sag stay,
+  and the thrust estimate at 446 PPS was 0.493 N against the 0.5 N budget;
+  with max(T, 25 °C) it is 0.57–0.59 N (hardware/sim, MD-3).
   Clamp d ≤ 1; at T = 60 °C the 160 mA run current needs VSYS ≥ 3.69 V
   (calculated from the formula).
-  * Run: I_target = 160 mA, giving d = 0.77 at 4.2 V, 0.88 at 3.7 V and 0.92 at
-    3.55 V (25 °C).
+  * Run: I_target = 160 mA, giving d = 0.77 at 4.2 V, 0.88 at 3.7 V and 0.90 at
+    3.615 V, the move-threshold reading of [§5.8](#58-limits) (25 °C).
   * Homing: run current (160 mA) for every travel phase, because the load
     can oppose the carriage in either direction (magnetic up to 0.29 N, and
     0.8–1.15 N worst case with guide friction and the anti-lash spring,
@@ -1478,8 +1483,10 @@ sits in standby at 0.45 mA):
     shortfall is still open, [§18](#18-open-items-and-to-verify-list)
     item 10). 80 mA (50 %) only for the final stall into the park stop, where
     the magnetic force is about 0 and the anti-lash spring pushes toward PARK.
-  * Below a measured idle VSYS of 3.55 V the coil no longer gets its rated
-    current under load, so only park moves are allowed ([§5.8](#58-limits)).
+  * Below VSYS_est 3.54 V (the idle reading less the 75 mV margin of
+    [§12.4](#124-battery-measurement-and-low-battery-policy), i.e. a reading
+    below 3.615 V) the coil may no longer get its rated current under load,
+    so only park moves are allowed ([§5.8](#58-limits)).
 * **Sequences.** Use `nrfx_pwm_complex_playback()` with two ping-pong
   sequences, each holding 8 µsteps (one full step) × 4 channels (64 B).
   REFRESH sets periods per µstep, i.e. speed. The SEQEND IRQ refills the idle
@@ -1612,8 +1619,8 @@ There is no current sensing, so stall detection is open-loop. A PM stepper
 slips against the stop at 50 % current, and the final error is ±1–2 full
 steps (±0.02–0.04 mm, about ±2–4 % torque). *TVP:* confirm on the prototype
 that repeated 50 % stalls do not wear or jam the lead-screw nut, and that the
-run-current approach clears the loaded zone at 446 PPS at VSYS 3.55 V, the
-non-park move minimum of [§5.8](#58-limits).
+run-current approach clears the loaded zone at 446 PPS at a true VSYS of
+3.54 V, the non-park move minimum of [§5.8](#58-limits).
 
 ### 5.5 Modes
 
@@ -1673,11 +1680,11 @@ because the ring may be moving. "Blanking" here means suppressing the
 
 | Limit | Value | Reason |
 |---|---|---|
-| Minimum VSYS for non-park moves | 3.55 V (measured idle) | The coil must get its rated 165 mA at 3.3 V under the stroke load (cell, BATFET, link and rDS(on) sag); that point is 3.53 V at 25 °C (hardware/sim, MD-2) |
+| Minimum VSYS for non-park moves | VSYS_est ≥ 3.54 V: the idle reading less 75 mV ([§12.4](#124-battery-measurement-and-low-battery-policy)), i.e. a reading ≥ 3.615 V | The coil must get its rated 165 mA at 3.3 V under the stroke load (cell, BATFET, link and rDS(on) sag); that point is a true 3.533 V at 25 °C. A true 3.54 V gives 165.3 mA, and the worst over-read there (72.4 mV, aged unit at −10/60 °C) is inside the 75 mV margin; the former 3.55 V reading, 46 mV high, left a true 3.504 V and 163.6 mA (hardware/sim, MD-2) |
 | Minimum VSYS for a park move | 3.30 V | Parking is needed before ship mode |
 | Rate | At most 20 full strokes per minute sustained; bursts of 5 | Motor heating (about 1 J per stroke) and battery |
 | LED cap while moving | 100 mA average; instantaneous budget less 0.23 A ([§6.3](#63-power-limiter)) | Keeps the coincident peak below about 0.6 A and the cell sag below 0.3 V |
-| OLED_VCC_EN during a move | Never toggled while VBAT < 3.6 V; enable the OLED before a park move | The OLED turn-on surge (≈ 0.3 A for ~2 ms, 0.4 A peak) on top of a stroke eats the BQ25180 BAT-pin margin to BUVLO at a low cell (hardware/sim, NEW-2) |
+| OLED_VCC_EN during a move | Never toggled while VBAT_est < 3.6 V; enable the OLED before a park move | The OLED turn-on surge (≈ 0.3 A for ~2 ms, 0.4 A peak) on top of a stroke eats the BQ25180 BAT-pin margin to BUVLO at a low cell (hardware/sim, NEW-2) |
 | Stop | Brake ≥ 3 ms, then sleep ([§5.2](#52-state-machine)) | VSYS overshoot on USB (hardware/sim, MD-1) |
 | Watchdog per move | Expected steps / PPS + 0.5 s | A hung profile goes to FAULT and the driver sleeps |
 
@@ -1690,7 +1697,7 @@ because the ring may be moving. "Blanking" here means suppressing the
 * 48× WS2812C-2020-V6 (D101–D148), 5 mA per channel. The WS2812B-2020-V6
   (12 mA per channel) is pin-compatible only: firmware supports it as a
   factory-set variant, and with it the instantaneous cap of
-  [§6.3](#63-power-limiter) (≈ 1.0 A at full battery) is mandatory
+  [§6.3](#63-power-limiter) (1.0 A from VBAT_est ≥ 3.91 V, the PI-2 rows below that) is mandatory
   (hardware/sim, PI-3). Until the variant is set, **firmware assumes 12 mA**,
   which is the safe direction. Both variants must be V6 parts; the data-line
   margins below assume the V6 input threshold (SPEC §5.4).
@@ -1790,34 +1797,74 @@ while (lit_channels(frame) * I_CH > pk)
   70–210 µs every 500 µs, and VLED sags almost as far as at DC. Firmware MUST
   therefore also cap Σ(lit channels) × I_ch (hardware/sim, PI-2):
 
-  | Rested VBAT (V) | 3.48 | 3.53 | 3.60 | 3.65 | 3.70 | 3.80 | ≥ 3.90 |
+  | VBAT_est (V) | 3.48 | 3.53 | 3.60 | 3.65 | 3.70 | 3.80 | ≥ 3.90 |
   |---|---|---|---|---|---|---|---|
-  | Allowed peak (A) | 0.19 | 0.28 | 0.33 | 0.42 | 0.51 | 0.69 | full ring |
+  | Allowed peak (A) | 0.19 | 0.26 | 0.33 | 0.42 | 0.51 | 0.69 | full ring (0.72 A) |
 
-  * Use the row at or below the rested VBAT, and subtract about 0.23 A while
-    the actuator moves.
-  * **On USB** VBAT cannot be measured ([§12.4](#124-battery-measurement-and-low-battery-policy)):
-    use the 3.48 V row until CHG_STAT reports CV or done, or keep the total
-    on-USB load (LEDs + OLED + actuator) ≤ 0.40 A (hardware/sim, NF-1).
-  * With the B variant, I_ch = 12 mA and the cap at full battery is about
-    1.0 A (hardware/sim, PI-3).
+  * Look the row up with VBAT_est, the rested estimate less the 75 mV
+    reading margin ([§12.4](#124-battery-measurement-and-low-battery-policy)),
+    never with the raw reading: use the row at or below VBAT_est, so the row
+    is at or below the true VBAT. Subtract about 0.23 A while the actuator
+    moves. On battery the LEDs are off below VBAT_est 3.53 V (derating
+    below), so the 3.48 V row is used on USB only.
+  * The table assumes the OLED-BST-2 dimming: OLED C7 ≤ 08h below VBAT_est
+    3.75 V and during LED bursts ([§7.4](#74-burn-in-mitigation-and-power-caps)).
+    The rows come from the model's worst-corner budgets
+    (`test_led_peak_budget_vs_vbat`, a 10-step bisection, so each figure is
+    within 0.7 mA below the true budget): 0.1856 / 0.2756 A at 3.48 / 3.53 V
+    (OLED at C7 ≤ 08h), 0.3298 / 0.4205 / 0.5119 / 0.6947 A at 3.60 / 3.65 /
+    3.70 / 3.80 V with the OLED at 100 %, about 0.403 / 0.493 / 0.584 A at
+    3.60 / 3.65 / 3.70 V with C7 ≤ 08h (same model, not a suite check), and
+    the whole 0.72 A ring from 3.90 V. The 3.53 V
+    row is 95 % of its budget, rounded down (0.26 A): the former 0.28 A left
+    only 3 mV over the WS2812C's 3.3 V VDD minimum with its documented
+    100 mA load. With the documented loads every battery row now keeps at
+    least +13.4 mV at the worst corner (the 3.53 V row with the pack at
+    3.53 V), and the 3.48 V row +214 mV on USB (hardware/sim, PI-2).
+  * **On USB** SYS is regulated, so VBAT_est is the last battery-only
+    estimate of this power-up, or unknown ([§12.4](#124-battery-measurement-and-low-battery-policy)).
+    While VBAT_est ≥ 3.48 V (a true cell of at least 3.483 V), firmware MUST
+    either use the 3.48 V row until CHG_STAT reports CV or done, or keep the
+    **instantaneous** on-USB sum (lit channels × I_ch + OLED boost input
+    current + actuator) ≤ 0.40 A. An average does not do: with 0.40 A as
+    the limiter's average, VLED falls to 3.156 V at the worst corner. Below
+    VBAT_est 3.48 V, or with VBAT_est unknown, the LEDs get no lit channels
+    beyond the charging cue: at the ILIM minimum the BQ25180 runs in DPPM or
+    supplement and SYS follows the pack, and the 0.40 A sum crosses 3.3 V at
+    a 3.434 V pack (3.164 V at a 3.30 V pack, a self-discharged cell that
+    still charges in CC). Once CHG_STAT reports CV or done the cell has
+    reached VBATREG, and the ≥ 3.90 V row applies. With a pack below about
+    3.35 V, VSYS sits only about 60 mV above the pack, and only the
+    LED-DATA-3 rule (all-zero frame, then LED_PWR_EN low below a loaded VSYS
+    of about 3.3 V) protects VLED (hardware/sim, NF-1).
+  * With the B variant, I_ch = 12 mA. The rows above apply in amperes (the
+    ≥ 3.90 V row is 0.72 A, i.e. 60 lit B channels, not the 1.73 A B ring),
+    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.91 V: at
+    the worst corner (300 mA bursts, OLED C7 ≤ 08h) VLED reaches 3.3 V at a
+    true 3.9025 V and keeps +10 mV from 3.9123 V; with the OLED at 100 % the
+    bursts would need 3.9405 V (hardware/sim, PI-3).
   * *TVP:* bring-up scopes the summed ring current after power-up to see
     whether the V6 PWM phases really align; the budget stays until that is
     measured.
 
-* **Derating** (VBAT is the rested estimate, [§12.4](#124-battery-measurement-and-low-battery-policy)):
+* **Derating** (VBAT_est, the rested estimate less the 75 mV reading margin,
+  [§12.4](#124-battery-measurement-and-low-battery-policy); never the raw
+  reading: compared with the raw reading, the 3.60 V burst edge admits a
+  3.528 V cell, and 300 mA bursts at −10 °C then take VLED to 3.295 V, under
+  the 3.3 V VDD minimum; at VBAT_est the thinnest case is +67 mV,
+  hardware/sim, `test_vled_at_firmware_led_floor`):
 
   | Condition | Cap |
   |---|---|
-  | VBAT ≥ 3.65 V | 150/300 mA (re-enable threshold, with hysteresis) |
-  | VBAT < 3.60 V | 100 mA, no bursts |
-  | VBAT < 3.53 V | LEDs off except one dim red low-battery cue (≤ 2 mA); SHIP follows ([§12.4](#124-battery-measurement-and-low-battery-policy)). Red Vf stays in regulation. |
+  | VBAT_est ≥ 3.65 V | 150/300 mA (re-enable threshold, with hysteresis) |
+  | VBAT_est < 3.60 V | 100 mA, no bursts |
+  | VBAT_est < 3.53 V | LEDs off except one dim red low-battery cue (≤ 2 mA); SHIP follows below VBAT_est 3.465 V ([§12.4](#124-battery-measurement-and-low-battery-policy)). Red Vf stays in regulation. |
   | Loaded VSYS < about 3.3 V (WS2812C VDD minimum), any reading | All-zero frame, then LED_PWR_EN low ([§6.4](#64-rail-sequencing); hardware/sim, LED-DATA-3) |
   | Actuator moving | 100 mA |
   | nRF die temperature > 55 °C | 100 mA sustained |
   | On USB, charging (optional "charge first") | 150 mA, no bursts; instantaneous budget per the USB rule above |
-  | **VBUS present but input limit still 100 mA** (TMR_ILIM = 0xC9, before USB "configured" or charger detection, [§13.3](#133-input-current-strategy-on-usb)) | **20 mA**, no bursts: the charging cue. No actuator moves (homing is deferred). OLED_VCC_EN stays low unless the battery can supplement SYS (no BUVLO_STAT and VBAT ≥ about 3.15 V); only then OLED C7 ≤ 04h (hardware/sim, NEW-1, OLED-V1). Lifted when ILIM goes to 500 mA (at most about 2 s after VBUS). With a battery below BUVLO or absent, the BQ25180 cannot supplement SYS ([SLUSE99C §8.3.3](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) and the 100 mA input cannot carry the OLED boost's turn-on surge, so an uncapped boot (OLED VCC, LED animation, homing at run current) collapses SYS into a brown-out reboot loop exactly in the "battery empty, plug in" case. |
-  | **No supplement** on USB: pack absent, STAT1 BUVLO_STAT = 1, or CHG_STAT = precharge | ILIM 100 mA phase: LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, BLE TX 0 dBm, total ≤ 70 mA. ILIM 500 mA phase: no actuator moves, LEDs ≤ 100 mA and peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA. Without this profile both USB budgets exceed the ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). |
+  | **VBUS present but input limit still 100 mA** (TMR_ILIM = 0xC9, before USB "configured" or charger detection, [§13.3](#133-input-current-strategy-on-usb)) | **20 mA**, no bursts: the charging cue. No actuator moves (homing is deferred). OLED_VCC_EN stays low unless the battery can supplement SYS (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a battery-only reading in this power-up, [§7.2](#72-init-sequence-and-power-sequencing)); only then OLED C7 ≤ 04h (hardware/sim, NEW-1, OLED-V1). Lifted when ILIM goes to 500 mA (at most about 2 s after VBUS). With a battery below BUVLO or absent, the BQ25180 cannot supplement SYS ([SLUSE99C §8.3.3](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) and the 100 mA input cannot carry the OLED boost's turn-on surge, so an uncapped boot (OLED VCC, LED animation, homing at run current) collapses SYS into a brown-out reboot loop exactly in the "battery empty, plug in" case. |
+  | **No supplement** on USB: pack absent or not yet seen (no battery-only VBAT_est in this power-up, [§13.3](#133-input-current-strategy-on-usb)), STAT1 BUVLO_STAT = 1, or CHG_STAT = precharge | ILIM 100 mA phase: LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, BLE TX 0 dBm, total ≤ 70 mA. ILIM 500 mA phase: no actuator moves, LEDs ≤ 100 mA and peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA; while VBAT_est is unknown the USB rule above also holds (only the charging cue until CHG_STAT reports CV or done). Without this profile both USB budgets exceed the ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). |
   | VLED fault latched, or the last reset was a brown-out/BATOCP with LED_PWR_EN set | LEDs off ([§15](#15-fault-handling); hardware/sim, NEW-5, NF-3) |
 
   While the LEDs run above the 150 mA sustained cap (bursts), the OLED is
@@ -1849,7 +1896,8 @@ while (lit_channels(frame) * I_CH > pk)
      turning on again or treating VLED as off: the QOD discharges C8, C9 and
      C101–C148 through R4 = 68 Ω plus the switch's internal QOD resistance,
      taking VLED to 10 % in about 24 ms nominal and 26.6 ms worst case
-     (3.48 V start, C8/C9 +20 %, DC bias) (SPEC §5.1; hardware/sim, LSW-2).
+     (3.465 V start, the SHIP floor, C8/C9 +20 %, DC bias) (SPEC §5.1;
+     hardware/sim, LSW-2).
      Test 12 measures tFALL: the datasheet tFALL row implies an internal QOD
      of about 170 Ω rather than 150 Ω (hardware/sim, NEW-4). Clear
      LED_PWR_EN in the retained rail-state record once the pin is low
@@ -1866,10 +1914,14 @@ while (lit_channels(frame) * I_CH > pk)
   record LED_PWR_EN = 1 in the retained rail-state record. Then
   `regulator_enable(vled)` (LED_PWR_EN high) and wait at least 10 ms with
   P0.06 held low (the regulator's `startup-delay-us`): VLED must be at least
-  2.5 V before DIN goes high, because of the DI abs max of VDD + 0.7 V; U2's
-  tON is about 4 ms with C7 = 1 nF from CT to VIN (check the ramp at test 12)
-  (hardware/sim, LED-DATA-V4). Only then hand P0.06 back to the I2S:
-  PSEL.SDOUT stays assigned, so the I2S takes the pin when it next starts;
+  2.67 V before DIN goes high, because the DI abs max is VDD + 0.7 V and
+  +3V3 can be 3.366 V (3.366 V − 0.7 V = 2.666 V). U2's tON is about 4 ms
+  with C7 = 1 nF from CT to VIN (check the ramp at test 12); at 10 ms VLED is
+  at least 2.972 V (VBAT 3.0 V, −10 °C) (hardware/sim, LED-DATA-V4). POFWARN
+  is ignored for 10 ms after this edge
+  ([§12.4](#124-battery-measurement-and-low-battery-policy)). Only then hand
+  P0.06 back to the I2S: PSEL.SDOUT stays assigned, so the I2S takes the pin
+  when it next starts;
   re-apply the I2S default pinctrl state (H0H1) if the scope shows no data
   (TVP). Then request the HFXO ([§6.1](#61-hardware-facts-used)) and send the
   first frame.
@@ -1950,7 +2002,7 @@ with the verifier's corrections.
 | 19 | BEh | 05h | VCOMH = 0.82 × VCC |
 | 20 | A6h | | Normal display |
 | 21 | 15h / 75h / 5Ch | 00h 7Fh / 00h 7Fh / 32 KB of 00h | **Clear GDDRAM before VCC on** |
-| 22 | (hardware) | | Check the OLED_VCC_EN rules below, record OLED_VCC_EN = 1 in the retained rail-state record, then OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN, reaching 90 % after a turn-on time tON of about 4 ms (C37 = 1 nF from CT to VIN; 3.8–4 µs/pF, SLVSDW8B §7.6). The TPS61040 (EN = OLED_VIN) starts at its ≈ 1.5 V UVLO while U21 is still ramping; its soft start sets the inrush, ≈ 0.3 A for ~2 ms and 0.4 A peak from VSYS, and it ramps to 13.0 V (SPEC §5.3; hardware/sim, LSW-4, OLED-BST-3) |
+| 22 | (hardware) | | Check the OLED_VCC_EN rules below, record OLED_VCC_EN = 1 in the retained rail-state record, then OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN, reaching 90 % after a turn-on time tON of about 4 ms (C37 = 1 nF from CT to VIN; 3.8–4 µs/pF, SLVSDW8B §7.6). The TPS61040 (EN = OLED_VIN) starts at its ≈ 1.5 V UVLO while U21 is still ramping; its soft start sets the inrush, ≈ 0.3 A for ~2 ms and 0.4 A peak from VSYS, and it ramps to 13.0 V (SPEC §5.3; hardware/sim, LSW-4, OLED-BST-3). POFWARN is ignored for 10 ms after this edge ([§12.4](#124-battery-measurement-and-low-battery-policy)) |
 | 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 10 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's tON and the boost soft start; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, but the wait MUST never be below 10 ms (hardware/sim, OLED-V2). |
 | 24 | AFh | | Display on; SEG/COM turn on about 200 ms later (tAF) |
 
@@ -1970,15 +2022,21 @@ or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
 
 * Firmware MUST never set OLED_VCC_EN while the BQ25180 input limit is
   100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS: no
-  BUVLO_STAT and VBAT ≥ about 3.15 V, taken from the last battery-only
-  reading (unknown counts as "cannot"). Otherwise it raises OLED_VCC_EN only
-  after ILIM = 500 mA, and until then shows the charging cue on the LEDs
-  (≤ 20 mA).
+  BUVLO_STAT and VBAT_est ≥ 3.21 V (a true-cell value,
+  [§12.4](#124-battery-measurement-and-low-battery-policy)), taken from a
+  battery-only reading in this power-up (none counts as "cannot").
+  Otherwise it raises OLED_VCC_EN only after ILIM = 500 mA, and until then
+  shows the charging cue on the LEDs (≤ 20 mA).
   A dead battery cannot supplement SYS and the 100 mA input cannot carry the
   boost's turn-on surge, so otherwise the unit reboot-loops exactly in the
   "battery empty, plug in" case (hardware/sim, NEW-1, OLED-V1; [§13.3](#133-input-current-strategy-on-usb)).
+  At −10 °C (pack impedance doubled) the U21 + boost surge needs about a
+  3.204 V cell to keep the BQ25180 BAT pin above BUVLO (3.0 V). With a
+  3.21 V cell the BAT pin stays at 3.040 V or more (ILIM 80 mA minimum);
+  the former 3.15 V reading admitted a 3.104 V cell, whose BAT pin fell to
+  2.935 V for 1.37 ms, far past the 60 µs tBUVLO.
 * Firmware MUST NOT toggle OLED_VCC_EN during an actuator move while
-  VBAT < 3.6 V; it enables the OLED before a park move ([§5.8](#58-limits);
+  VBAT_est < 3.6 V; it enables the OLED before a park move ([§5.8](#58-limits);
   hardware/sim, NEW-2).
 * Firmware records OLED_VCC_EN in the retained rail-state record. If the
   next reset is a brown-out, or the BQ25180 reports BAT_OCP_FAULT (FLAG0
@@ -2016,7 +2074,7 @@ or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
 | Pixel orbit | ±2 px every 60 s. Vertical via A2h, horizontal via the LVGL root offset. |
 | Status | Battery and link state show on the LED ring (brief), not as permanent OLED icons |
 | Master current | C7 ≤ 0Ah in normal use. "Bright" mode (0Fh) only on user request, with a timer, and only above the low-battery limit below. |
-| Low battery / boost headroom | Firmware MUST hold C7 ≤ 08h and no screens with more than 30 % white area below rested VBAT 3.75 V ([§12.4](#124-battery-measurement-and-low-battery-policy)) and whenever the LED current exceeds its 150 mA sustained cap. At 3.6 V the worst-case boost stack (TPS61040 current limit, L20 −20 %, DCR and U21 RON at maximum) cannot deliver the panel's 42 mA 100 %-on maximum at VCC ≥ 12.5 V; 3.75 V leaves about 70 mV over the 3.68 V crossover for the BATFET and harness drop (hardware/sim, OLED-BST-2). |
+| Low battery / boost headroom | Firmware MUST hold C7 ≤ 08h and no screens with more than 30 % white area below VBAT_est 3.75 V ([§12.4](#124-battery-measurement-and-low-battery-policy)) and whenever the LED current exceeds its 150 mA sustained cap; the LED peak table of [§6.3](#63-power-limiter) assumes this dimming. At 3.6 V the worst-case boost stack (TPS61040 current limit, L20 −20 %, DCR and U21 RON at maximum) cannot deliver the panel's 42 mA 100 %-on maximum at VCC ≥ 12.5 V. The simulated crossover, about 3.67–3.68 V, already includes the BATFET and harness drop; the roughly 70 mV up to 3.75 V is margin for the cell's internal resistance and other VSYS loads, which the model leaves out. At 3.75 V the worst stack delivers at least 43.3 mA against the 42.0 mA needed, also with the 150 mA sustained LED load on VSYS (hardware/sim, OLED-BST-2). |
 
 ---
 
@@ -2492,7 +2550,7 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 | **DIM** | 10 s without input | AEh or C7 03–04h, VCC on | Ambient or off | Tracking for 2 s after motion, then ARMED | LP | Latency 30 | Mostly idle | About 6–12 mA |
 | **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **62 µA** at 25 °C, the architecture.md §8.2 budget, which assumes +8 dBm TX and carries the 17.6 µA OLED line of [§7.2](#72-init-sequence-and-power-sequencing); about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
 | **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **38 µA** (25 °C typical, the architecture.md §8.2 sum; about 70 µA at 60 °C) |
-| **SHIP** | VBAT < 3.53 V rested (the BQ25180 VBATPOR max of 3.46 V plus the reading's drift over temperature and ageing, [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
+| **SHIP** | VBAT_est < 3.465 V, i.e. a rested reading below 3.54 V (the BQ25180 VBATPOR max of 3.46 V plus 5 mV, with the 75 mV reading margin of [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
 | **SHUTDOWN** | Factory/transport command | Unpowered | | | | | | About 3 µA (PCM only); wakes on USB only |
 
 * **System OFF is not used.** It would save only about 2.6 µA of the 38 µA
@@ -2544,7 +2602,7 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 **DESK_IDLE / SLEEP entry**
 
 1. Actuator idle: wait for any move to finish (OLED_VCC_EN is not toggled
-   during a move below VBAT 3.6 V); brake, then drivers asleep
+   during a move below VBAT_est 3.6 V); brake, then drivers asleep
    ([§5.2](#52-state-machine)).
 2. Display sleep sequence ([§7.2](#72-init-sequence-and-power-sequencing)).
 3. LED rail off ([§6.4](#64-rail-sequencing)).
@@ -2608,14 +2666,42 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   board must draw under 5 mA during calibration, since any load current
   lowers VSYS below the supply setpoint and would be stored as a permanent
   gain error (hardware/sim, VSENSE-5). That brings the ±1 % resistor and
-  ±reference tolerances to about ±10 mV, **but only at 25 ± 10 °C on a fresh
-  unit**: over −10…60 °C and with ageing the calibrated reading drifts by up
-  to ±46 mV (hardware/sim, VSENSE-1, VSENSE-4). Every threshold below is set
-  with that drift in mind.
+  ±reference tolerances to about ±10 mV at 25 °C and about ±24 mV at
+  15–35 °C, **but only on a fresh unit**. Over temperature and with ageing
+  the calibrated reading drifts further (worst case over both calibration
+  references, at the 3.54 V SHIP reading; the error grows with VSYS, to
+  about 2.0–2.1 % of the reading at the aged −10/60 °C corner): a fresh unit
+  over −10…60 °C reads up to about 48 mV high and 55 mV low, an aged unit at
+  25 °C +30/−36 mV, and an aged unit at −10 or 60 °C +73/−79 mV
+  (hardware/sim, VSENSE-1, VSENSE-4).
+* **Reading margin (VREAD_MARGIN = 75 mV).** Every threshold in this
+  document that protects a datasheet limit is a true-cell value and is
+  compared against **VBAT_est = calibrated rested reading − 75 mV**, never
+  against the raw reading; the idle-VSYS move threshold of [§5.8](#58-limits)
+  likewise uses VSYS_est = idle reading − 75 mV. A threshold T therefore
+  engages at a reading of T + 75 mV, and the true value is still at least T
+  while the worst over-read at T stays within 75 mV: it is 67.9 mV at
+  3.21 V, 71.4 mV at 3.465 V, 72.4 mV at 3.54 V, 73.3 mV at 3.60 V and
+  74.7 mV at 3.70 V (aged unit at −10/60 °C, hardware/sim, VSENSE-1,
+  VSENSE-4). **Open:** above a true 3.72 V it exceeds 75 mV (75.7 mV at
+  3.75 V, 77.0 mV at 3.80 V, 79.6 mV at 3.90 V, 87.6 mV at 4.20 V), so the
+  3.75 V OLED-BST-2 threshold, the 3.80 V and ≥ 3.90 V rows of
+  [§6.3](#63-power-limiter) and the 3.91 V B-variant threshold can engage
+  0.7–4.9 mV below their true value ([§18](#18-open-items-and-to-verify-list)
+  item 12).
 * **On battery:** VSYS ≈ VBAT − I × 55 mΩ (BATFET). **On USB**, SYS is
   regulated at 4.4 V (SYS_REG 0x20, [§13.1](#131-register-init-table)), so
   VBAT cannot be measured; use BQ25180 CHG_STAT instead. The BQ25180 has no
-  ADC.
+  ADC. On USB, VBAT_est is the last battery-only VBAT_est of this power-up
+  from before VBUS appeared (not one from a USB-suspend window, while the
+  cell still relaxes from charging): while the input carries the load and
+  charges the cell, the cell does not fall, so the stale value stays on the
+  safe side. Without one (a cold boot
+  on USB, such as a wake from SHIP by plugging in, or no pack) VBAT_est is
+  **unknown**, and unknown counts as below every threshold: the battery
+  "cannot supplement" (NEW-1, PI-4) and the LEDs get only the charging cue
+  until CHG_STAT reports CV or done (NF-1; [§6.3](#63-power-limiter),
+  [§13.3](#133-input-current-strategy-on-usb)).
 * **Rested estimate:** VOCV ≈ Vmeas + I_est × 0.25 Ω, where I_est is the sum
   of the LED limiter estimate, OLED state, actuator state and a 3 mA base.
   Prefer samples taken after at least 1 s of light load.
@@ -2625,19 +2711,21 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   |---|---|---|---|---|---|---|---|---|---|---|---|---|
   | SoC (%) | 100 | 90 | 80 | 70 | 60 | 50 | 40 | 30 | 20 | 10 | 5 | 0 |
 
-  The battery % shown to the user is rescaled so that 0 % is the 3.53 V SHIP
-  threshold below.
+  The battery % shown to the user is rescaled so that 0 % is the SHIP point
+  below (a reading of 3.54 V).
 
-**Low-battery policy** (rested VBAT, with 50 mV of hysteresis upward):
+**Low-battery policy** (VBAT_est, i.e. the rested reading less 75 mV, with
+50 mV of hysteresis upward):
 
-| VBAT | Action |
+| VBAT_est | Action |
 |---|---|
 | ≥ 3.75 V | Normal |
 | < 3.75 V | OLED C7 ≤ 08h and ≤ 30 % white area ([§7.4](#74-burn-in-mitigation-and-power-caps); hardware/sim, OLED-BST-2) |
 | < 3.60 V | Warning icon; LED cap 100 mA; TMAG DEEP-LOWBAT interval in SLEEP; DFU swap refused unless on USB |
-| VSYS < 3.55 V (measured idle) | Only park moves ([§5.8](#58-limits); hardware/sim, MD-2) |
-| < 3.53 V | LEDs off except the red cue; quiet sounds; after 3 readings 10 s apart, SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)), and the calibrated reading can be up to 46 mV high away from 25 °C or after ageing, so 3.53 V (3.46 V + about 70 mV) lets every unit wake from a button press right after a low-battery ship (hardware/sim, VSENSE-1, VSENSE-4). Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". This is 80 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs about 2 % of capacity (estimate from the OCV table above). |
-| POF event (VDD < 2.9 V) | Immediately: LEDs off, OLED off (OLED_VCC_EN low; hardware/sim, PI-4), motor brake then sleep, abort flash writes. If it persists for 100 ms, enter SHIP. |
+| VSYS_est < 3.54 V (an idle reading below 3.615 V) | Only park moves ([§5.8](#58-limits); hardware/sim, MD-2) |
+| < 3.53 V | LEDs off except the red cue ([§6.3](#63-power-limiter)); quiet sounds |
+| < 3.465 V (a reading below 3.54 V) | After 3 readings 10 s apart, SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)). An aged unit read at −10 or 60 °C can be 72.4 mV high here, so a 3.54 V reading still means a true VBAT of at least 3.4676 V, 7.6 mV above VBATPOR max, and every unit wakes from a button press right after a low-battery ship; the former 3.53 V reading left 3.4577 V at that corner (hardware/sim, VSENSE-1, VSENSE-4). Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". A nominal unit ships at a rested 3.54 V, 90 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs about 2 % of capacity (estimate from the OCV table above). |
+| POF event (VDD < 2.9 V) | Immediately: LEDs off, OLED off (OLED_VCC_EN low; hardware/sim, PI-4), motor brake then sleep, abort flash writes. If it persists for 100 ms, enter SHIP. **Blanking:** firmware ignores POFWARN for 10 ms after it raises OLED_VCC_EN or LED_PWR_EN. Those enables can dip +3V3 to 2.87–3.02 V (2.867 V: dead battery on USB at the 80 mA ILIM minimum with the charging cue; 2.93–3.02 V: the NEW-1 supplement branch at a 3.21 V cell), below the POF threshold's 3.045 V upper bound (2.9 V + 5 %) for up to 5.8 ms, though above VBOR and the W25Q128's 2.7 V minimum; without the blanking the handler would shed the OLED or the cue it has just enabled. 10 ms leaves 4.2 ms over the worst crossing, and +3V3 is back at 3.30 V by then (3.15 V, still above the 3.045 V bound, in the floor case that enables the OLED during a move, which NEW-2 forbids) (hardware/sim, NEW-1 and floor guards in `test_load_switches.py`). A POFWARN inside the window does not count toward the VLED fault latch of [§15](#15-fault-handling) either; a brown-out reset or BAT_OCP_FAULT still does. |
 | VBAT < 3.0 V | BQ25180 BUVLO disconnects the battery in hardware |
 
 ### 12.5 Peripheral power hygiene
@@ -2724,6 +2812,13 @@ is the corrected one.
     clears. An open NTC floats TS/MR to its clamp above VTS_ENZ, which can
     disable TS monitoring rather than read cold (hardware/sim,
     charger_ts-v1).
+  * **TS plausibility (SHOULD).** A resistive, partly open RT1 (about
+    46–90 kΩ) puts TS/MR above VTS_ENZ but below the open-NTC clamp, so
+    TS_OPEN_STAT stays 0 while TS monitoring is not guaranteed. Firmware
+    SHOULD treat a TS COLD state (STAT1) while the nRF die reads above
+    about 10 °C as the same sensor fault: CHG_DIS = 1 and "temperature
+    sensor fault". The suite shows the gap but has no rule for it
+    (hardware/sim, charger_ts-v1).
   * TREG at 100 °C throttles by itself.
 
 ### 13.2 Status, interrupts and faults
@@ -2747,7 +2842,7 @@ is the corrected one.
   |---|---|
   | VIN_OVP | A flag within about 30 ms of plug-in is benign (the legacy-cable hot-plug overshoot of most plug-ins): do not report it (hardware/sim, V-3). Otherwise "bad charger" icon. Supported VBUS is 4.5–5.25 V; a source near 5.5 V can trip OVP and pause charging, and the unit then runs from the battery (NF-4) |
   | TS cold/hot | "Too cold/hot to charge", except while BTN_N is low and for 5 ms after ([§8.2](#82-press-handling-pressc); hardware/sim, charger_ts-v2) |
-  | TS open (STAT0.TS_OPEN_STAT = 1) | CHG_DIS = 1, "temperature sensor fault" ([§13.1](#131-register-init-table) Thermal) |
+  | TS open (STAT0.TS_OPEN_STAT = 1), or TS COLD while the die reads above about 10 °C (SHOULD) | CHG_DIS = 1, "temperature sensor fault" ([§13.1](#131-register-init-table) Thermal) |
   | BAT_OCP_FAULT | With LED_PWR_EN or OLED_VCC_EN recorded high: that load stays off ([§15](#15-fault-handling)) |
   | Safety-timer fault | Report; cleared by re-plugging |
   | Charge done | Ring shows green briefly when the user interacts |
@@ -2765,18 +2860,27 @@ is the corrected one.
    is 100 mA, apply the load cap of [§6.3](#63-power-limiter) (LEDs ≤ 20 mA,
    no actuator moves, homing deferred): a battery below BUVLO cannot
    supplement SYS (SLUSE99C §8.3.3). OLED_VCC_EN MUST stay low unless the
-   battery can supplement (no BUVLO_STAT and VBAT ≥ about 3.15 V), and the
-   LEDs show the charging cue instead (hardware/sim, NEW-1, OLED-V1;
+   battery can supplement (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a
+   battery-only reading in this power-up), and the LEDs show the charging
+   cue instead (hardware/sim, NEW-1, OLED-V1;
    [§7.2](#72-init-sequence-and-power-sequencing)). If the pack is absent,
    below BUVLO or in precharge, the no-supplement profile of §6.3 applies
-   (total ≤ 70 mA; hardware/sim, PI-4).
+   (total ≤ 70 mA; hardware/sim, PI-4). Firmware cannot see an absent pack
+   directly: with no pack, BAT holds only its capacitor near VBATREG, so
+   CHG_STAT may read done rather than precharge. The pack therefore counts
+   as absent ("cannot supplement") until a battery-only reading in this
+   power-up has given a VBAT_est
+   ([§12.4](#124-battery-measurement-and-low-battery-policy)).
 2. **USB configured** by a host (bMaxPower 500 mA granted): TMR_ILIM = 0xCD.
 3. **No bus reset or SOF within 2 s** (a dedicated charger shorts D+/D−):
    assume a charger and set TMR_ILIM = 0xCD.
    * At 500 mA without supplement: no actuator moves, LEDs ≤ 100 mA
      peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA (hardware/sim, PI-4).
-   * With a pack: the LED instantaneous budget uses the 3.48 V row until
-     CHG_STAT reports CV or done, or the total on-USB load stays ≤ 0.40 A
+   * With a pack and VBAT_est ≥ 3.48 V: the LED instantaneous budget uses
+     the 3.48 V row until CHG_STAT reports CV or done, or the instantaneous
+     on-USB sum (lit channels × I_ch + OLED boost input + actuator) stays
+     ≤ 0.40 A, never an average. Below VBAT_est 3.48 V, or with VBAT_est
+     unknown, only the charging cue until CHG_STAT reports CV or done
      ([§6.3](#63-power-limiter); hardware/sim, NF-1).
 4. **USB suspend:** ICHG_CTRL = 0xC3 (CHG_DIS = 1) and SYS_REG SYS_MODE =
    battery-only (0x24: SYS_MODE = 01 in bits 3:2, SLUSE99C Table 8-19) to
@@ -2866,8 +2970,8 @@ clears the latch and the SENSE line.
 | BQ register differs from the desired state, or BQ reset | 60 s verify on USB against `struct bq_desired`; IC_CTRL ≠ 0x97 marks a reset ([§13.1](#131-register-init-table)) | Rewrite the differing registers from the struct (whole struct after a reset); never rewrite the bare init table | None | W_CHG_RST |
 | Charger faults (OVP, TS, TS open, timer) | STAT0/STAT1 | See [§13.2](#132-status-interrupts-and-faults); TS open → CHG_DIS = 1 | Icon; "Temperature sensor fault" | E_CHG_* |
 | Battery critical | [§12.4](#124-battery-measurement-and-low-battery-policy) | Derate, then SHIP | Low-battery screen | W_BAT_* |
-| Brown-out / POF | POFWARN at 2.9 V | LEDs, OLED and motor off (brake, then sleep), abort flash writes (hardware/sim, PI-4) | None | E_POF |
-| VLED fault (shorted LED or VLED bridge; U2 has no current limit) | At boot: RESETREAS reads 0 (power-on or brown-out reset), or FLAG0 BAT_OCP_FAULT = 1, with LED_PWR_EN recorded high in the retained rail-state record | Keep the LEDs off for the session and log a VLED fault (hardware/sim, NEW-5). If a brown-out, POF or BATOCP follows LED_PWR_EN within about 50 ms twice, latch VLED off in `state/vled_fault` and show a service fault (hardware/sim, NF-3) | "Service: LED ring fault" (latched case) | E_VLED |
+| Brown-out / POF | POFWARN at 2.9 V, ignored for 10 ms after OLED_VCC_EN or LED_PWR_EN rises ([§12.4](#124-battery-measurement-and-low-battery-policy)) | LEDs, OLED and motor off (brake, then sleep), abort flash writes (hardware/sim, PI-4) | None | E_POF |
+| VLED fault (shorted LED or VLED bridge; U2 has no current limit) | At boot: RESETREAS reads 0 (power-on or brown-out reset), or FLAG0 BAT_OCP_FAULT = 1, with LED_PWR_EN recorded high in the retained rail-state record | Keep the LEDs off for the session and log a VLED fault (hardware/sim, NEW-5). If a brown-out, POF (outside the 10 ms POF blanking) or BATOCP follows LED_PWR_EN within about 50 ms twice, latch VLED off in `state/vled_fault` and show a service fault (hardware/sim, NF-3) | "Service: LED ring fault" (latched case) | E_VLED |
 | OLED rail fault | Same boot check with OLED_VCC_EN recorded high | Leave the OLED off for the session; show an error on the LEDs (hardware/sim, OLED-V3) | LED error pattern | E_OLED_PWR |
 | OLED SPI corruption | Not detectable | Full redraw on every wake and every 5 s while static | None | — |
 | LED overcurrent | Model only (no sensing) | Average and instantaneous limiter always on ([§6.3](#63-power-limiter)); 12 mA/channel assumed until the variant is set | None | — |
@@ -3092,17 +3196,34 @@ here, marked, so the history is traceable.
     worst-case load of 0.8–1.15 N exceeds the 8 mm VSM08102's thrust at any
     battery VSYS (0.93 N best case). Select the 10 mm motor (≥ 1.2 N) or cut
     the preloads to ≤ 0.5 N (hardware/sim, MD-4). Firmware cannot close the
-    gap: the 313 PPS homing retries, the 3.55 V move threshold and the
+    gap: the 313 PPS homing retries, the VSYS_est 3.54 V move threshold and the
     temperature-compensated duty ([§5.3](#53-stepping-profile)) only keep the
     rated current.
 11. **SPICE expected failures that depend on this document.** The suite keeps
-    strict xfails for findings that only firmware rules answer: LSW-3 (DIN
-    high with VLED off, [§6.4](#64-rail-sequencing)) and NEW-1 (dead battery
-    on USB at 100 mA, [§7.2](#72-init-sequence-and-power-sequencing),
-    [§13.3](#133-input-current-strategy-on-usb)). The §1.3 GPIO-table drift
+    strict xfails, with the old firmware values, for findings that only
+    firmware rules answer (LSW-3, NEW-1, PI-1 to PI-4, NF-1, MD-1 to MD-3,
+    VSENSE-1 to VSENSE-5, OLED-V2, OLED-BST-2, charger_ts-1/-v1, LED-DATA-V1,
+    errata 219), and next to each one a guard that runs the rule as written
+    here and passes; docs/simulation.md lists them under "Remaining strict
+    xfails". One rule is still short there: item 12. The §1.3 GPIO-table drift
     (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
     revision, and `test_gpio_sleep_states_from_firmware_doc` passes against
     it (hardware/sim/results/report.md).
+12. **VBAT reading margin above 3.72 V (still open; hardware/sim, VSENSE-1/4).**
+    The fixed 75 mV VREAD_MARGIN of [§12.4](#124-battery-measurement-and-low-battery-policy)
+    covers the worst calibrated over-read only up to a true 3.72 V, because
+    the over-read grows with VSYS (about 2.1 % of the reading at the aged
+    −10/60 °C corner). At the 3.75 V OLED-BST-2 threshold and the 3.80 V and
+    3.90 V rows of [§6.3](#63-power-limiter), VBAT_est can exceed the true
+    VBAT by 0.7 / 2.0 / 4.6 mV; the suite keeps these three as strict xfails
+    (`test_read_margin_covers_over_read_with_fw_rule`). The 3.91 V B-variant
+    threshold was sized for a true VBAT of at least VBAT_est + 3 mV; with the
+    over-read of about 80 mV there it can engage at a true 3.905 V, which
+    leaves about 3 mV of VLED margin instead of 10 mV (interpolated from the
+    PI-3 guard). Options: a margin of about 2.12 % of the threshold (68 mV at
+    3.21 V, 82.7 mV at 3.90 V, 89 mV at 4.20 V), or 75 mV up to 3.72 V, 80 mV
+    up to 3.90 V and 88 mV up to 4.20 V; the 3.91 V threshold then needs a
+    re-check.
 
 **To verify on prototype or against documentation**
 
@@ -3152,7 +3273,7 @@ here, marked, so the history is traceable.
   detent); Swift Pair with RPA privacy; directed advertising per OS; whether
   Windows accepts peripheral latency 30.
 * GATT authorization callback availability in the NCS version used.
-* Stepper thrust above 500 PPS at VSYS 3.55–4.2 V; stroke time; HOME edge
+* Stepper thrust above 500 PPS at VSYS 3.54–4.2 V; stroke time; HOME edge
   repeatability and drift with temperature (the ±10-step margin of §5.4);
   homing time; that repeated 50 % stalls at the park stop do not wear or jam
   the nut.

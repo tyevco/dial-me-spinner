@@ -712,14 +712,15 @@ SRC_FW_NEW1 = ("firmware rule (hardware/sim, NEW-1, OLED-V1): firmware.md 6.3 / 
 
 def test_usb_100ma_dead_battery_oled_enable_with_fw_rule(main, check):
     """GUARD for the firmware rule NEW-1 / OLED-V1 (hardware/sim; firmware.md 6.3, 7.2 'OLED_VCC_EN rules', 13.3;
-    SPEC 5.3): while the BQ25180 input limit is 100 mA and the battery cannot supplement SYS (BUVLO_STAT, or VBAT
-    below about 3.15 V, or unknown), OLED_VCC_EN stays low and the LEDs show the <= 20 mA charging cue.  Same
+    SPEC 5.3): while the BQ25180 input limit is 100 mA and the battery cannot supplement SYS (BUVLO_STAT, or
+    VBAT_est below 3.21 V, or unknown), OLED_VCC_EN stays low and the LEDs show the <= 20 mA charging cue.  Same
     USB-only, battery-below-BUVLO deck as test_usb_100ma_dead_battery_oled_enable with the rule applied
     (OLED_VCC_EN held low), at both ends of the 100 mA code (80 mA min, 98 mA max as there), loaded with the
     20 mA cue and with the whole 70 mA budget firmware.md 6.3 allows in that phase (no-supplement profile, PI-4).
     The deferred enable at ILIM = 500 mA is test_usb_500ma_oled_enable.  Not covered here: the rule's other branch
-    (OLED allowed at 100 mA with C7 <= 04h when the battery can supplement, VBAT >= about 3.15 V): this BQ25180
-    model has no battery / supplement path and the docs give no cell resistance or supplement threshold for it."""
+    (OLED allowed at 100 mA with C7 <= 04h when the battery can supplement, VBAT_est >= 3.21 V): this BQ25180
+    model has no battery / supplement path; that branch is guarded by
+    test_load_switches.py::test_u21_turn_on_usb_100ma_supplement_with_fw_rule."""
     jobs = [(ilim, iload) for ilim in (ILIM100_MIN, ILIM100_MAX) for iload in (I_CUE_FW, I_NOSUP100_FW)]
 
     def one(job):

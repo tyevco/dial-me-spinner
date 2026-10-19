@@ -98,7 +98,7 @@ Inspect under 10–20× magnification, with the JLC X-ray images ([assembly §3.
 | main | Nothing ferrous added near the track: no shield cans, no stray screws or washers (B-9.6) | OK |
 | both | Side-entry JST SH link connectors `SM12B-SRSS-TB` (main J1 on the bottom, r 19.5, θ 330°; base J3 on the top, r ≈ 15.5, θ 120°): seated flat, entry facing the board centre, pin 1 as expected (assembly §6) | OK |
 | base | USB-C shell legs soldered through; SMF5.0A D1 cathode band toward VBUS (assembly §3.4); switch SW1 centred and square; battery connector J2 (side-entry SH `SM04B-SRSS-TB`, r 17, θ 222°, mouth radially outward) seated flat, BAT+/GND silk legible | OK |
-| both | Flux residue, solder balls, especially around the 0.5 mm ZIF, the DSBGA and the VSYS_SENSE node (R1/R2/C5): 4.5 nA of leakage there uses up the whole ±10 mV calibrated budget (SPEC §3; hardware/sim, VSENSE-2) | Clean |
+| both | Flux residue, solder balls, especially around the 0.5 mm ZIF, the DSBGA and the VSYS_SENSE node (R1/R2/C5): 4.5 nA of leakage there uses up the whole ±10 mV (25 °C) calibrated budget (SPEC §3; hardware/sim, VSENSE-2) | Clean |
 
 ---
 
@@ -319,16 +319,18 @@ AIN0 = P0.02, gain 1/6, internal 0.6 V reference (3.6 V full scale), TACQ **40 �
 | Check | Pass |
 |---|---|
 | vs DMM at TP1 (3.0 / 3.7 / 4.5 V bench), uncalibrated | within ±5.5 % (SAADC gain error EG1/6 ±3 %, divider ±1.4 %, offset) (hardware/sim, VSENSE-3) |
-| After a one-point calibration at 3.80 V | within ±20 mV over 3.3–4.5 V **[TVP]** |
+| After a one-point calibration at 3.80 V, board at about 25 °C | within ±20 mV over 3.3–4.5 V **[TVP]** |
 
 Take the calibration reference from the DMM at TP1 (VSYS at the divider), not from the bench setpoint, or keep
 the board current below 5 mA while calibrating: the BATFET, link and path resistance otherwise store a permanent
-gain error (hardware/sim, VSENSE-5). The calibrated reading holds ±10 mV only at 25 ± 10 °C on a fresh board; it
-can drift ±46 mV over −10…60 °C and with ageing, which is why firmware MUST use a low-battery SHIP threshold of
-3.53 V, not 3.48 V (hardware/sim, VSENSE-1, VSENSE-4).
+gain error (hardware/sim, VSENSE-5). The calibrated reading holds about ±10 mV at 25 °C and ±24 mV at 15–35 °C on a
+fresh board; over −10…60 °C it drifts by about +48/−55 mV, after ageing by +30/−36 mV at 25 °C and +73/−79 mV at
+−10 or 60 °C. That is why firmware compares every threshold that protects a datasheet limit against
+VBAT_est = reading − 75 mV and enters SHIP below a 3.54 V reading (VBAT_est 3.465 V), not at 3.53 V or 3.48 V
+(firmware.md §12.4; hardware/sim, VSENSE-1, VSENSE-4).
 
 On USB this reads SYS (4.4 V once firmware has set SYS_REG, 4.5 V at power-on), not the battery. Use the BQ25180
-CHG_STAT field while charging.
+CHG_STAT field while charging; firmware keeps the last battery-only VBAT_est for its USB rules (firmware.md §12.4).
 
 ### B-8.6 USB
 
@@ -595,7 +597,7 @@ assert LED_PWR_EN and scope VLED and VSYS together.
 | Inrush | ≤ ~100 mA |
 | VSYS dip during enable | ≤ 100 mV |
 | VLED steady | VSYS − I × RON (RON = 90 mΩ typ, 110 mΩ max at 3.6 V and 25 °C; 80 mΩ is the 5 V figure) |
-| VLED fall to 10 % after LED_PWR_EN low (record tFALL) | **≤ 30 ms**, expected ≈ 20–27 ms: QOD (150 Ω typical) plus R4 (68 Ω) into ≈ 49 µF nominal (SLVSDW8B §9.3.3). SPICE: ≈ 24 ms nominal, 26.6 ms worst case (3.48 V start, C8/C9 +20 %, DC bias), 25.7 ms from 4.2 V (SPEC §5.1; hardware/sim, LSW-2, `test_u2_qod_discharge_tolerance_extremes`). The datasheet tFALL row implies an internal QOD nearer 170 Ω, so a reading of 27–30 ms passes but log it (hardware/sim, NEW-4). Above 30 ms fails: firmware waits ≥ 30 ms ([`firmware.md`](firmware.md) §6.4, test 12) |
+| VLED fall to 10 % after LED_PWR_EN low (record tFALL) | **≤ 30 ms**, expected ≈ 20–27 ms: QOD (150 Ω typical) plus R4 (68 Ω) into ≈ 49 µF nominal (SLVSDW8B §9.3.3). SPICE: ≈ 24 ms nominal, 26.6 ms worst case (3.465 V start, C8/C9 +20 %, DC bias), 25.7 ms from 4.2 V (SPEC §5.1; hardware/sim, LSW-2, `test_u2_qod_discharge_tolerance_extremes`). The datasheet tFALL row implies an internal QOD nearer 170 Ω, so a reading of 27–30 ms passes but log it (hardware/sim, NEW-4). Above 30 ms fails: firmware waits ≥ 30 ms ([`firmware.md`](firmware.md) §6.4, test 12) |
 
 Timing and RON are from [TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.5–7.6. The
 `main_power` sheet has C7 (1 nF/50 V) from CT to **VSYS**, the switch's VIN (assembly §2.4 item 3, done). If VLED
@@ -627,7 +629,9 @@ output; the same table applies:
 | Ringing | < 0.5 V | |
 
 **Sequencing** (SPEC §5.1, §5.4): enable VLED and wait **≥ 10 ms with P0.06 low** before the first frame, so VLED
-is ≥ 2.5 V before DIN goes high (tON ≈ 3.8 ms; hardware/sim, LED-DATA-V4). To turn off: send an all-zero frame,
+is ≥ 2.67 V before DIN goes high (DI abs max VDD + 0.7 V with +3V3 up to 3.366 V; tON ≈ 3.8 ms; SPICE ≥ 2.97 V at
+10 ms; hardware/sim, LED-DATA-V4). Firmware ignores POFWARN for 10 ms after LED_PWR_EN rises, because the enable
+can dip +3V3 below the POF threshold's upper bound (firmware.md §12.4). To turn off: send an all-zero frame,
 drive P0.06 low, release LED_PWR_EN, then wait ≥ 30 ms before re-enabling VLED or treating it as off (LSW-2).
 Firmware, the bring-up image included, MUST never drive P0.06 high while VLED is off: QOD holds VLED at 0 V, the
 DIN input limit is VDD + 0.7 V, and DIN would back-power the ring through its ESD diode (hardware/sim, LSW-3). Only
@@ -652,11 +656,11 @@ down by R42) on the scope, which proves every LED passes data.
 | PWM phase alignment: ring at 10 % white right after LED_PWR_EN, VLED current on the scope (current probe on the VLED side, or a shunt in the bench lead) | Record the peak and whether the 48 LEDs' PWM phases stay aligned or drift apart. Aligned, the sum current pulses to the full-on value of the lit channels (≈ 0.72 A for the whole ring) at the LED PWM rate, not the 72 mA average (hardware/sim, PI-2) |
 
 Firmware cap: **300 mA burst / 150 mA sustained** ([leds research]), and on top of it an instantaneous budget of
-lit channels × 5 mA, scaled with VBAT (0.19 A at 3.48 V up to the full ring at ≥ 3.90 V, less ≈ 0.23 A while the
-actuator moves), because aligned PWM draws the full peak (SPEC §5.4; hardware/sim, PI-2). The limiter MUST be
-active from the first frame after reset (PI-1). If the WS2812**B**-2020-V6 (12 mA/ch) was fitted instead, full
-white is 1.73 A: never test it; it needs the instantaneous cap (≈ 1.0 A at full battery) from first boot
-(hardware/sim, PI-3).
+lit channels × 5 mA, scaled with VBAT_est (0.19 A at 3.48 V and 0.26 A at 3.53 V up to the full ring at ≥ 3.90 V,
+less ≈ 0.23 A while the actuator moves), because aligned PWM draws the full peak (SPEC §5.4; hardware/sim, PI-2).
+The limiter MUST be active from the first frame after reset (PI-1). If the WS2812**B**-2020-V6 (12 mA/ch) was fitted
+instead, full white is 1.73 A: never test it; it needs the instantaneous cap (1.0 A only from VBAT_est ≥ 3.91 V)
+from first boot (hardware/sim, PI-3).
 
 **B-9.8f Logic margin.** Run the walk test for 10 min with VSYS at 4.6 V (bench), then at 3.4 V. Reach 3.4 V by
 starting at 3.7 V and lowering the supply while the unit runs: a cold start at 3.4 V on BAT may stay off
@@ -668,9 +672,10 @@ is the stress case, and the margin has to be measured, not assumed. If the run a
 timing is clean, fit the level-shifter option: remove R43, fit U43 (SN74LV1T34DBVR, powered from VLED) and C43
 (100 nF), both DNP by default (SPEC §5.4, `leds.py`), then repeat B-9.8b and this test.
 
-**B-9.8g Low battery.** At VSYS 3.4–3.5 V with white at 25 %, record the colour shift. Firmware derates below
-3.50 V, and when the loaded VSYS falls below about 3.3 V (WS2812C VDD minimum) it MUST send an all-zero frame and
-drop LED_PWR_EN (SPEC §5.4; hardware/sim, LED-DATA-3).
+**B-9.8g Low battery.** At VSYS 3.4–3.5 V with white at 25 %, record the colour shift. The application firmware
+derates to 100 mA below VBAT_est 3.60 V and keeps only the red cue below VBAT_est 3.53 V (firmware.md §6.3), so run
+this with the bring-up image; when the loaded VSYS falls below about 3.3 V (WS2812C VDD minimum) firmware MUST send
+an all-zero frame and drop LED_PWR_EN (SPEC §5.4; hardware/sim, LED-DATA-3).
 
 **B-9.8h Thermal.** Run 10 min at the 150 mA sustained cap. Board temperature rise near the ring ≤ 15 °C
 **[TVP]**.
@@ -679,7 +684,7 @@ drop LED_PWR_EN (SPEC §5.4; hardware/sim, LED-DATA-3).
 
 **B-9.9a Bare boost: panel NOT fitted.** Bench at 3.7 V into J2, 500 mA limit. Run the OLED tests with a
 battery or bench "battery" on J2, never on USB alone: firmware MUST never set OLED_VCC_EN while the BQ25180 input
-limit is 100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS (no BUVLO_STAT, VBAT ≥ about 3.15 V),
+limit is 100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS (no BUVLO_STAT, VBAT_est ≥ 3.21 V),
 because the 100 mA input cannot carry the boost inrush and a dead-battery unit then reboot-loops (SPEC §5.3;
 hardware/sim, NEW-1, OLED-V1).
 
@@ -750,7 +755,7 @@ SPIM2 as the LED-driver fallback ([`firmware.md`](firmware.md) §7.1).
 | Current (battery side, VSYS 3.7 V): black with VCC on | ≈ 5 mA |
 | Typical dark UI | ≈ 14–26 mA |
 | Full white **only at `C7` = 0x08, briefly** | Well under the ≈ 146 mA maximum-contrast figure ([display research]) |
-| Below rested VBAT 3.75 V, and while the LED current exceeds its 150 mA sustained cap | Firmware MUST hold `C7` ≤ 08h and ≤ 30 % white area: at low VSYS the boost has almost no headroom over the full-white current, about 33–40 mA at 3.0 V (SPEC §5.3; hardware/sim, OLED-BST-2) |
+| Below VBAT_est 3.75 V (rested reading less 75 mV), and while the LED current exceeds its 150 mA sustained cap | Firmware MUST hold `C7` ≤ 08h and ≤ 30 % white area: at low VSYS the boost has almost no headroom over the full-white current, about 33–40 mA at 3.0 V (SPEC §5.3; hardware/sim, OLED-BST-2) |
 | Sleep: `AE`, `AB 00`, VCC_EN low, RES# held high | OLED + boost ≈ 17.6 µA typ at 25 °C, including ≈ 5.4 µA of D21 leakage; 46 µA maximum at 25 °C, 72 µA at 60 °C (architecture §8.2; measured in B-10) |
 | Wake: `AB 01`, VCC on, ≥ 200 ms, `AF`, full redraw | Image back in about 0.2–0.4 s |
 | Listen at near-black | No audible PFM whine (about 15 kHz at 1.5 mA). If present, see the CFF note above |
@@ -1136,7 +1141,7 @@ count.
 | 15 | B-7.3 | NFCPINS, PSELRESET, REGOUT0 | 0xFFFFFFFF (NFC mode); PIN 18 ×2; 0xFFFFFFFF | |
 | 16 | B-7.3 | SWD after a power cycle | Attaches | |
 | 17 | B-8.3 | LFCLKSTAT | 0x00010001 | |
-| 18 | B-8.5 | VSYS ADC vs DMM | ±5.5 % raw; ±20 mV calibrated (reference from the DMM at TP1) | |
+| 18 | B-8.5 | VSYS ADC vs DMM | ±5.5 % raw; ±20 mV calibrated at about 25 °C (reference from the DMM at TP1) | |
 | 19 | B-8.6 | USB CDC enumeration and loopback; enumeration at VBUS 4.50 V through 1 m | 0 errors; enumerates | |
 | 20 | B-8.7 | MCUboot: USB DFU, BLE DFU, revert; serial recovery **with the TC2030 removed**, routes a/b/c; rails off in MCUboot and recovery | DFU and revert pass; route c and at least one of a/b pass; working routes recorded; VLED, OLED_VIN < 50 mV, MOT_NSLEEP low. **Before the OLED is fitted** | |
 | 21 | B-9.1 | QSPI JEDEC ID, quad R/W 1 MB | EF 40 18; 0 errors | |
