@@ -748,7 +748,8 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 **Decision.**
 
 * **Charger (base board):** TI **BQ25180** I2C linear charger with power path.
-  On USB it regulates SYS to 4.5 V; on battery SYS = VBAT. Ship mode with
+  On USB it regulates SYS to 4.4 V (SYS_REG, set by firmware); on battery
+  SYS = VBAT. Ship mode with
   push-button wake draws 3.2 µA, and shutdown draws 15 nA. The input tolerates
   25 V. A 10 kΩ B3435 NTC (RT1) sits on TS/MR, on the base-board top side at
   r 8, θ 200°. The base board is single-sided, so RT1 reads board/pack-air
@@ -756,10 +757,15 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 * **Ship-mode wake network:** the centre switch, through a BSS138DW, both
   wakes the charger (TS/MR pulled low: ship-mode wake after about 2 s, hardware
   reset after 20 s) and pulls the nRF's BTN_N low (instant wake from sleep).
-  The two FETs isolate the shared TS/MR pin from the nRF.
+  The two FETs isolate the shared TS/MR pin from the nRF. The gate pull-down
+  (base R4) is 100 kΩ, not 1 MΩ, so the Q1 gates discharge within the
+  BQ25180 deglitch after a release (worst 38.5 µs); it costs about 42 µA
+  from VBAT only while the dial is held (hardware/sim, charger_ts-2).
 * **Main board:** the nRF52840 runs in **normal-voltage mode**:
   * VDD and VDDH are both on +3V3 from an **RT9080-33** LDO
-    (2 µA quiescent, 600 mA, about 310 mV dropout at 600 mA). SPEC's alternate
+    (2 µA typical / 4 µA maximum quiescent, 600 mA, about 310 mV dropout at
+    600 mA; its ground current at the ~20 µA sleep load is not specified and
+    is a bring-up measurement, hardware/sim LDO-1, LDO-6). SPEC's alternate
     is the TPS7A0233 (25 nA quiescent, 200 mA, same SOT-23-5 pin functions;
     confirm the pinout before swapping).
   * The module's internal REG1 DC/DC is enabled.
@@ -768,6 +774,12 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
     and the motor through DRV8837 nSLEEP.
   * Battery voltage is read through an always-on divider (R1 2.2 MΩ, LCSC
     C11490; R2 1 MΩ; C5 100 nF) into AIN0 (P0.02), costing about 1.2 µA.
+    After the one-point production calibration the reading is within
+    ±10 mV only at 25 ± 10 °C on a fresh board; over −10…60 °C and with
+    ageing it can drift by ±46 mV, which sets the 3.53 V SHIP threshold
+    ([§7](#7-power-tree)) (hardware/sim, VSENSE-1/4). The VSYS_SENSE node is
+    high-impedance: 4.5 nA of surface leakage uses the whole ±10 mV budget,
+    so keep it away from other copper and clean (VSENSE-4).
 
 **Why normal-voltage mode, when the power research recommended high-voltage
 mode (VDDH = SYS, REG0 DC/DC → 3.0 V)?** SPEC chose normal mode, and the
