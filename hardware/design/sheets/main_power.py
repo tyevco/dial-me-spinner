@@ -31,7 +31,7 @@ def build(d):
     d.sheet(*SHEET)
 
     d.group("Board-to-board link (to base board through the spindle)",
-            "JST SH 12-way SIDE-entry on the bottom at r = 17.5 (a vertical header would hit the rotor hub);\n"
+            "JST SH 12-way SIDE-entry on the bottom at r = 19.5, θ 330° (a vertical header would hit the rotor hub);\n"
             "the harness lies flat under the board into the spindle bore. Identical pinout on the base board (SPEC §2)")
     d.add("J1", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
           "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
@@ -74,7 +74,8 @@ def build(d):
     d.add("R4", "Device:R", "68", R0402, pins={"1": "VLED", "2": "LSW_QOD"},
           fields={"MPN": "RC0402FR-0768RL", "Manufacturer": "YAGEO", "LCSC": "C163455"},
           description="QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % "
-                      "in <= 28.3 ms at the C8/C9 +20 % corner, inside the firmware's 30 ms (hardware/sim test_load_switches)")
+                      "in about 24 ms (26.6 ms worst corner, C8/C9 +20 %, DC bias), inside the firmware's 30 ms "
+                      "(hardware/sim test_u2_qod_discharge_tolerance_extremes)")
     d.add("C8", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C45783"})
     d.add("C9", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},

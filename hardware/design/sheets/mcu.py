@@ -154,7 +154,8 @@ def build(d):
 
     d.group("USB VBUS (module pad 32) and second-stage USB ESD",
             "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\n"
-            "above the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) it peaks at 5.07-5.48 V (hardware/sim test_usb_input).\n"
+            "above the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) R12 x C12 filters the ring and the pin sees the settled\n"
+            "VBUS, 4.49-5.49 V for a 4.5-5.5 V source (hardware/sim test_hotplug_nrf_vbus_abs_max).\n"
             "DC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\n"
             "U12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n"
             "~145 nH link (HBM 2 kV class = 1.33 A). U12 as close as the module courtyard allows (3.5 mm pad to\n"

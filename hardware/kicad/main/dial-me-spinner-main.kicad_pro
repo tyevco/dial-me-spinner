@@ -362,6 +362,35 @@
     "legacy_lib_dir": "",
     "legacy_lib_list": []
   },
-  "sheets": [],
+  "sheets": [
+    [
+      "fc48ae6b-820c-5234-a46b-1ec97c7946cc",
+      "Root"
+    ],
+    [
+      "f5291bb4-1470-5b34-a72e-617e02f765d6",
+      "Power & link"
+    ],
+    [
+      "6fff20c3-e674-59c7-af56-aa9123ab713e",
+      "MCU, flash & debug"
+    ],
+    [
+      "1ed31de8-daef-5c47-978c-557b82800f0b",
+      "OLED display & 13 V boost"
+    ],
+    [
+      "2b7db82f-9d5a-5ca0-953a-6fb9ddae330b",
+      "LED ring"
+    ],
+    [
+      "1a1dad6c-00bc-58a7-8c69-7c0ff0e5b931",
+      "Sensors & sounder"
+    ],
+    [
+      "8113f1f6-53c1-52f2-95d1-606bcf349019",
+      "Detent actuator & home sensor"
+    ]
+  ],
   "text_variables": {}
 }

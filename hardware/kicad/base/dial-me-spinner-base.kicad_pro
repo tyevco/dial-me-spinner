@@ -332,6 +332,15 @@
     "legacy_lib_dir": "",
     "legacy_lib_list": []
   },
-  "sheets": [],
+  "sheets": [
+    [
+      "fc48ae6b-820c-5234-a46b-1ec97c7946cc",
+      "Root"
+    ],
+    [
+      "d20f7d1f-e3e6-57be-a424-dcd2e3160d7e",
+      "Base board"
+    ]
+  ],
   "text_variables": {}
 }

@@ -3169,7 +3169,7 @@
 		)
 		(uuid "54e60d5f-5642-5fe9-a580-f9161b3f4617")
 	)
-	(text "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\nabove the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) it peaks at 5.07-5.48 V (hardware/sim test_usb_input).\nDC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\nU12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n~145 nH link (HBM 2 kV class = 1.33 A). Place U12 within 3 mm of pads D+/D-, flow-through."
+	(text "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\nabove the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) R12 x C12 filters the ring and the pin sees the settled\nVBUS, 4.49-5.49 V for a 4.5-5.5 V source (hardware/sim test_hotplug_nrf_vbus_abs_max).\nDC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\nU12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n~145 nH link (HBM 2 kV class = 1.33 A). U12 as close as the module courtyard allows (3.5 mm pad to\npad to D-); test_usb_input reads the placed distance."
 		(exclude_from_sim no)
 		(at 140.97 24.13 0)
 		(effects
@@ -3183,7 +3183,7 @@
 	)
 	(rectangle
 		(start 138.43 17.78)
-		(end 255.27 83.82)
+		(end 256.54 87.63)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -3195,7 +3195,7 @@
 	)
 	(text "32.768 kHz LFXO"
 		(exclude_from_sim no)
-		(at 262.89 20.32 0)
+		(at 264.16 20.32 0)
 		(effects
 			(font
 				(size 2 2)
@@ -3207,7 +3207,7 @@
 	)
 	(text "SC-20S CL 9 pF; Ccap = 2*CL - Cpin - Cpcb ~ 12 pF C0G.\nR1 <= 90k (nRF RS_LFXO max 100k); DLmax 0.5 uW = nRF PD_LFXO.\nAt pads 17/18, traces < 5 mm, symmetric, GND guard; no copper under Y1."
 		(exclude_from_sim no)
-		(at 262.89 24.13 0)
+		(at 264.16 24.13 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3218,8 +3218,8 @@
 		(uuid "c35557be-313b-5abd-9f7a-afc5f8b29e62")
 	)
 	(rectangle
-		(start 260.35 17.78)
-		(end 353.06 58.42)
+		(start 261.62 17.78)
+		(end 354.33 58.42)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -5566,7 +5566,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 154.94 43.18 90)
+		(at 154.94 48.26 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5574,7 +5574,7 @@
 		(dnp no)
 		(uuid "90027358-57a6-5838-93c1-6015e0ab12b3")
 		(property "Reference" "R12"
-			(at 154.94 40.564 90)
+			(at 154.94 45.644 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5582,7 +5582,7 @@
 			)
 		)
 		(property "Value" "4.7"
-			(at 154.94 45.796 90)
+			(at 154.94 50.876 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5590,7 +5590,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5599,7 +5599,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5608,7 +5608,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5617,7 +5617,7 @@
 			)
 		)
 		(property "MPN" "FRC0402F4R70TS"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5626,7 +5626,7 @@
 			)
 		)
 		(property "Manufacturer" "FOJAN"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5635,7 +5635,7 @@
 			)
 		)
 		(property "LCSC" "C2909356"
-			(at 154.94 43.18 0)
+			(at 154.94 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5659,7 +5659,7 @@
 		)
 	)
 	(wire
-		(pts (xy 151.13 43.18) (xy 148.59 43.18))
+		(pts (xy 151.13 48.26) (xy 148.59 48.26))
 		(stroke
 			(width 0)
 			(type default)
@@ -5668,7 +5668,7 @@
 	)
 	(symbol
 		(lib_id "power:VBUS")
-		(at 148.59 43.18 90)
+		(at 148.59 48.26 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5676,7 +5676,7 @@
 		(dnp no)
 		(uuid "4cf9f4e0-6628-50de-ae57-35b74ce51be4")
 		(property "Reference" "#PWR03008"
-			(at 148.59 43.18 0)
+			(at 148.59 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5685,7 +5685,7 @@
 			)
 		)
 		(property "Value" "VBUS"
-			(at 145.29 43.18 90)
+			(at 145.29 48.26 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5694,7 +5694,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 148.59 43.18 0)
+			(at 148.59 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5703,7 +5703,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 148.59 43.18 0)
+			(at 148.59 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5712,7 +5712,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 148.59 43.18 0)
+			(at 148.59 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5733,7 +5733,7 @@
 		)
 	)
 	(wire
-		(pts (xy 158.75 43.18) (xy 161.29 43.18))
+		(pts (xy 158.75 48.26) (xy 161.29 48.26))
 		(stroke
 			(width 0)
 			(type default)
@@ -5741,7 +5741,7 @@
 		(uuid "aba448e0-936f-53b1-877a-d79381137625")
 	)
 	(label "VBUS_NRF"
-		(at 161.29 43.18 0)
+		(at 161.29 48.26 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5752,7 +5752,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 180.34 60.96 0)
+		(at 180.34 63.5 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5760,15 +5760,6 @@
 		(dnp no)
 		(uuid "6988523c-cd75-5443-9564-636139d1aa43")
 		(property "Reference" "C12"
-			(at 183.642 59.69 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "4.7u/16V"
 			(at 183.642 62.23 0)
 			(effects
 				(font
@@ -5777,8 +5768,17 @@
 				(justify left)
 			)
 		)
+		(property "Value" "4.7u/16V"
+			(at 183.642 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5787,7 +5787,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5796,7 +5796,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5805,7 +5805,7 @@
 			)
 		)
 		(property "MPN" "CL10A475KO8NNNC"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5814,7 +5814,7 @@
 			)
 		)
 		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5823,7 +5823,7 @@
 			)
 		)
 		(property "LCSC" "C19666"
-			(at 180.34 60.96 0)
+			(at 180.34 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5847,7 +5847,7 @@
 		)
 	)
 	(wire
-		(pts (xy 180.34 57.15) (xy 180.34 54.61))
+		(pts (xy 180.34 59.69) (xy 180.34 57.15))
 		(stroke
 			(width 0)
 			(type default)
@@ -5855,7 +5855,7 @@
 		(uuid "cf030ac5-3542-5edb-8497-d6e20a34cf72")
 	)
 	(label "VBUS_NRF"
-		(at 180.34 54.61 90)
+		(at 180.34 57.15 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5865,7 +5865,7 @@
 		(uuid "7a0abc4a-1f51-50a5-bc3c-082707279165")
 	)
 	(wire
-		(pts (xy 180.34 64.77) (xy 180.34 67.31))
+		(pts (xy 180.34 67.31) (xy 180.34 69.85))
 		(stroke
 			(width 0)
 			(type default)
@@ -5874,7 +5874,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 180.34 67.31 0)
+		(at 180.34 69.85 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5882,7 +5882,7 @@
 		(dnp no)
 		(uuid "34794084-fb07-5486-b989-f7db95c24d60")
 		(property "Reference" "#PWR03009"
-			(at 180.34 67.31 0)
+			(at 180.34 69.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5891,7 +5891,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 180.34 70.61 0)
+			(at 180.34 73.15 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5900,7 +5900,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 180.34 67.31 0)
+			(at 180.34 69.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5909,7 +5909,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 180.34 67.31 0)
+			(at 180.34 69.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5918,7 +5918,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 180.34 67.31 0)
+			(at 180.34 69.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5940,7 +5940,7 @@
 	)
 	(symbol
 		(lib_id "Power_Protection:USBLC6-2SC6")
-		(at 203.2 60.96 0)
+		(at 203.2 66.04 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -5948,7 +5948,7 @@
 		(dnp no)
 		(uuid "d9c8781b-ec9c-596c-843e-6e4ed4506a59")
 		(property "Reference" "U12"
-			(at 198.12 52.58 0)
+			(at 198.12 57.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5957,7 +5957,7 @@
 			)
 		)
 		(property "Value" "USBLC6-2SC6"
-			(at 198.12 54.88 0)
+			(at 198.12 59.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5966,7 +5966,7 @@
 			)
 		)
 		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5975,7 +5975,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.st.com/resource/en/datasheet/usblc6-2.pdf"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5984,7 +5984,7 @@
 			)
 		)
 		(property "Description" "Very low capacitance ESD protection diode, 2 data-line, SOT-23-6"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5993,7 +5993,7 @@
 			)
 		)
 		(property "MPN" "USBLC6-2SC6"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6002,7 +6002,7 @@
 			)
 		)
 		(property "Manufacturer" "STMicroelectronics"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6011,7 +6011,7 @@
 			)
 		)
 		(property "LCSC" "C7519"
-			(at 203.2 60.96 0)
+			(at 203.2 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6047,7 +6047,7 @@
 		)
 	)
 	(wire
-		(pts (xy 198.12 60.96) (xy 195.58 60.96))
+		(pts (xy 198.12 66.04) (xy 195.58 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -6056,7 +6056,7 @@
 	)
 	(global_label "USB_DP"
 		(shape passive)
-		(at 195.58 60.96 180)
+		(at 195.58 66.04 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -6066,7 +6066,7 @@
 		)
 		(uuid "775826d3-652c-542c-a4fb-5756ffeddbb0")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 195.58 60.96 180)
+			(at 195.58 66.04 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6077,7 +6077,7 @@
 		)
 	)
 	(wire
-		(pts (xy 198.12 63.5) (xy 195.58 63.5))
+		(pts (xy 198.12 68.58) (xy 195.58 68.58))
 		(stroke
 			(width 0)
 			(type default)
@@ -6086,7 +6086,7 @@
 	)
 	(global_label "USB_DM"
 		(shape passive)
-		(at 195.58 63.5 180)
+		(at 195.58 68.58 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -6096,7 +6096,7 @@
 		)
 		(uuid "53b7ee93-3e71-5f15-af90-bf6b4b6744ae")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 195.58 63.5 180)
+			(at 195.58 68.58 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6107,7 +6107,7 @@
 		)
 	)
 	(wire
-		(pts (xy 203.2 55.88) (xy 203.2 53.34))
+		(pts (xy 203.2 60.96) (xy 203.2 58.42))
 		(stroke
 			(width 0)
 			(type default)
@@ -6115,7 +6115,7 @@
 		(uuid "f71da887-f41b-5c61-b21d-d050c7ea2b48")
 	)
 	(label "VBUS_NRF"
-		(at 203.2 53.34 90)
+		(at 203.2 58.42 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6125,7 +6125,7 @@
 		(uuid "5ae84afa-e079-5480-a5d2-029b813aebfc")
 	)
 	(wire
-		(pts (xy 203.2 68.58) (xy 203.2 71.12))
+		(pts (xy 203.2 73.66) (xy 203.2 76.2))
 		(stroke
 			(width 0)
 			(type default)
@@ -6134,7 +6134,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 203.2 71.12 0)
+		(at 203.2 76.2 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6142,7 +6142,7 @@
 		(dnp no)
 		(uuid "503bf451-df59-5287-83b4-8cfd5493d2a1")
 		(property "Reference" "#PWR03010"
-			(at 203.2 71.12 0)
+			(at 203.2 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6151,7 +6151,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 203.2 74.42 0)
+			(at 203.2 79.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6160,7 +6160,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 203.2 71.12 0)
+			(at 203.2 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6169,7 +6169,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 203.2 71.12 0)
+			(at 203.2 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6178,7 +6178,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 203.2 71.12 0)
+			(at 203.2 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6199,7 +6199,7 @@
 		)
 	)
 	(wire
-		(pts (xy 208.28 60.96) (xy 210.82 60.96))
+		(pts (xy 208.28 66.04) (xy 210.82 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -6208,7 +6208,7 @@
 	)
 	(global_label "USB_DP"
 		(shape passive)
-		(at 210.82 60.96 0)
+		(at 210.82 66.04 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -6218,7 +6218,7 @@
 		)
 		(uuid "b0646a5c-a7a6-5430-be27-a667e49e0c77")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 210.82 60.96 0)
+			(at 210.82 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6229,7 +6229,7 @@
 		)
 	)
 	(wire
-		(pts (xy 208.28 63.5) (xy 210.82 63.5))
+		(pts (xy 208.28 68.58) (xy 210.82 68.58))
 		(stroke
 			(width 0)
 			(type default)
@@ -6238,7 +6238,7 @@
 	)
 	(global_label "USB_DM"
 		(shape passive)
-		(at 210.82 63.5 0)
+		(at 210.82 68.58 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -6248,7 +6248,7 @@
 		)
 		(uuid "18fda0aa-1798-5235-86d3-ab950ea52e42")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 210.82 63.5 0)
+			(at 210.82 68.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6260,7 +6260,7 @@
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
-		(at 226.06 45.72 0)
+		(at 226.06 48.26 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -6268,15 +6268,6 @@
 		(dnp no)
 		(uuid "b0691128-b31d-5f19-8bcd-189531db7d59")
 		(property "Reference" "#FLG10"
-			(at 228.346 44.45 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "PWR_FLAG"
 			(at 228.346 46.99 0)
 			(effects
 				(font
@@ -6285,8 +6276,17 @@
 				(justify left)
 			)
 		)
+		(property "Value" "PWR_FLAG"
+			(at 228.346 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
-			(at 226.06 45.72 0)
+			(at 226.06 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6295,7 +6295,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 226.06 45.72 0)
+			(at 226.06 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6304,7 +6304,7 @@
 			)
 		)
 		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 226.06 45.72 0)
+			(at 226.06 48.26 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6325,7 +6325,7 @@
 		)
 	)
 	(wire
-		(pts (xy 226.06 45.72) (xy 226.06 48.26))
+		(pts (xy 226.06 48.26) (xy 226.06 50.8))
 		(stroke
 			(width 0)
 			(type default)
@@ -6333,7 +6333,7 @@
 		(uuid "20e8a99a-931e-5f7e-8879-398cf305dcb5")
 	)
 	(label "VBUS_NRF"
-		(at 226.06 48.26 270)
+		(at 226.06 50.8 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6344,7 +6344,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 274.32 40.64 90)
+		(at 276.86 40.64 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6352,7 +6352,7 @@
 		(dnp no)
 		(uuid "07c24fb4-382a-53f4-ac33-49edbb860524")
 		(property "Reference" "C13"
-			(at 274.32 37.008 90)
+			(at 276.86 37.008 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6360,7 +6360,7 @@
 			)
 		)
 		(property "Value" "12p C0G"
-			(at 274.32 44.272 90)
+			(at 276.86 44.272 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6368,7 +6368,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6377,7 +6377,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6386,7 +6386,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6395,7 +6395,7 @@
 			)
 		)
 		(property "MPN" "0402CG120J500NT"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6404,7 +6404,7 @@
 			)
 		)
 		(property "Manufacturer" "FH (Guangdong Fenghua)"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6413,7 +6413,7 @@
 			)
 		)
 		(property "LCSC" "C1547"
-			(at 274.32 40.64 0)
+			(at 276.86 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6437,7 +6437,7 @@
 		)
 	)
 	(wire
-		(pts (xy 270.51 40.64) (xy 267.97 40.64))
+		(pts (xy 273.05 40.64) (xy 270.51 40.64))
 		(stroke
 			(width 0)
 			(type default)
@@ -6445,7 +6445,7 @@
 		(uuid "b7df88fc-04a7-546a-8989-dc690c48cd2a")
 	)
 	(label "XL1"
-		(at 267.97 40.64 180)
+		(at 270.51 40.64 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6455,7 +6455,7 @@
 		(uuid "e5d28968-03c7-570a-b30d-a6994ddc8229")
 	)
 	(wire
-		(pts (xy 278.13 40.64) (xy 280.67 40.64))
+		(pts (xy 280.67 40.64) (xy 283.21 40.64))
 		(stroke
 			(width 0)
 			(type default)
@@ -6464,7 +6464,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 280.67 40.64 90)
+		(at 283.21 40.64 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6472,7 +6472,7 @@
 		(dnp no)
 		(uuid "2fe9229c-6ad2-5fcc-a619-c43b5da22d9d")
 		(property "Reference" "#PWR03011"
-			(at 280.67 40.64 0)
+			(at 283.21 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6481,7 +6481,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 283.97 40.64 90)
+			(at 286.51 40.64 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6490,7 +6490,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 280.67 40.64 0)
+			(at 283.21 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6499,7 +6499,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 280.67 40.64 0)
+			(at 283.21 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6508,7 +6508,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 280.67 40.64 0)
+			(at 283.21 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6530,7 +6530,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 304.8 40.64 90)
+		(at 307.34 40.64 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6538,7 +6538,7 @@
 		(dnp no)
 		(uuid "86dd0025-fcdd-52de-8ff9-7169a026ce10")
 		(property "Reference" "C14"
-			(at 304.8 37.008 90)
+			(at 307.34 37.008 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6546,7 +6546,7 @@
 			)
 		)
 		(property "Value" "12p C0G"
-			(at 304.8 44.272 90)
+			(at 307.34 44.272 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6554,7 +6554,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6563,7 +6563,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6572,7 +6572,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6581,7 +6581,7 @@
 			)
 		)
 		(property "MPN" "0402CG120J500NT"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6590,7 +6590,7 @@
 			)
 		)
 		(property "Manufacturer" "FH (Guangdong Fenghua)"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6599,7 +6599,7 @@
 			)
 		)
 		(property "LCSC" "C1547"
-			(at 304.8 40.64 0)
+			(at 307.34 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6623,7 +6623,7 @@
 		)
 	)
 	(wire
-		(pts (xy 300.99 40.64) (xy 298.45 40.64))
+		(pts (xy 303.53 40.64) (xy 300.99 40.64))
 		(stroke
 			(width 0)
 			(type default)
@@ -6631,7 +6631,7 @@
 		(uuid "e6b817ad-5de3-5ac3-87a8-8aba1e844c7d")
 	)
 	(label "XL2"
-		(at 298.45 40.64 180)
+		(at 300.99 40.64 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6641,7 +6641,7 @@
 		(uuid "f17a8791-0827-5d98-8c66-19897c2cf9b5")
 	)
 	(wire
-		(pts (xy 308.61 40.64) (xy 311.15 40.64))
+		(pts (xy 311.15 40.64) (xy 313.69 40.64))
 		(stroke
 			(width 0)
 			(type default)
@@ -6650,7 +6650,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 311.15 40.64 90)
+		(at 313.69 40.64 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6658,7 +6658,7 @@
 		(dnp no)
 		(uuid "d1a570f1-ac22-5180-ab8e-87fe17f3ab6f")
 		(property "Reference" "#PWR03012"
-			(at 311.15 40.64 0)
+			(at 313.69 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6667,7 +6667,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 314.45 40.64 90)
+			(at 316.99 40.64 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6676,7 +6676,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 311.15 40.64 0)
+			(at 313.69 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6685,7 +6685,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 311.15 40.64 0)
+			(at 313.69 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6694,7 +6694,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 311.15 40.64 0)
+			(at 313.69 40.64 0)
 			(effects
 				(font
 					(size 1.27 1.27)

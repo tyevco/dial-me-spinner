@@ -48,24 +48,26 @@ def build(d):
     s = d.sheet(*SHEET)
     s.notes.append(
         "48x WS2812C-2020-V6 (5 mA/ch) on VLED = TPS22917 load-switch output (main_power sheet, 2x 22 uF bulk there).\n"
-        "Data: nRF P0.06 (I2S SDOUT) = LED_DIN_MCU -> R40 220R -> LED_DIN -> D101 -> LED_D1 -> D102 -> ... -> D148 -> LED_D48 (TP40).\n"
+        "Data: nRF P0.06 (I2S SDOUT, H0H1 drive) = LED_DIN_MCU -> R40 220R -> LED_DIN_R (R41) -> R43 0R -> LED_DIN -> D101 -> ... -> D148 (TP40).\n"
         "D101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic; DNP SN74LV1T34 option (U43/R43) if the margin is short.\n"
         "WS2812B-2020-V6 (C52917434, 12 mA/ch) is a footprint/pinout drop-in; firmware must then cap peak current."
     )
 
     d.group("LED data input",
             "220R series (bounds DIN clamp current if P0.06 is high while VLED is off): place within 3 mm of the nRF pin (P0.06).\n"
-            "100k pull-down at D101.DIN holds DIN low while P0.06 is\n"
+            "100k pull-down R41 on LED_DIN_R holds DIN low while P0.06 is\n"
             "high-Z (reset/DFU). FIRMWARE: send an all-zero frame and\n"
             "drive P0.06 low (pinctrl sleep) before deasserting\n"
-            "LED_PWR_EN. Never drive LED_DIN_MCU high while VLED is off:\n"
+            "LED_PWR_EN; after raising it, wait >= 10 ms with P0.06 low.\n"
+            "Never drive LED_DIN_MCU high while VLED is off:\n"
             "QOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\n"
             "would back-power the ring through its ESD diode.")
     d.add("R40", "Device:R", "220", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN_R"}, fields=RES_220R)
     d.add("R41", "Device:R", "100k", R0402, pins={"1": "LED_DIN_R", "2": "GND"}, fields=RES_100K)
 
     d.group("Optional VLED-referenced level shifter (DNP)",
-            "Default: R43 0R fitted, U43 not fitted (3.3 V drive; margin 0.1-0.2 V at VSYS 4.5 V on USB).\n"
+            "Default: R43 0R fitted, U43 not fitted (3.3 V drive; DC margin over 0.6 VDD +427 mV typical, +41 mV\n"
+            "datasheet bound at VSYS 4.59 V, so SYS_REG stays 4.4 V and the D101-D148 must be V6 parts).\n"
             "If the bench test at VSYS = 4.6 V shows bit errors: remove R43, fit U43 (powered from VLED,\n"
             "so it is unpowered whenever the ring is off) and C43.")
     d.add("R43", "Device:R", "0", R0402, pins={"1": "LED_DIN_R", "2": "LED_DIN"},

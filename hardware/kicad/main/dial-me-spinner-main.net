@@ -1,7 +1,7 @@
 (export (version "E")
   (design
     (source "/home/user/dial-me-spinner/hardware/kicad/main/dial-me-spinner-main.kicad_sch")
-    (date "2026-10-19T07:04:03+0000")
+    (date "2026-10-19T10:07:09+0000")
     (tool "Eeschema 9.0.9-9.0.9~ubuntu24.04.1")
     (sheet (number "1") (name "/") (tstamps "/")
       (title_block
@@ -457,14 +457,14 @@
       (value "68")
       (footprint "Resistor_SMD:R_0402_1005Metric")
       (datasheet "~")
-      (description "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % in <= 28.3 ms at the C8/C9 +20 % corner, inside the firmware's 30 ms (hardware/sim test_load_switches)")
+      (description "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % in about 24 ms (26.6 ms worst corner, C8/C9 +20 %, DC bias), inside the firmware's 30 ms (hardware/sim test_u2_qod_discharge_tolerance_extremes)")
       (fields
         (field (name "MPN") "RC0402FR-0768RL")
         (field (name "Manufacturer") "YAGEO")
         (field (name "LCSC") "C163455")
         (field (name "Footprint") "Resistor_SMD:R_0402_1005Metric")
         (field (name "Datasheet") "~")
-        (field (name "Description") "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % in <= 28.3 ms at the C8/C9 +20 % corner, inside the firmware's 30 ms (hardware/sim test_load_switches)"))
+        (field (name "Description") "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % in about 24 ms (26.6 ms worst corner, C8/C9 +20 %, DC bias), inside the firmware's 30 ms (hardware/sim test_u2_qod_discharge_tolerance_extremes)"))
       (libsource (lib "Device") (part "R") (description "Resistor"))
       (property (name "MPN") (value "RC0402FR-0768RL"))
       (property (name "Manufacturer") (value "YAGEO"))
