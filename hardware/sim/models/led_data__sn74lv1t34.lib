@@ -22,12 +22,13 @@
 *
 * Modelled  : input capacitance; a switching threshold VTH (parameter, set by the test anywhere between
 *             the VIL max and VIH min of the actual VCC to bracket the real threshold); separate internal
-*             delays for the rising (TDR) and the falling (TDF) output edge (ideal delay lines), so a
-*             tPLH/tPHL skew corner can be applied; a rail-to-rail CMOS output stage made of chord
+*             delays for the rising (TDR) and the falling (TDF) output edge (XSPICE adc_bridge -> d_buffer
+*             -> dac_bridge, event driven; needs ngspice with XSPICE code models, standard in ngspice 42),
+*             so a tPLH/tPHL skew corner can be applied; a rail-to-rail CMOS output stage made of chord
 *             resistances RUP/RDN switched by a first-order pre-driver with 10-90 % edge TEDGE, plus Co.
-*             The test sets TDR/TDF = tpd(VCC) - (output RC + TEDGE/2 contribution) so the model tpd into
-*             15 pF equals the 6.6 maximum, and re-checks that against the table. Delays below 50 ps are
-*             clamped to 50 ps (ngspice transmission-line breakpoint robustness).
+*             The test sets TDR/TDF = tpd(VCC) - (simulated output-stage delay into 15 pF), so the model tpd
+*             into 15 pF equals the 6.6 maximum, and re-checks that against the table (0.95 ... 1.01 x).
+*             The input threshold is referenced to the global ground node (gnd must be node 0).
 *             TEDGE (output pre-driver 10-90 %) is NOT in the DS: 1 ns is an assumption; it is absorbed by
 *             the tpd calibration and only shapes the edge.
 *
@@ -39,16 +40,14 @@
 * Pins: a, y, vcc, gnd
 * =====================================================================================================
 .subckt SN74LV1T34 a y vcc gnd params: VTH=1.5 TDR=5n TDF=5n RUP=100 RDN=50 TEDGE=1n CI=10p CO=2.5p
-.param SEL={TDR>=TDF ? 1 : 0}
 Ci a gnd {CI}
-* input comparator (logic 0/1 V on node lin)
-Bin lin gnd V = 0.5*(1+tanh((v(a,gnd)-VTH)/0.01))
-* separate rise / fall delays: AND of the two delayed copies shortens a high pulse by TDR-TDF, OR stretches it
-Tdr lin gnd dr gnd Z0=1k TD={max(TDR,50p)}
-Rdr dr gnd 1k
-Tdf lin gnd df gnd Z0=1k TD={max(TDF,50p)}
-Rdf df gnd 1k
-Bsel x gnd V = SEL*min(v(dr,gnd),v(df,gnd)) + (1-SEL)*max(v(dr,gnd),v(df,gnd))
+* input threshold + separate tPLH / tPHL as XSPICE digital primitives (robust event-driven delays)
+Aadc [a] [da] lv_adc
+.model lv_adc adc_bridge(in_low={VTH} in_high={VTH} rise_delay=1e-12 fall_delay=1e-12)
+Abuf da db lv_buf
+.model lv_buf d_buffer(rise_delay={max(TDR,1e-12)} fall_delay={max(TDF,1e-12)} input_load=0)
+Adac [db] [x] lv_dac
+.model lv_dac dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=1e-11 t_fall=1e-11)
 * pre-driver and output stage
 Rpre x s 1k
 Cpre s gnd {TEDGE/2.1972/1k}

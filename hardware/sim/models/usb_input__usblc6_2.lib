@@ -16,7 +16,7 @@
 *                     VF <= 1.1 V at IF = 10 mA (Table 2): IS 1e-14, N 1.3 gives 0.93 V
 *   Transil (VBUS-GND): VBR 6 V min at IR = 1 mA (Table 2), 6.1 V typ (DS 2.1)     -> param vbr
 *                     Rd_TRANSIL 0.5 ohm typ (DS 2.1)                               -> param rdt
-*   corner "max": rd = rdt = 0.965 ohm, so VCL(I/O->GND, 5 A) = 17.0 V in this model, the Table 2
+*   corner "max": rd = rdt = 0.953 ohm, so VCL(I/O->GND, 5 A) = 17.0 V in this model, the Table 2
 *                     maximum (17 V at IPP 5 A, 8/20 us); at 1 A it gives 9.2 V (<= 12 V max).
 *   typ corner check: VCL(1 A) = 8.3 V, VCL(5 A) = 12.3 V, VF(10 mA) = 0.93 V, VBR(1 mA) = 6.10 V.
 *   C(I/O-GND)       : 2.5 pF typ / 3.5 pF max at VR = 1.65 V (Table 2) via steering-diode CJO
@@ -40,5 +40,5 @@ Ddn2  GND IO2  USBIN_USBLC6_DS
 Vtr   VBUS trk 0
 Dtr   GND trk USBIN_USBLC6_TR
 .model USBIN_USBLC6_DS D(IS=1e-14 N=1.3 RS={rd} CJO={cio} M=0.3 VJ=0.7)
-.model USBIN_USBLC6_TR D(IS=1e-20 N=3 RS={rdt} BV={vbr} IBV=1m NBV=0.5 CJO=0)
+.model USBIN_USBLC6_TR D(IS=1e-20 N=3 RS={rdt} BV={vbr} IBV=1m NBV=1 CJO=0)
 .ends USBIN_USBLC6_2

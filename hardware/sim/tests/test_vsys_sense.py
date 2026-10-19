@@ -15,9 +15,12 @@ Angles:
   * accuracy        firmware constant, raw gain (production window), uncalibrated (bring-up), one-point calibrated
                     at -10/25/60 °C (TCR, CEG, VOS, C5 insulation resistance), SHIP threshold vs BQ25180 VBATPOR
                     (also 15/35 °C, the band where the 3.48 V rule holds), AIN leakage sensitivity
+  * aging           (verifier) calibrated reading and SHIP rule at 25 °C after R1/R2 datasheet drift (±0.5 %) and
+                    C5 IR loss to its endurance bound
   * settling        after power-up, all R/C corners, X7R temperature
   * sleep current   VSYS 3.7 / 4.2 V, all corners
-  * faults          C5 left off (x2), R1/R2 swapped, R1 decade typo, R2 left off, C5 wrong value
+  * faults          C5 left off (x2), R1/R2 swapped, R1 decade typo, R2 left off, C5 wrong value, R1 bridged
+                    (VSYS_SENSE tied to VSYS), C5 one decade low at the firmware tACQ
 """
 
 from __future__ import annotations
@@ -183,13 +186,50 @@ def _calibrated_errors(temp):
     cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
     errs = {v: [] for v in V_POINTS}
     for row in _corners(temp):
-        ir_cals = [row["ir"]] if temp == 25.0 else [k[1] for k in cal if k[0] == row["si"]]
+        # The C5 IR at calibration is independent of the IR in use, also at 25 °C (verifier fix: the 25 °C case
+        # used to force the same IR at both times, which hid the 2.4 mV IR term at the calibration temperature).
+        ir_cals = [k[1] for k in cal if k[0] == row["si"]]
         for ir_cal in ir_cals:
             ccal = cal[(row["si"], ir_cal)][V_CAL]["codes"]
             for v in V_POINTS:
                 for i, code in enumerate(row["res"][v]["codes"]):
                     errs[v].append(V_CAL * code / ccal[i] - v)
     return errs
+
+
+DRIFT_R = 0.005   # UNI-ROYAL thick-film DS V.3 §11, ±0.5 %/1 % parts: Humidity (steady state, 240 h 40 °C 90-95 % RH)
+                  # and Rapid change of temperature: ΔR ±(0.5 % + 0.05 Ω). Used as the post-calibration drift bound.
+AGED_POINTS = (3.3, V_SHIP, 3.7, 4.2)
+
+
+@functools.lru_cache(maxsize=None)
+def _aged_errors():
+    """Error (V) of the one-point-calibrated reading at 25 °C after the part has aged: calibration on the fresh board
+    (every R1/R2 tolerance corner, ADC variant, C5 IR bound/open), then in use R1 and R2 drift by DRIFT_R in opposite
+    directions (both signs) and the C5 IR is anywhere from open to the endurance bound (ir_eol, 250 MΩ)."""
+    d = spicelib.Design("main")
+    c5 = d.value("C5")
+    cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
+    errs = {v: [] for v in AGED_POINTS}
+    for si, sc in enumerate(d.extremes(["R1", "R2"])):
+        for s in (-1, 1):
+            aged = dict(sc, R1=sc["R1"] * (1 + s * DRIFT_R), R2=sc["R2"] * (1 - s * DRIFT_R))
+            for ir in (ir_eol(c5) if d.fitted("C5") else None, ir_min(c5), None):
+                res = _dc(d, 25.0, aged, None, ir, points=AGED_POINTS + (V_CAL,))
+                for ir_cal in [k[1] for k in cal if k[0] == si]:
+                    ccal = cal[(si, ir_cal)][V_CAL]["codes"]
+                    for v in AGED_POINTS:
+                        for i, code in enumerate(res[v]["codes"]):
+                            errs[v].append(V_CAL * code / ccal[i] - v)
+    return errs
+
+
+def _si(x):
+    """A value as a netlist-style string (parse_value does not read exponents), for fault injection."""
+    for mult, pre in ((1e6, "M"), (1e3, "k"), (1.0, ""), (1e-6, "u"), (1e-9, "n"), (1e-12, "p")):
+        if abs(x) >= mult:
+            return f"{x / mult:.6g}{pre}"
+    return f"{x / 1e-15:.6g}f"
 
 
 def _pwl(points):
@@ -321,14 +361,17 @@ def test_input_range(temp, check):
 
 
 @pytest.mark.fault
-@pytest.mark.parametrize("fault", ["R1_R2_swapped", "R1_220k", "R2_left_off"])
+@pytest.mark.parametrize("fault", ["R1_R2_swapped", "R1_220k", "R2_left_off", "R1_shorted"])
 def test_fault_divider_errors_violate_input_range(fault, main, check):
-    """Wrong divider values or a missing bottom resistor push AIN0 above VDD somewhere in 3.0 ... 5.5 V."""
+    """Wrong divider values, a missing bottom resistor or a bridge across R1 (VSYS_SENSE connected to VSYS) push AIN0
+    above VDD somewhere in 3.0 ... 5.5 V."""
     if fault == "R1_R2_swapped":
         v1, v2 = main.comps["R1"]["value"], main.comps["R2"]["value"]
         main.override("R1", v2).override("R2", v1)
     elif fault == "R1_220k":
         main.override("R1", "220k")
+    elif fault == "R1_shorted":
+        main.short("R1")
     else:
         main.remove("R2")
     res = _dc(main, 25.0, ir=ir_min(main.value("C5")), points=(3.0, 3.7, 4.2, 4.59, 5.0, 5.5),
@@ -399,6 +442,16 @@ def test_fault_c5_missing_detected_at_short_tacq(main, check):
     main.remove("C5")
     errs, _ = _sample(main, 3e-6, 4.2, 0.0)
     check("fault C5 removed, tACQ 3 µs: |8x average sampling error|", abs(sum(errs) / len(errs)), HALF_LSB, None,
+          "V", "must violate: " + _dyn_src("sampling error"))
+
+
+@pytest.mark.fault
+def test_fault_c5_decade_low_detected_at_fw_tacq(main, check):
+    """Verifier addition: C5 fitted one decade low (BOM slip). At the firmware tACQ of 40 µs (where a missing C5 is
+    NOT caught by the sampling check), the worst sampling corner of test_sampling_error_vs_tacq must flag it."""
+    main.override("C5", _si(main.value("C5") / 10))
+    errs, _ = _sample(main, TACQ_FW, 3.0, VDD_MAX, scale={"C5": _c5_min_scale(main)})
+    check("fault C5 / 10, tACQ 40 µs: |8x average sampling error|", abs(sum(errs) / len(errs)), HALF_LSB, None,
           "V", "must violate: " + _dyn_src("sampling error"))
 
 
@@ -494,6 +547,30 @@ def test_ship_threshold_above_vbatpor(temp, check):
     over_read = max(_calibrated_errors(temp)[V_SHIP])
     check(f"true VBAT at a 3.48 V reading, {temp:g} °C", V_SHIP - over_read, VBATPOR_MAX, None, "V",
           "BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V (firmware.md §12.4 SHIP rule)")
+
+
+_AGING_XFAIL = pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: after the one-point calibration, the "
+                                 "datasheet drift bound of the thick-film R1/R2 (±0.5 % humidity / temperature "
+                                 "cycling) and the aged C5 IR (250 MΩ) exceed the ±10 mV / 20 mV SHIP margin even "
+                                 "at 25 °C")
+
+
+@_AGING_XFAIL
+def test_calibrated_accuracy_after_aging(check):
+    """Verifier addition (aging angle): calibrated fresh at 25 °C, read later at 25 °C after R1/R2 drift and C5 IR loss."""
+    worst = max(abs(e) for e in _aged_errors()[V_SHIP])
+    check("calibrated |error| at 3.48 V, 25 °C, after R1/R2 ±0.5 % drift and C5 IR 250 MΩ", worst, None, 0.010, "V",
+          "firmware.md §12.4 '±10 mV calibrated ADC error'; drift: UNI-ROYAL DS V.3 §11 Humidity (steady state) "
+          "±(0.5 %+0.05 Ω); IR: Samsung MLCC catalog 2015 endurance 25 MΩ·µF")
+
+
+@_AGING_XFAIL
+def test_ship_threshold_after_aging(check):
+    """Verifier addition: true VBAT at a 3.48 V reading at 25 °C on an aged board (see test above)."""
+    over_read = max(_aged_errors()[V_SHIP])
+    check("true VBAT at a 3.48 V reading, 25 °C, aged R1/R2 and C5", V_SHIP - over_read, VBATPOR_MAX, None, "V",
+          "BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; drift: UNI-ROYAL DS V.3 §11 Humidity (steady state) "
+          "±(0.5 %+0.05 Ω)")
 
 
 def test_pin_leakage_sensitivity(main, check):

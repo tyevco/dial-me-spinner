@@ -27,6 +27,7 @@ EE_URL = "https://easyeda.com/api/products/{code}/components?version=6.4.19.5"
 EE_UNIT = 0.254  # EasyEDA canvas unit (10 mil) in mm
 HERE = os.path.dirname(os.path.abspath(__file__))
 OFFSETS = os.path.join(os.path.dirname(HERE), "design", "jlc_offsets.json")
+_LIB_CACHE = {}
 
 
 def _ee_pads(code):
@@ -66,7 +67,9 @@ def _lib_footprint(fp, lib_dirs):
     nick = str(fp.GetFPID().GetLibNickname())
     name = str(fp.GetFPID().GetLibItemName())
     path = lib_dirs.get(nick, f"/usr/share/kicad/footprints/{nick}.pretty")
-    return pcbnew.FootprintLoad(path, name)
+    if (path, name) not in _LIB_CACHE:  # FootprintLoad re-parses the library and leaks: load each once
+        _LIB_CACHE[(path, name)] = pcbnew.FootprintLoad(path, name)
+    return _LIB_CACHE[(path, name)]
 
 
 def fit(code, lib_fp):

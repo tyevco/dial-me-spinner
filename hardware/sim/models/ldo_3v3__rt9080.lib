@@ -1,83 +1,89 @@
 * =====================================================================================================
-* ldo_3v3__rt9080.lib -- behavioural model of the Richtek RT9080 (fixed-output, TSOT-23-5, no SNS pin)
+* ldo_3v3__rt9080.lib -- behavioural model of the Richtek RT9080 (fixed output, TSOT-23-5, no SNS pin)
 *
 * Part:       RT9080-33GJ5 (U1, main board, VSYS -> +3V3). The output option is a parameter (VNOM), so a
-*             wrong variant in the BOM (e.g. RT9080-28GJ5) is simulated with the right output voltage.
+*             wrong variant in the BOM (e.g. RT9080-28GJ5) is simulated at its own output voltage.
 * Datasheet:  Richtek DS9080-09, December 2024
 *             https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf
-* No vendor SPICE model is published for the RT9080 (checked richtek.com and distributor listings,
-* 2026-10), so this is a hand-built macro model. Every number below cites the datasheet table or
-* figure it comes from. "Fig." means the Typical Operating Characteristics (DS section 16, pages 8-11).
+* No vendor SPICE model is published for the RT9080 (searched richtek.com and distributor listings, 2026-10),
+* so this is a hand-built macro model. Each number cites the datasheet table or figure it comes from.
+* "Fig." = Typical Operating Characteristics, DS section 16 (pages 8-11), read off the plots.
 *
 * MODELLED
-*   Output voltage   VNOM*(1+ACC). ACC is the accuracy corner, +/-2 % (Table 14, ILOAD = 1 mA, TA = 25 C).
-*   Temp drift       Typical drift vs 25 C from Fig. "Output Voltage vs Temperature" (VOUT = 3.3 V):
-*                    3.277 V @ -40 C, 3.301 @ -10, 3.320 @ 25, 3.328 @ 60, 3.329 @ 75. Fit:
-*                    dV = 0.42 mV/C*(T-25) - 4.8 uV/C^2*(T-25)^2 (3.3 V option), scaled by VNOM/3.32.
-*   Line regulation  LINE = fraction of VOUT over the spec span VNOM+1 .. 5.5 V: 0.13 % typ, 0.35 % max
-*                    (Table 14, 1.8 V <= VIN <= 5.5 V). Sign is a corner (+/-). Extrapolated below VNOM+1 V,
-*                    where Table 14 gives no accuracy/regulation guarantee (DS conditions VOUT+1 < VIN < 5.5).
-*   Load regulation  LREG = 0.5 % typ, 1 % max for 1 mA < ILOAD < 600 mA (Table 14). Sets the DC loop
-*                    transconductance GDC = 0.6 A / (LREG*VNOM).
-*   Dropout          PMOS on-resistance RDS = 0.517 ohm typ (0.31 V / 0.6 A) and 0.883 ohm max (0.53 V / 0.6 A),
-*                    Table 14 "Dropout Voltage, 3 V <= VOUT", 25 C. RDSK = 1 (typ) or 1.71 (max).
-*                    Temperature: +0.28 %/C from Fig. "Dropout Voltage vs Temperature" (VOUT 3.3 V, 600 mA:
-*                    250 mV @ -40 C, 305 @ 25, 390 @ 125). Gate drive: RDS scales as 2.7 V/(VIN-0.9 V), fitted to
-*                    the Table 14 dropout rows for the lower output options (VIN = VOUT + VDROP: 1.33 ohm @ 1.93 V,
-*                    1.18 @ 2.06, 0.95 @ 2.2-2.5, 0.68 @ 2.7, 0.60 @ 3.1, 0.517 @ 3.6).
-*   Current limit    ILIM 1.1 A typ / 610 mA min (Table 14, VOUT = 90 %). Fig. "Current Limit vs Temperature"
-*                    gives ~0.98 A for the 3.3 V option at 25 C. Fold-back to IFB ~0.72 A at VOUT -> 0 V
-*                    (Fig. "Fold-Back Current Limit vs Temperature", 3.3 V; section 18.3 "around 0.6 A").
-*                    Linear between VOUT = 0 and 90 % of VNOM.
-*   Enable/UVLO      EN rising threshold 0.67 V (Fig. "Enable Threshold vs Input Voltage", VIN >= 2 V;
-*                    Table 14 VEN_R 0.9 V max). Operating input 1.2 V min (Recommended Operating Conditions);
-*                    the model is off below VINMIN = 1.2 V (behaviour there is not specified).
-*   Soft start       Exponential reference ramp, tau TSS = 70 us typ, read from Fig. "Power On from EN"
-*                    (VIN 4 V, VOUT 3.3 V: 67 % at ~65 us, 92 % at ~195 us, 98 % at ~390 us). No min/max given.
-*   Quiescent        IQ 2 uA typ / 4 uA max at ILOAD = 0 (Table 14). Load-dependent GND current from
-*                    Fig. "Ground Current vs Load Current" (VIN 4.3 V, VOUT 3.3 V, 25 C): 57 uA @ 1 mA, 105 @ 10 mA,
-*                    205 @ 50 mA, 270 @ 100 mA, 760 @ 600 mA. Between 0 and 1 mA the DS gives nothing: the model
-*                    interpolates linearly (ASSUMPTION, bench-verify the sleep current).
+*   Output voltage   VNOM*(1+ACC). ACC = accuracy corner, +/-2 % (Table 14, ILOAD = 1 mA, TA = 25 C).
+*   Temp drift       Typical drift vs 25 C, Fig. "Output Voltage vs Temperature" (VOUT = 3.3 V, 1 mA):
+*                    3.277 V @ -40 C, 3.301 @ -10, 3.320 @ 25, 3.328 @ 60, 3.329 @ 75. Fit (3.3 V option):
+*                    dV = 0.42 mV/C*(T-25) - 4.8 uV/C^2*(T-25)^2, scaled by VNOM/3.32. Applied on top of ACC
+*                    (the +/-2 % is a 25 C figure; the DS gives no over-temperature accuracy).
+*   Line regulation  LINE = change over VNOM+1 .. 5.5 V as a fraction of VOUT: 0.13 % typ, 0.35 % max (Table 14).
+*                    Sign is a corner. Extrapolated below VNOM+1 V, where Table 14 (VOUT+1 < VIN < 5.5 V) gives no
+*                    guarantee. Low-passed at 16 Hz so that the DC term does not mask the AC PSRR below.
+*   Load regulation  LREG = 0.5 % typ / 1 % max, 1-600 mA (Table 14): DC loop transconductance GDC = 0.6 A/(LREG*VNOM).
+*   Dropout          PMOS RDS = 0.517 ohm typ (0.31 V / 0.6 A), 0.883 ohm max (0.53 V / 0.6 A): Table 14 "Dropout
+*                    Voltage, 3 V <= VOUT", 25 C. RDSK = 1 (typ) or 1.71 (max). Temperature +0.28 %/C from Fig.
+*                    "Dropout Voltage vs Temperature" (3.3 V, 600 mA: 250 mV @ -40 C, 305 @ 25, 390 @ 125). Gate drive:
+*                    RDS ~ 2.7 V/(VIN - 0.9 V), fitted to the Table 14 rows of the lower options (VIN = VOUT+VDROP:
+*                    1.33 ohm @ 1.93 V, 1.18 @ 2.06, 0.95 @ 2.2-2.5, 0.68 @ 2.7, 0.60 @ 3.1, 0.517 @ 3.6).
+*   Current limit    ILIM 1.1 A typ / 610 mA min, no max (Table 14, VOUT = 90 %); Fig. "Current Limit vs Temperature"
+*                    gives ~0.98 A for the 3.3 V option (default). Fold-back to IFB ~0.72 A at VOUT = 0 (Fig.
+*                    "Fold-Back Current Limit vs Temperature", 3.3 V; section 18.3 "around 0.6 A"), linear up to
+*                    VOUT = 90 % of VNOM.
+*   Enable/UVLO      EN rising threshold 0.67 V (Fig. "Enable Threshold vs Input Voltage", VIN >= 2 V; Table 14
+*                    VEN_R <= 0.9 V). Operating input >= 1.2 V (Recommended Operating Conditions); the model is off
+*                    below VINMIN = 1.2 V, where behaviour is not specified.
+*   Soft start       Exponential reference ramp, TSS = 70 us, from Fig. "Power On from EN" (VIN 4 V, VOUT 3.3 V:
+*                    67 % at ~65 us, 92 % at ~195 us, 98 % at ~390 us). Typical only; no min/max in the DS.
+*   Quiescent        IQ 2 uA typ / 4 uA max at no load (Table 14); input current at no load = IQ exactly.
+*                    Load-dependent GND current IG(I) = 0.3m*I^0.25*(1-exp(-I/0.3 mA)) + 0.82m*I (A, I in A), a
+*                    smooth fit of Fig. "Ground Current vs Load Current" (VIN 4.3 V, VOUT 3.3 V, 25 C: 57 uA @ 1 mA,
+*                    105 @ 10 mA, 205 @ 50 mA, 270 @ 100 mA, 760 @ 600 mA; fit within -13..+3 %). Below 1 mA the DS
+*                    has no data: IG fades ~linearly to 0 (ASSUMPTION; bench-verify the sleep current).
+*   Feedback divider Internal VOUT -> GND load IDIV = 0.5 uA, counted inside IQ (value not published, ASSUMPTION).
 *   Discharge        80 ohm output pull-down when disabled (Table 14 RDISCHG, section 17.7).
 *   Body diode       VOUT -> VIN (abs max VOUT - VIN <= 0.3 V, section 10). No reverse channel current.
-*   Loop dynamics    Two-path error amplifier (fast proportional path GHF + slow high-gain path GLF with time
-*                    constant TAU1) followed by one pole FA, output-voltage referred, scaled by the feedback
-*                    factor beta = 0.8 V/VNOM (block diagram: 0.8 V reference + internal divider). Fitted to
-*                    Fig. "Load Transient" (RT9080-08, VIN 1.8 V, 1 mA -> 600 mA, ~20 us edges, COUT 1 uF):
-*                    undershoot ~27 mV, overshoot ~23 mV, recovery ~10-20 us, settled offset ~5 mV.
-*                    GHF1 = 20 S, TAU1 = 5 us, FA = 5 MHz (beta = 1 basis). The fit is checked by
-*                    test_ldo_3v3.py::test_model_matches_datasheet_figures.
-*   PSRR feedthrough GRO = 8.4 mS (VIN -> VOUT conductance) sets PSRR = 75 dB at 1 kHz (Table 14: VIN 3 V,
-*                    VOUT 2.5 V, 50 mA, COUT 1 uF). GFF/TFF = gate-coupling high-pass, fitted to Fig. "Line
-*                    Transient" (VIN 2.8 -> 3.8 V, VOUT 1.8 V, 1 mA: spikes about +4.6 / -3 mV).
+*   Loop dynamics    Output-voltage referred two-path error amplifier: fast proportional path GHF = beta*GHF1 and slow
+*                    high-gain path GLF = GDC - GHF (first-order lag TAU1), summed, then one pole FA; beta = 0.8 V/VNOM
+*                    (0.8 V reference + internal divider, block diagram section 9). Fitted to Fig. "Load Transient"
+*                    (RT9080-08, 1 mA -> 600 mA in ~20 us, COUT 1 uF): DS ~27 mV undershoot, ~23 mV overshoot, ~4 mV
+*                    settled; model 66 / 24 / 3.8 mV with GHF1 = 5 S, TAU1 = 70 us, FA = 600 kHz (undershoot 2.5x
+*                    pessimistic). Checked by test_ldo_3v3.py::test_model_matches_datasheet_figures. The loop speed is
+*                    fixed; the real part has adaptive bias and is slower at uA loads, which the DS does not
+*                    characterise. SLOW multiplies both time constants for sensitivity runs.
+*   Anti-windup      Back-calculation: the slow path may ask for at most what the pass device can deliver in its
+*                    present state (min of current limit and dropout current) + 5 mA, as a saturating amplifier does in
+*                    dropout or current limit. Dropout recovery is not characterised in the DS (ASSUMPTION).
+*   PSRR             GRO = 8.4 mS (VIN -> VOUT conductance) gives 76 dB at 1 kHz (Table 14: 75 dB at VIN 3 V, VOUT 2.5 V,
+*                    50 mA, 1 uF), 65 dB at 10 kHz and 37 dB at 100 kHz (Fig. "PSRR vs Frequency", 2.8 V / 50 mA / 1 uF:
+*                    ~62 and ~40 dB). GFF = 30 mS with TFF = 1 us (gate-coupling high-pass) gives +4.6 / -1.8 mV on
+*                    Fig. "Line Transient" (VIN 2.8 -> 3.8 V, VOUT 1.8 V, 1 mA: about +4.6 / -3 mV). GRO and GFF scale
+*                    with the pass current (as gds and gm do) through a 1 us-lagged copy of IG, normalised to 600 mA.
 *
 * NOT MODELLED
-*   Over-temperature shutdown (150 C, 20 C hysteresis): junction temperature is computed in the test from
-*   theta-JA(EVB) 100.7 C/W (DS section 13) instead. Output noise. Dropout-region IQ increase (not
-*   characterised). IQ / GND current vs temperature and vs VIN (only 25 C, VIN 4.3 V curves exist).
-*   Exact internal compensation (unpublished): the dynamic fit reproduces the DS figures at the DS
-*   conditions only; dynamic results with other capacitors are indicative, not guaranteed.
-*   Gate slew in dropout recovery (internal amplifier saturation) is approximated by clamping the slow path
-*   to ILIM/GLF (anti-windup ASSUMPTION). Soft-start spread and EN threshold spread (only typ curves exist).
+*   Over-temperature shutdown (150 C typ, 20 C hysteresis): the test computes TJ from theta-JA(EVB) = 100.7 C/W
+*   (DS section 13) instead. Output noise. PSRR peaking near 0.5-1 MHz (Fig.: ~25-30 dB; model ~37 dB, optimistic).
+*   IQ / GND current vs temperature and vs VIN (only 25 C, VIN 4.3 V curves exist) and in dropout. The real internal
+*   compensation (unpublished): dynamics are only fitted at the DS conditions. Adaptive-bias slow-down at light
+*   load (use SLOW). Spread of soft start, EN threshold, fold-back current and the maximum current limit.
 *
 * Pins: VIN EN VOUT GND
 * =====================================================================================================
 .subckt LDO3V3_RT9080 VIN EN VOUT GND params: VNOM=3.3 ACC=0 TEMPC=25 RDSK=1 LREG=0.005 LINE=0.0013
-+ ILIM=0.98 IFB=0.72 IQ=2u TSS=70u RDIS=80 VENTH=0.67 VINMIN=1.2 GHF1=4 TAU1=50u FA=600k GRO=8.4m
-+ GFF=30m TFF=1u SLOW=1
++ ILIM=0.98 IFB=0.72 IQ=2u TSS=70u RDIS=80 VENTH=0.67 VINMIN=1.2 GHF1=5 TAU1=70u FA=600k GRO=8.4m
++ GFF=30m TFF=1u SLOW=1 IDIV=0.5u
 .param BETA={0.8/VNOM}
 .param GDC={0.6/(LREG*VNOM)}
 .param GHF={BETA*GHF1}
 .param GLF={max(GDC-GHF, 0.01)}
-.param XL={ILIM/GLF}
+.param XL={1.5*ILIM/GLF}
 .param DVT={(0.42e-3*(TEMPC-25) - 4.8e-6*(TEMPC-25)*(TEMPC-25))/3.32}
 .param RDS0={0.517*RDSK*(1+0.0028*(TEMPC-25))}
 .param TAUA={1/(6.283185*FA)}
+* IG at the divider current, removed from the GND pin so that the no-load input current equals IQ
+.param IG0={3.0e-4*pwr(IDIV*IDIV+1e-14, 0.125)*(1-exp(-IDIV/0.3m)) + 8.2e-4*IDIV}
 * enable (EN threshold and minimum operating input), 0..1
 Bena ena 0 V = 0.25*(1+tanh((V(EN,GND)-VENTH)/0.02))*(1+tanh((V(VIN,GND)-VINMIN)/0.02))
 Rena ena 0 1G
-* set point: accuracy corner, temperature drift, line regulation (extrapolated outside VNOM+1..5.5 V)
-* (the DC line-regulation term is low-passed at 16 Hz so that it does not mask the AC PSRR of Table 14)
+* set point: accuracy corner, temperature drift, line regulation (low-passed, extrapolated outside VNOM+1..5.5 V)
 Bln lnt 0 V = LINE*(V(VIN,GND)-(VNOM+1))/(5.5-(VNOM+1))
 Rln lnt lnr 10Meg
 Cln lnr 0 1n
@@ -88,38 +94,35 @@ Css ss 0 1n
 * error (output referred)
 Berr err 0 V = V(ss) - V(VOUT,GND)
 Rerr err 0 1G
-* adaptive bias: loop transconductance and amplifier pole scale with the amplifier bias, taken as the GND
-* current IQ + IG(I), normalised to its 600 mA value (758 uA). IG(I) = 0.3m*I^0.25*(1-exp(-I/0.3 mA)) + 0.82m*I
-* is a smooth fit of Fig. "Ground Current vs Load Current" (within -13..+3 % from 1 to 600 mA); below 1 mA
-* it follows a near-linear fade to 0 (no DS data there, ASSUMPTION)
-* (bias follows its target with a 1 us lag, which breaks the algebraic ip -> bias -> ip loop)
+* pass-current-dependent bias = (IQ + IG(I)) / IG(600 mA); lags 1 us (breaks the algebraic ip -> bias -> ip loop).
+* Used only to scale GRO and GFF.
 Gbias 0 bias cur = ((IQ + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-abs(V(ip))/0.3m)) + 8.2e-4*abs(V(ip))))/758u - V(bias))*1n/1u
 Cbias bias 0 1n
 Rbias bias 0 1T
-* slow high-gain path: first-order lag TAU1, target clamped (anti-windup)
-Gx1 0 x1 cur = (max(min(V(err), XL), -XL) - V(x1))*1n/TAU1/SLOW
+* slow high-gain path: first-order lag TAU1 with back-calculation anti-windup (target <= (iav + 5 mA)/GLF)
+Gx1 0 x1 cur = (max(min(min(V(err), (V(iav) + 5m)/GLF), XL), -XL) - V(x1))*1n/TAU1/SLOW
 Cx1 x1 0 1n
 Rx1 x1 0 1T
-* control current (A, as a voltage). The amplifier pole FA also scales with the bias (weak gate drive at
-* light load); its target is clamped (anti-windup)
+* control current (A, as a voltage) with the amplifier pole FA; target clamped to -0.2 A .. 1.5*ILIM
 Gctl 0 ctl cur = (max(min(GHF*V(err) + GLF*V(x1), 1.5*ILIM), -0.2) - V(ctl))*1n/TAUA/SLOW
 Cctl ctl 0 1n
 Rctl ctl 0 1T
-* pass device: smooth min of demand, current limit with fold-back, and the triode (dropout) limit
+* pass device limits: triode (dropout) resistance vs gate drive, current limit with fold-back
 Brds rds 0 V = RDS0*2.7/max(V(VIN,GND)-0.9, 0.3)
 Rrds rds 0 1G
 Blim lim 0 V = IFB + (ILIM-IFB)*max(min(V(VOUT,GND)/(0.9*VNOM), 1), 0)
 Rlim lim 0 1G
 Btri tri 0 V = (V(VIN,GND)-V(VOUT,GND))/V(rds)
 Rtri tri 0 1G
-* demand = amplifier control current + PMOS output conductance (DC PSRR) + gate-coupling high-pass
-* (HF line feedthrough); the loop trims ctl to cancel the last two at low frequency
+* demand = control current + PMOS output conductance (DC PSRR) + gate-coupling high-pass (HF line feedthrough);
+* the loop trims ctl to cancel the last two at low frequency. GRO/GFF are calibrated at 50 mA (bias 0.268).
 Rlp VIN vlp {TFF/1n}
 Clp vlp GND 1n
-* (GRO and GFF are calibrated at 50 mA and scale with the bias, as g_ds and g_m of the PMOS scale with its
-* current; bias(50 mA) = 203u/758u = 0.268)
 Bdem dem 0 V = V(ctl) + V(bias)/0.268*(GRO*(V(VIN,GND)-V(VOUT,GND)) + GFF*(V(VIN,GND)-V(vlp,GND)))
 Rdem dem 0 1G
+* available current (anti-windup reference) and the pass current: smooth minimum of demand, limit and dropout
+Biav iav 0 V = 0.5*(V(lim)+V(tri) - sqrt((V(lim)-V(tri))*(V(lim)-V(tri)) + 1e-6))
+Riav iav 0 1G
 Bm1 m1 0 V = 0.5*(V(dem)+V(lim) - sqrt((V(dem)-V(lim))*(V(dem)-V(lim)) + 1e-6))
 Rm1 m1 0 1G
 Bmn mn 0 V = 0.5*(V(m1)+V(tri) - sqrt((V(m1)-V(tri))*(V(m1)-V(tri)) + 1e-6))
@@ -128,9 +131,11 @@ Rmn mn 0 1G
 Bip ip 0 V = V(ena)*0.5*(V(mn) + sqrt(V(mn)*V(mn) + 1e-12))
 Rip ip 0 1G
 Bpass VIN VOUT I = V(ip)
-* ground current: IQ plus the load-dependent part IG(I), shutdown 0.1 uA (Table 14 ISHDN)
-Bgnd VIN GND I = V(ena)*(IQ + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-abs(V(ip))/0.3m)) + 8.2e-4*abs(V(ip)))) + (1-V(ena))*0.1u
-* active discharge when disabled
+* ground-pin current: IQ (less the divider share) plus IG(I); shutdown 0.1 uA (Table 14 ISHDN)
+Bgnd VIN GND I = V(ena)*(IQ - IDIV - IG0 + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-abs(V(ip))/0.3m)) + 8.2e-4*abs(V(ip)))) + (1-V(ena))*0.1u
+* internal feedback divider (inside the DS IQ)
+Bdiv VOUT GND I = IDIV*V(VOUT,GND)/VNOM
+* active discharge when disabled (80 ohm)
 Bdis VOUT GND I = (1-V(ena))*V(VOUT,GND)/RDIS
 * PMOS body diode
 Dbody VOUT VIN LDO3V3_DBODY

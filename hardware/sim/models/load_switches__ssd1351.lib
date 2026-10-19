@@ -1,0 +1,25 @@
+* =====================================================================================================
+* load_switches__ssd1351.lib  --  SSD1351 OLED driver (NHD-1.5-128128G / Orient AOC128128A0 panel on J20),
+*                                 supply-pin ESD path only, for the "OLED VCC off" back-power analysis
+* =====================================================================================================
+* Part      : Solomon Systech SSD1351 inside the NHD-1.5-128128G panel (pin-identical Orient AOC128128A0-1.50W)
+* Datasheet : SSD1351 Rev 1.3 (Oct 2009) https://cdn-shop.adafruit.com/datasheets/SSD1351-Revision+1.3.pdf
+*             section 8.9 Power ON/OFF sequence, Note (1) p.30: "Since an ESD protection circuit is connected
+*             between VCI, VDDIO and VCC, VCC becomes lower than VCI whenever VCI, VDDIO is ON and VCC is OFF."
+*             Same statement: Orient AOC128128A0-1.50W spec Rev A, Note 9.
+*             Note (5) / Orient Note 9-3: "Power pins (VCI, VDDIO and VCC) can never be pulled to ground".
+* Modelled: one ESD diode from VCI to VCC and one from VDDIO to VCC (J20 pins 27 and 4 -> pin 2 on this board).
+*   The datasheets give no I-V for this structure; the diode is a generic silicon junction ASSUMPTION
+*   (IS 1e-14 A, N 1.0, RS 10 Ohm), so VCC sits about 0.5-0.6 V below VCI at the uA loads it sees here.
+* NOT modelled: the panel's VCC consumption while VCC is off/floating (taken as 0, which maximises the VCC
+*   level), VCC sleep current with VCC on (ISLP_VCC <= 10 uA, Table 12-1), the VCOMH / VSL / IREF networks,
+*   every logic function.
+* Pins: VCI VDDIO VCC VSS
+* =====================================================================================================
+
+.subckt LSW_SSD1351_ESD VCI VDDIO VCC VSS params: is=1e-14 n=1.0 rs=10
+D_ESD1   VCI VCC lsw_ssd_esd
+D_ESD2   VDDIO VCC lsw_ssd_esd
+R_VSS    VSS VCC 1T
+.model lsw_ssd_esd d (is={is} n={n} rs={rs} cjo=5p)
+.ends LSW_SSD1351_ESD

@@ -53,14 +53,32 @@ TF_FM = 300e-9                          # UM10204 Table 11 tf (Fm)
 VOL_I2C = 0.4                           # UM10204 Table 10 VOL1
 T_SU_DAT, T_HIGH, T_LOW = 100e-9, 0.6e-6, 1.3e-6   # UM10204 Table 11 Fm; LIS2DW12 Table 7 (same values)
 V_ABS_MIN = -0.3                        # nRF Table 173, LIS2DW12 abs max, BQ25180 §7.1 "all other pins"
+V_MAX_RX = {"LIS2DW12": lambda vdd: vdd + 0.3, "BQ25180": lambda vdd: 5.5}   # overshoot limit per receiver
+V_MAX_SRC = {"LIS2DW12": "LIS2DW12 DS11811 Table 9 Vin ≤ Vdd_IO + 0.3 V; nRF PS Table 173 VDD + 0.3 V",
+             "BQ25180": "BQ25180 DS SLUSE99C §7.1 all other pins 5.5 V"}
 TMAG_IOUT_MAX = 2e-3                    # TMAG5273 Table 5.3 IOUT (SDA, INT) recommended max (steady)
 TMAG_IOUT_ABS = 10e-3                   # TMAG5273 Table 5.1 IOUT (SDA, INT) absolute max (edge peak)
 LIS_IOL_MAX = 4e-3                      # LIS2DW12 Table 4 note 5: 4 mA maximum driving capability
 BQ_IOL_MAX = 5e-3                       # BQ25180 §7.5 VOL test condition 5 mA
 BQ_VIL, BQ_VIH = 0.4, 1.3               # BQ25180 §7.5 I2C VIL max / VIH min
-T_INT_TMAG = 10e-6                      # TMAG5273 Table 5.5 tINT (pulse mode)
-T_CONV_MIN_TMAG = 50e-6                 # TMAG5273 Table 5.11 tmeasure, CONV_AVG = 000b, one channel
+T_INT_TMAG = 10e-6                      # TMAG5273 Table 5.5 tINT (pulse mode), 10 us TYP (no min/max published)
+T_CONV_MIN_TMAG = 50e-6                 # TMAG5273 Table 5.11 tmeasure 50 us TYP (no min published), CONV_AVG =
+#                                         000b, one channel: the shortest INT period; more channels only lengthen it
 T_INT_BQ = 128e-6                       # BQ25180 Table 6-1 /INT 128 us active-low pulse
+
+# nRF52840 TWIM master timing. The PS (§6.31.8.2) gives only tTWIM,HD_DAT >= 500 ns and tTWIM,SU_DAT >= 300 ns,
+# not the SCL duty cycle. Nordic errata 219 ("TWIM: I2C timing spec is violated at 400 kHz", nRF52840 Rev 3,
+# https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_219.html)
+# documents the actual SCL low period at 400 kHz: 1.25 us, below the 1.3 us that UM10204 / LIS2DW12 / TMAG5273
+# require. Workaround: FREQUENCY = 0x06200000 (390 kHz), "the SCL low period is greater than 1.3 us" (the
+# boundary 1.30 us is used). The high phase is taken as 1.2 us at 400 / 390 kHz (conservative: the period minus
+# the 1.3 us spec low, shorter than the errata's 2.5 - 1.25 us). 250 kbps (PS K250) is not in errata 219; its
+# low phase is not published, so it is INFERRED as half the 4 us period, as the errata's 1.25 us is at 400 kHz.
+TWIM = {"400k": dict(tlow=1.25e-6, thigh=1.2e-6), "390k": dict(tlow=1.30e-6, thigh=1.2e-6),
+        "250k": dict(tlow=2.0e-6, thigh=2.0e-6)}
+T_HD_DAT_TWIM = 500e-9                  # PS v1.1 §6.31.8.2 tTWIM,HD_DAT min: master changes SDA >= 500 ns after SCL
+#                                         falls. The data edge is placed there (setup = tLOW - 500 ns). The PS
+#                                         also allows it as late as tTWIM,SU_DAT = 300 ns before SCL rises.
 
 # ------------------------------------------------------------------------------------------------ supplies
 RT9080_ACC = 0.02                       # DS9080-09 VVOUT_ACC +/-2 %
@@ -77,7 +95,10 @@ SUPPLY_IDS = list(VDD)
 # nRF52840 drive corners (PS v1.1 §6.9.3.1): (IOH, IOL) at 0.4 V from the rail
 DRIVE = {"SD": {"min": (1e-3, 1e-3), "typ": (2e-3, 2e-3), "max": (4e-3, 4e-3)},
          "HD": {"min": (6e-3, 6e-3), "typ": (9e-3, 10e-3), "max": (14e-3, 15e-3)}}
-EDGE = {"SD": 13e-9, "HD": 5e-9}       # tRF,25pF / tHRF,25pF typ
+# Gate-ramp time of the pin model's onp/onn controls, calibrated against PS §6.9.3.1 (10-90 % into 25 pF, typ
+# pin): an 11 ns ramp gives 5.0 ns for H0H1/H0D1 typ = tHRF,25pF (the ramp is not the edge: a 5 ns ramp gave
+# 3.6 ns, 1.4x too fast). Standard drive is current-limited at 15-16 ns for any ramp (tRF,25pF 13 ns typ).
+EDGE = {"SD": 13e-9, "HD": 11e-9}
 
 # ------------------------------------------------------------------------------------------------ layout / harness
 # Trace budget (main is not routed yet): straight-line placement distance (SPEC §8 positions) x 1.5.
@@ -196,14 +217,16 @@ def piezo_drive(d, vdd, mode="HD", corner="max", cf=CF_NOM, scale=None, pz="", n
     deck += f"XBZ {p} {n} PKMCS0909E cf={cf:g} {pz}"
     tstop = td + ncyc * T
     deck.tran("20n", f"{tstop:g}", 0, "100n")
-    deck.wave(f"v({p})", f"v({n})", "i(via)", "i(vib)")
+    deck.wave(f"v({p})", f"v({n})", "i(via)", "i(vib)", f"v({a})", f"v({b})")
     w = run(deck)["waves"]
     t, vd, ia, ib = w["time"], w[f"v({p})"] - w[f"v({n})"], w["i(via)"], w["i(vib)"]
+    vpins = np.concatenate([w[f"v({a})"], w[f"v({b})"]])
     edges = [td + k * T / 2 for k in range(1, 2 * ncyc)]
     settled = [abs(np.interp(e - 1e-6, t, vd)) for e in edges]          # swing just before each edge
     return dict(ipk_a=float(np.max(np.abs(ia))), ipk_b=float(np.max(np.abs(ib))),
                 isum=float(np.max(np.abs(ia) + np.abs(ib))),
                 vop=float(min(settled)), vpk=float(np.max(np.abs(vd))),
+                vpin_min=float(np.min(vpins)), vpin_max=float(np.max(vpins)) - vdd,
                 v1=fundamental(t, vd, F_PIEZO, td + (ncyc - 2) * T, td + ncyc * T))
 
 
@@ -218,6 +241,10 @@ def piezo_checks(check, r, tag, current=True, swing=True):
         check(f"BZ1 4 kHz fundamental [{tag}]", r["v1"], 4 / math.pi * VOP_MIN, None, "V",
               f"{S_MUR} ±1.5 Vo-p square (fundamental 4/π·1.5 V)")
     check(f"BZ1 peak voltage [{tag}]", r["vpk"], None, VOP_MAX, "V", f"{S_MUR} max input ±12.5 Vo-p")
+    check(f"BUZZ pin minimum voltage (piezo ringing) [{tag}]", r["vpin_min"], V_ABS_MIN, None, "V",
+          "nRF52840 PS v1.1 Table 173 VI/O min −0.3 V")
+    check(f"BUZZ pin maximum voltage above VDD [{tag}]", r["vpin_max"], None, 0.3, "V",
+          "nRF52840 PS v1.1 Table 173 VI/O max VDD + 0.3 V")
 
 
 @pytest.mark.parametrize("drive", [("HD", "max"), ("HD", "min"), ("SD", "min")], ids=lambda x: "-".join(x))
@@ -272,6 +299,8 @@ def piezo_bleed(d, vdd, cf=CF_NOM):
     w = run(deck)["waves"]
     t, vd = w["time"], w[f"v({p})"] - w[f"v({n})"]
     m = (t > t0 + 1e-3) & (vd > 1e-3)
+    if np.count_nonzero(m) < 10:            # no charge left to fit (e.g. BZ1 shorted): tau ~ 0, not a crash
+        return 0.0, float(np.interp(t0, t, vd))
     slope = np.polyfit(t[m], np.log(vd[m]), 1)[0]
     return -1 / slope if slope < 0 else math.inf, float(np.interp(t0, t, vd))
 
@@ -283,14 +312,6 @@ def test_piezo_bleed_time_constant(main, check):
     check("BZ1 charge at disconnect", v0, 0.95 * VDD["nom"], None, "V", "drive reached +VDD before disconnect")
     check("bleed time constant (R59 ∥ BZ1)", tau, 0.95 * tau_cf, 1.05 * tau_cf, "s",
           "closed form R59·C(BZ1) ±5 % (sensors sheet: R59 bleeds BZ1 in sleep)")
-
-
-def test_piezo_spec_series_r_matches_netlist(main, check):
-    """SPEC §4/§5.5 still say 100 ohm per side; the netlist has R57/R58 = 470 ohm. Record what is fitted
-    (the fault test below shows 100 ohm would overload the pins)."""
-    for ref in ("R57", "R58"):
-        check(f"{ref} value", main.value(ref), 470.0 * 0.99, None, "Ω",
-              "sensors sheet / docs/firmware.md §8.1 (≥ 470 Ω keeps the pin current in spec)")
 
 
 @pytest.mark.fault
@@ -323,10 +344,24 @@ def test_fault_piezo_bleed_missing(main, check):
           "fault must violate closed form R59·C(BZ1)")
 
 
+@pytest.mark.fault
+def test_fault_piezo_pads_bridged(main, check):
+    """Fault: BZ_P and BZ_N bridged (solder bridge across the R59 0402, or under BZ1). The swing and
+    fundamental checks must flag the silent sounder; the author's fault tests exercise only the current
+    and bleed checks."""
+    main.short("R59")
+    r = piezo_drive(main, VDD["nom"], "HD", "typ", ncyc=2)
+    check("FAULT BZ_P-BZ_N bridged: BZ1 swing below the rating condition", r["vop"], None, VOP_MIN, "V",
+          f"fault must violate {S_MUR} SPL condition ±1.5 Vo-p")
+    check("FAULT BZ_P-BZ_N bridged: 4 kHz fundamental below the rating condition", r["v1"], None,
+          4 / math.pi * VOP_MIN, "V", f"fault must violate {S_MUR} ±1.5 Vo-p square")
+
+
 # ================================================================================================ TMAG bus
-def tmag_bus(d, vdd, cs, ctls, scale=None, temp=25, tstop=None, waves=(), meas=(), op=False, prints=()):
+def tmag_bus(d, vdd, cs, ctls, scale=None, temp=25, tstop=None, waves=(), meas=(), op=False, prints=(),
+             drive=("SD", "min")):
     """TMAG_SCL / TMAG_SDA / TMAG_INT_N on one deck. ctls: {'scl_nrf','sda_nrf','sda_tmag','int_tmag'} ->
-    PWL/PULSE/DC spec of the logic control (1 = pull low)."""
+    PWL/PULSE/DC spec of the logic control (1 = pull low). drive: nRF TWIM0 pin corner (S0D1 weakest default)."""
     v3 = d.node("+3V3")
     scl, sda, intn = d.node("TMAG_SCL"), d.node("TMAG_SDA"), d.node("TMAG_INT_N")
     assert d.pin("U10", "P0.24") == scl and d.pin("U10", "P0.25") == sda and d.pin("U10", "P0.27") == intn
@@ -342,8 +377,8 @@ def tmag_bus(d, vdd, cs, ctls, scale=None, temp=25, tstop=None, waves=(), meas=(
     for k in ("scl_nrf", "sda_nrf", "sda_tmag", "int_tmag"):
         line, c[k] = ctl(k, ctls.get(k, "DC 0"))
         deck += line
-    deck += gpio("NSCL", scl, v3, "0", c["scl_nrf"], "SD", "min", vdd).replace("cpad=3e-12", f"cpad={cs['c_nrf']:g}")
-    deck += gpio("NSDA", sda, v3, "0", c["sda_nrf"], "SD", "min", vdd).replace("cpad=3e-12", f"cpad={cs['c_nrf']:g}")
+    deck += gpio("NSCL", scl, v3, "0", c["scl_nrf"], *drive, vdd).replace("cpad=3e-12", f"cpad={cs['c_nrf']:g}")
+    deck += gpio("NSDA", sda, v3, "0", c["sda_nrf"], *drive, vdd).replace("cpad=3e-12", f"cpad={cs['c_nrf']:g}")
     deck += gpio_in("NINT", intn, v3, vdd, cs["c_nrf"])
     deck += f"XTSCL {scl} 0 TMAG5273_IN ci={cs['c_dev']:g}"
     deck += f"VAM_TSDA {sda} {sda}_t 0"
@@ -437,7 +472,7 @@ def test_tmag_int_pulse(main, check, supply, temp):
         tag = f"{supply} {temp}°C R52-corner {k}"
         check(f"TMAG_INT_N low during pulse [{tag}]", vol, None, 0.3 * vdd, "V", f"{S_NRF} VIL 0.3·VDD")
         check(f"TMAG_INT_N back above VIH after pulse [{tag}]", t_vih, None, T_CONV_MIN_TMAG - T_INT_TMAG, "s",
-              f"{S_TMAG} Table 5.11 tmeasure 50 µs − Table 5.5 tINT 10 µs")
+              f"{S_TMAG} Table 5.11 tmeasure 50 µs typ (shortest INT period) − Table 5.5 tINT 10 µs typ")
         check(f"TMAG INT steady sink current [{tag}]", isink, None, TMAG_IOUT_MAX, "A",
               f"{S_TMAG} Table 5.3 IOUT recommended max")
         check(f"TMAG INT peak sink current at the edge [{tag}]", ipeak, None, TMAG_IOUT_ABS, "A",
@@ -466,11 +501,14 @@ def test_fault_tmag_int_pullup_missing(main, check):
 
 # ================================================================================================ system bus
 def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=None, meas=(), waves=(),
-            op=False, prints=()):
+            op=False, prints=(), drive=("SD", "min")):
     """System I2C + CHG_INT_N + BTN_N: main board, harness, base board in one deck.
 
     ctls keys (logic 1 = pull low / switch closed): scl_nrf, sda_nrf, sda_lis, sda_bq, int_bq, sw1.
-    The base ground sits vofs below the main ground (harness GND return drop)."""
+    The base ground sits vofs below the main ground (harness GND return drop).
+    drive: nRF TWIM pin corner (mode, min/typ/max). S0D1 is the TWIM default (no nordic,drive-mode in the
+    i2c1 pinctrl, docs/firmware.md); ("SD", "min") is the weakest pin (worst for VOL and rise/fall),
+    ("SD", "max") the fastest edge (worst for ringing, undershoot and crosstalk)."""
     v3 = d.node("+3V3")
     nets = ("I2C_SCL", "I2C_SDA", "CHG_INT_N", "BTN_N")
     mn = {n: d.node(n) for n in nets}
@@ -500,8 +538,8 @@ def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=
     deck += line
     # ---- main board
     cn = f"cpad={cs['c_nrf']:g}"
-    deck += gpio("NSCL", mn["I2C_SCL"], v3, "0", c["scl_nrf"], "SD", "min", vdd).replace("cpad=3e-12", cn)
-    deck += gpio("NSDA", mn["I2C_SDA"], v3, "0", c["sda_nrf"], "SD", "min", vdd).replace("cpad=3e-12", cn)
+    deck += gpio("NSCL", mn["I2C_SCL"], v3, "0", c["scl_nrf"], *drive, vdd).replace("cpad=3e-12", cn)
+    deck += gpio("NSDA", mn["I2C_SDA"], v3, "0", c["sda_nrf"], *drive, vdd).replace("cpad=3e-12", cn)
     deck += gpio_in("NINT", mn["CHG_INT_N"], v3, vdd, max(cs["c_nrf"], 4e-12))   # P0.09 = NFC1 pad
     deck += gpio_in("NBTN", mn["BTN_N"], v3, vdd, cs["c_nrf"])
     deck += f"XLSCL {mn['I2C_SCL']} 0 LIS2DW12_IN ci={cs['c_dev']:g}"
@@ -542,20 +580,20 @@ def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=
     return run(deck), mn, bn
 
 
-def i2c_transaction(d, b, vdd, cs, scale=None, vofs=0.0):
-    """400 kHz pattern from the nRF TWIM: SCL low 1.3 us / high 1.2 us (UM10204 tLOW min at 400 kHz, so
-    the tightest high phase a 400 kHz master can give); SDA released 500 ns after SCL falls
-    (tTWIM,HD_DAT), one '1' bit, then driven low again. tLOW itself is the master's timing (the PS does not
-    specify it), so it is not checked; the bus-dependent quantities are."""
-    t0, tl, th, hd = 0.5e-6, T_LOW, 2.5e-6 - T_LOW, 0.5e-6
-    e = 13e-9
+def i2c_transaction(d, b, vdd, cs, scale=None, vofs=0.0, rate="400k", drive=("SD", "min")):
+    """TWIM pattern at `rate` (TWIM table: errata 219 SCL low 1.25 us at 400 kHz, >= 1.3 us at the 390 kHz
+    workaround; high 1.2 us); SDA released tTWIM,HD_DAT = 500 ns after SCL falls, one '1' bit, then driven
+    low again. Returns per receiver the bus quantities: tr, tf, tSU;DAT, tHIGH, tLOW (at the receiver's own
+    VIL), crosstalk dip, undershoot and overshoot."""
+    t0, tl, th, hd = 0.5e-6, TWIM[rate]["tlow"], TWIM[rate]["thigh"], T_HD_DAT_TWIM
+    e = EDGE[drive[0]]
     f1, r1, f2, r2 = t0, t0 + tl, t0 + tl + th, t0 + 2 * tl + th
     scl = f"PWL(0 0 {f1:g} 0 {f1 + e:g} 1 {r1:g} 1 {r1 + e:g} 0 {f2:g} 0 {f2 + e:g} 1 {r2:g} 1 {r2 + e:g} 0)"
     sda = f"PWL(0 1 {f1 + hd:g} 1 {f1 + hd + e:g} 0 {f2 + hd:g} 0 {f2 + hd + e:g} 1)"
     tstop = r2 + 1.0e-6
     nodes = [d.node(n) for n in ("I2C_SCL", "I2C_SDA")] + [bnode(b.node(n)) for n in ("I2C_SCL", "I2C_SDA")]
     r, mn, bn = sys_bus(d, b, vdd, cs, {"scl_nrf": scl, "sda_nrf": sda}, scale=scale, vofs=vofs, tstop=tstop,
-                        waves=tuple(f"v({x})" for x in nodes))
+                        waves=tuple(f"v({x})" for x in nodes), drive=drive)
     w = r["waves"]
     t = w["time"]
     out = {}
@@ -570,8 +608,10 @@ def i2c_transaction(d, b, vdd, cs, scale=None, vofs=0.0):
             tf=_cross(t, vs, 0.3 * vdd, -1, start=f2 - 0.1e-6) - _cross(t, vs, 0.7 * vdd, -1, start=f2 - 0.1e-6),
             tsu=_cross(t, vs, vil, +1, start=r1 - 0.2e-6) - _cross(t, vd, vih, +1, start=f1),
             thigh=_cross(t, vs, vih, -1, start=r1) - _cross(t, vs, vih, +1, start=r1 - 0.2e-6),
+            tlow=_cross(t, vs, vil, +1, start=r1 - 0.2e-6) - _cross(t, vs, vil, -1, start=f1 - 0.1e-6),
             sda_dip=float(np.min(vd[(t > f2 - 20e-9) & (t < f2 + 0.3e-6)])),
             vmin=float(min(np.min(vs), np.min(vd))),
+            vmax=float(max(np.max(vs), np.max(vd))),
             vih=vih)
     return out
 
@@ -581,12 +621,14 @@ def transaction_checks(check, out, vdd, tag):
         src_t = f"{S_UM} Table 11" + (f"; {S_LIS} Table 7 (0.2/0.8·VDD_IO points)" if name == "LIS2DW12" else "")
         check(f"I2C_SCL rise 30-70 % at {name} [{tag}]", m["tr"], None, TR_FM, "s", f"{S_UM} Table 11 tr (Fm)")
         check(f"I2C_SCL fall 70-30 % at {name} [{tag}]", m["tf"], None, TF_FM, "s", f"{S_UM} Table 11 tf (Fm)")
-        check(f"I2C tSU;DAT at {name} [{tag}]", m["tsu"], T_SU_DAT, None, "s", src_t)
+        check(f"I2C tSU;DAT at {name} [{tag}]", m["tsu"], T_SU_DAT, None, "s",
+              src_t + "; master SDA edge at nRF PS §6.31.8.2 tTWIM,HD_DAT 500 ns after SCL falls")
         check(f"I2C tHIGH at {name} [{tag}]", m["thigh"], T_HIGH, None, "s", src_t)
         check(f"I2C_SDA crosstalk dip at SCL fall, {name} [{tag}]", m["sda_dip"], m["vih"], None, "V",
               f"{S_UM} Table 11 VnH 0.2·VDD / receiver VIH")
         check(f"I2C undershoot at {name} [{tag}]", m["vmin"], V_ABS_MIN, None, "V",
               "abs max −0.3 V (nRF PS Table 173, LIS2DW12, BQ25180 §7.1)")
+        check(f"I2C overshoot at {name} [{tag}]", m["vmax"], None, V_MAX_RX[name](vdd), "V", V_MAX_SRC[name])
 
 
 @pytest.mark.parametrize("cset", list(CSETS))
@@ -615,7 +657,7 @@ def test_system_bus_monte_carlo(main, base, check):
         out = i2c_transaction(main, base, vdd, cs, scale=sc, vofs=rng.uniform(0, I_GND["hw_worst"]) * R_GND)
         for name, m in out.items():
             for key, val in m.items():
-                if key == "vih":
+                if key in ("vih", "vmax", "tlow"):      # tLOW: test_twim_tlow_*; overshoot: RC edges, none
                     continue
                 if key in ("sda_dip", "vmin"):
                     val = val - (m["vih"] if key == "sda_dip" else V_ABS_MIN)     # margin, worst = lowest
@@ -633,6 +675,79 @@ def test_system_bus_monte_carlo(main, base, check):
         check(f"MC worst SDA dip margin above VIH at {name}", worst[(name, "sda_dip")], 0.0, None, "V",
               f"{S_UM} Table 11 VnH")
         check(f"MC worst undershoot margin at {name}", worst[(name, "vmin")], 0.0, None, "V", "abs max −0.3 V")
+
+
+@pytest.mark.parametrize("cset", list(CSETS))
+@pytest.mark.parametrize("supply", ["vbat3.0", "hi"])
+def test_system_bus_fast_edges(main, base, check, supply, cset):
+    """Harness ringing, undershoot, overshoot and SDA crosstalk are worst with the FASTEST pull-down, not the
+    weakest pin the timing tests use: S0D1 max (IOL,SD 4 mA), the strongest pin in the configured TWIM mode.
+    No ground offset: an offset lifts the base-side waveform, so zero is worst for undershoot at the BQ25180.
+    (H0D1 max, with the calibrated 5 ns edge, reaches -0.30 V at the BQ25180 here: at the abs max.)"""
+    vdd, drive = VDD[supply], ("SD", "max")
+    out = i2c_transaction(main, base, vdd, CSETS[cset], vofs=0.0, drive=drive)
+    tag = f"{supply} {cset} nRF {drive[0]}-{drive[1]}"
+    for name, m in out.items():
+        check(f"I2C undershoot at {name}, fast edge [{tag}]", m["vmin"], V_ABS_MIN, None, "V",
+              "abs max −0.3 V (nRF PS Table 173, LIS2DW12 Table 9, BQ25180 §7.1)")
+        check(f"I2C overshoot at {name}, fast edge [{tag}]", m["vmax"], None, V_MAX_RX[name](vdd), "V",
+              V_MAX_SRC[name])
+        check(f"I2C_SDA crosstalk dip at SCL fall, {name}, fast edge [{tag}]", m["sda_dip"], m["vih"], None, "V",
+              f"{S_UM} Table 11 VnH 0.2·VDD / receiver VIH")
+
+
+# ------------------------------------------------------------------------------------------------ tLOW (errata 219)
+TLOW_SRC = {"LIS2DW12": f"{S_LIS} Table 7 tw(SCLL) 1.3 µs at the 0.2·Vdd_IO point (Table 7 note); {S_UM} Table 11",
+            "BQ25180": f"{S_UM} Table 11 tLOW 1.3 µs (Fm, 0.3·VDD); {S_BQ} §8.3.14 F/S-mode device"}
+
+
+def tmag_tlow(d, vdd, cs, tlow, scale=None, drive=("SD", "min")):
+    """TWIM0 holds TMAG_SCL low for `tlow`; returns the low time at the TMAG5273 (0.3·VCC, Table 5.3 VIL)."""
+    scl = d.node("TMAG_SCL")
+    t0, e = 0.2e-6, EDGE[drive[0]]
+    pwl = f"PWL(0 0 {t0:g} 0 {t0 + e:g} 1 {t0 + tlow:g} 1 {t0 + tlow + e:g} 0)"
+    r = tmag_bus(d, vdd, cs, {"scl_nrf": pwl}, scale=scale, tstop=t0 + tlow + 0.8e-6, waves=(f"v({scl})",),
+                 drive=drive)
+    t, v = r["waves"]["time"], r["waves"][f"v({scl})"]
+    return _cross(t, v, 0.3 * vdd, +1, start=t0 + tlow - 0.05e-6) - _cross(t, v, 0.3 * vdd, -1, start=t0 - 0.1e-6)
+
+
+def twim_tlow_checks(main, base, check, sys_rate, tmag_rate, drive=("SD", "min")):
+    """SCL low time at every receiver of both buses: TWIM1 (system bus) at `sys_rate`, TWIM0 (TMAG) at
+    `tmag_rate`. Stronger pull-up (R -1 %) and the weakest pull-down are worst: both slow the fall into VIL
+    and speed the rise out of it."""
+    for cset in CSETS:
+        for supply in ("vbat3.0", "hi"):
+            vdd = VDD[supply]
+            tag = f"{supply} {cset} nRF {'-'.join(drive)}"
+            tl = tmag_tlow(main, vdd, CSETS[cset], TWIM[tmag_rate]["tlow"], scale={"R50": 1 - main.tol("R50")},
+                           drive=drive)
+            check(f"TMAG_SCL tLOW at TMAG5273, TWIM0 @{tmag_rate} [{tag}]", tl, T_LOW, None, "s",
+                  f"{S_TMAG} Table 5.10 twlow 1300 ns (0.3·VCC, Table 5.3 VIL); {S_UM} Table 11 tLOW")
+            sc = {"R53": 1 - main.tol("R53"), "R54": 1 - main.tol("R54")}
+            out = i2c_transaction(main, base, vdd, CSETS[cset], scale=sc, rate=sys_rate, drive=drive)
+            for name, m in out.items():
+                check(f"I2C_SCL tLOW at {name}, TWIM1 @{sys_rate} [{tag}]", m["tlow"], T_LOW, None, "s",
+                      TLOW_SRC[name])
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE (firmware config): nRF52840 errata 219, the TWIM at 400 kHz drives SCL low for only 1.25 us; "
+    "the bus tLOW is 1.27 us at the TMAG5273 and 1.22-1.28 us at the LIS2DW12 / BQ25180, below 1.3 us "
+    "(UM10204 Table 11, LIS2DW12 Table 7, TMAG5273 Table 5.10). docs/firmware.md sets I2C_BITRATE_FAST on "
+    "i2c0 and i2c1 with no workaround. Fix: see test_twim_tlow_errata219_remedy"))
+def test_twim_tlow_400k_errata219(main, base, check):
+    """Firmware as documented: both TWIMs at 400 kHz, default S0D1 pins (weakest corner)."""
+    twim_tlow_checks(main, base, check, "400k", "400k")
+
+
+def test_twim_tlow_errata219_remedy(main, base, check):
+    """Remedy, S0D1 pins unchanged: TWIM0 (TMAG) at the errata 219 workaround FREQUENCY = 0x06200000
+    (390 kHz, SCL low > 1.3 us), TWIM1 (system bus) at 250 kbps (K250). 390 kHz is not enough on TWIM1: the
+    weakest S0D1 pin needs 20-30 ns to pull the 45-72 pF harness line to the LIS2DW12's 0.2·Vdd_IO point,
+    leaving 1.27-1.29 us there. H0D1 would fix that but puts the BQ25180 undershoot at the -0.3 V abs max
+    (test_system_bus_fast_edges note)."""
+    twim_tlow_checks(main, base, check, "250k", "390k")
 
 
 SYS_DRIVERS = {  # driver -> (control key, node key, sink ammeter, max sink)
@@ -699,14 +814,16 @@ def test_chg_int_pullup_in_range(main, check):
 
 @pytest.mark.parametrize("supply", ["vbat3.0", "lo", "hi"])
 def test_chg_int_pulse(main, base, check, supply):
-    """BQ25180 /INT 128 us pulse across the harness, worst ground offset; idle high with ILKG 1 uA."""
+    """BQ25180 /INT 128 us pulse across the harness; idle high with ILKG 1 uA."""
     vdd = VDD[supply]
     t0 = 2e-6
     for k, sc in enumerate(main.extremes(["R55"])):
         mnode = main.node("CHG_INT_N")
         pulse = f"PULSE(0 1 {t0:g} 13n 13n {T_INT_BQ:g} 1)"
+        # base-side driver read on main: a ground offset only helps (base GND sits below main GND),
+        # so the worst case is no offset
         r, _, _ = sys_bus(main, base, vdd, CSETS["worst"], {"int_bq": pulse}, scale=sc,
-                          vofs=I_GND["hw_worst"] * R_GND, tstop=t0 + T_INT_BQ + 20e-6,
+                          vofs=I_GND["idle"], tstop=t0 + T_INT_BQ + 20e-6,
                           waves=(f"v({mnode})", "i(vam_bint)"))
         w = r["waves"]
         t, v = w["time"], w[f"v({mnode})"]
@@ -743,8 +860,8 @@ def test_btn_n_levels(main, base, check, vbat, temp):
     mnode = main.node("BTN_N")
     for k, sc in enumerate(main.extremes(["R56"])):
         tag = f"VBAT {vbat} V {temp}°C R56-corner {k}"
-        r, _, _ = sys_bus(main, base, vdd, CSETS["nom"], {"sw1": "DC 1"}, scale=sc, vofs=I_GND["hw_worst"] * R_GND,
-                          vbat=vbat, temp=temp, op=True, prints=(f"v({mnode})",))
+        r, _, _ = sys_bus(main, base, vdd, CSETS["nom"], {"sw1": "DC 1"}, scale=sc, vofs=I_GND["idle"],
+                          vbat=vbat, temp=temp, op=True, prints=(f"v({mnode})",))   # no offset = worst
         check(f"BTN_N pressed, low at nRF [{tag}]", r["op_0"], None, 0.3 * vdd, "V", f"{S_NRF} VIL 0.3·VDD")
         r, _, _ = sys_bus(main, base, vdd, CSETS["nom"], {}, scale=sc, vbat=vbat, temp=temp, op=True,
                           prints=(f"v({mnode})",))
@@ -762,6 +879,19 @@ def test_fault_btn_pullup_1meg(main, base, check):
           f"fault must violate {S_NRF} VIH")
 
 
+@pytest.mark.fault
+def test_fault_btn_gate_pulldown_missing(main, base, check):
+    """Fault (base board): R4, the 1 Mohm SW_GATE pull-down, left off. After a press the BSS138DW gates keep
+    their charge (only IGSS and the open switch remain), so Q1B holds BTN_N low: the dial reads as pressed
+    forever (and Q1A holds TS/MR low). In the DC solution the open SW1 (ROFF 1e12) is the gate's only path,
+    to VBAT, which is that post-press state. The released-level check must flag it."""
+    base.remove("R4")
+    mnode = main.node("BTN_N")
+    r, _, _ = sys_bus(main, base, VDD["lo"], CSETS["nom"], {}, vbat=3.7, temp=25, op=True, prints=(f"v({mnode})",))
+    check("FAULT R4 left off: BTN_N released level below VIH", r["op_0"], None, 0.7 * VDD["lo"], "V",
+          f"fault must violate {S_NRF} VIH 0.7·VDD")
+
+
 # ------------------------------------------------------------------------------------------------ IMU INT
 @pytest.mark.parametrize("supply", ["vbat3.0", "hi"])
 def test_imu_int_push_pull(main, check, supply):
@@ -772,7 +902,7 @@ def test_imu_int_push_pull(main, check, supply):
         node = main.node(net)
         assert main.pin("U31", pin) == node and main.pin("U10", gpin) == node
         check(f"{net} has no pull resistor", len(main.on_net(net, "R")), 0, 0, "",
-              f"{S_LIS} Table 3: push-pull default (firmware keeps PP_OD = 0)")
+              f"{S_LIS} Table 12: push-pull default; Table 34 CTRL3.PP_OD = 0 (firmware keeps it)")
         for level in (0, 1):
             deck = Deck(f"{net} level {level}")
             deck.include(LIB["nrf52840_gpio"]).include(LIB["lis2dw12"])

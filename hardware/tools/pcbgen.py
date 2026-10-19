@@ -16,6 +16,7 @@ import sexpr
 from sexpr import find, find_all
 
 MM = pcbnew.FromMM
+_FP_CACHE = {}
 FP_DIR = os.environ.get("KICAD9_FOOTPRINT_DIR", "/usr/share/kicad/footprints")
 
 
@@ -256,10 +257,15 @@ class BoardBuilder:
         return os.path.join(FP_DIR, nick + ".pretty")
 
     def load_footprint(self, fpid):
+        """A fresh copy of a library footprint. The library copy is loaded once: FootprintLoad parses the whole
+        .pretty directory and leaks memory on every call."""
         nick, name = fpid.split(":", 1)
-        fp = pcbnew.FootprintLoad(self._lib_path(nick), name)
-        if fp is None:
+        key = (self._lib_path(nick), name)
+        if key not in _FP_CACHE:
+            _FP_CACHE[key] = pcbnew.FootprintLoad(*key)
+        if _FP_CACHE[key] is None:
             raise KeyError(f"footprint {fpid} not found")
+        fp = pcbnew.FOOTPRINT(_FP_CACHE[key])
         fp.SetFPIDAsString(fpid)
         return fp
 

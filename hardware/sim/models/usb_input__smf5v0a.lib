@@ -15,7 +15,7 @@
 * Modelled (Littelfuse table "Electrical Characteristics", TA = 25 C, unless noted):
 *   VBR      6.40 V min / 7.00 V max at IT = 10 mA          -> param vbr (default 6.70 = mid)
 *   VC       9.2 V max at IPP = 21.7 A (10/1000 us)          -> param rd: rd = (9.2 - 7.0)/21.7 = 0.101 ohm
-*            makes the vbr = 7.00 corner meet VC exactly (heating included = worst case for a clamp).
+*            makes the vbr = 7.00 corner meet VC (model: rd = 0.098 gives 9.19 V; heating included = worst case).
 *            Fast (ns..us) pulses see the unheated die: Vishay family model RS = 0.02 ohm -> rd = 0.02.
 *   IR       400 uA max at VR = 5.0 V (Littelfuse; Vishay: 5 uA max) -> param ilk = leakage at 5.0 V,
 *            nlk = its emission coefficient (Vishay family: 13). For ilk = 400u, nlk = 22 keeps the
@@ -30,12 +30,15 @@
 *   - VBR temperature coefficient (not given in either datasheet; Vishay's family models carry no TBV1),
 *     so VBR is temperature-independent; leakage and VF follow the SPICE default IS(T) law (Littelfuse
 *     Fig. 5 shows VF falling ~1.5 mV/C, which the default EG/XTI reproduces to first order).
-*   - self-heating during long pulses (rd corner 0.101 ohm bounds it), package/lead inductance (the
+*   - knee shape below IT: NBV = 1 (Vishay family uses 0.5; 1 keeps ns-edge ESD runs convergent and
+*     moves V(1 mA) by only -60 mV)
+*   - self-heating during long pulses (rd corner 0.098 ohm bounds it), package/lead inductance (the
 *     tests add layout inductance explicitly), turn-on delay (DS: < 1 ns from 0 V to VBR min).
 *
 * Pins: K = cathode (pin 1, VBUS on the base board), A = anode (pin 2, GND).
-* Corners used by the tests: typ (vbr 6.70, rd 0.02), clamp-max (vbr 7.00, rd 0.101),
-*                            clamp-min/leak-max (vbr 6.40, rd 0.02, ilk 400u, nlk 22).
+* Corners used by the tests: typ (vbr 6.70, rd 0.02), clamp-max (vbr 7.00, rd 0.098),
+*                            clamp-min/leak-max (vbr 6.42, rd 0.02, ilk 400u, nlk 22): with the
+*                            400 uA leakage this still gives V(10 mA) >= 6.40 V (VBR min).
 * =====================================================================================================
 .subckt USBIN_SMF5V0A K A params: vbr=6.70 rd=0.02 ilk=5u nlk=13 cj0=800p
 * forward conduction (anode -> cathode), Littelfuse Fig. 7 fit, junction capacitance Fig. 6
@@ -45,6 +48,6 @@ Dbrk  A K USBIN_SMF5V0A_DZ
 * soft reverse leakage (Vishay family topology: reverse-oriented high-N diode), scaled to ilk at 5.0 V
 Dlk   K A USBIN_SMF5V0A_DL
 .model USBIN_SMF5V0A_DF D(IS=9.7e-12 N=1.34 RS=0.066 CJO={cj0} M=0.39 VJ=0.92 TT=0)
-.model USBIN_SMF5V0A_DZ D(IS=1e-20 N=3 RS={rd} BV={vbr} IBV=10m NBV=0.5 CJO=0)
+.model USBIN_SMF5V0A_DZ D(IS=1e-20 N=3 RS={rd} BV={vbr} IBV=10m NBV=1 CJO=0)
 .model USBIN_SMF5V0A_DL D(IS={ilk/exp(5.0/(nlk*0.025865))} N={nlk} RS=0 CJO=0)
 .ends USBIN_SMF5V0A

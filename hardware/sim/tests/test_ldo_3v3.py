@@ -8,7 +8,9 @@ Samsung Electro-Mechanics component library, keyed by the MPN field of each capa
 capacitor whose MPN is not in the table fails the run instead of being silently guessed.
 
 Load currents are datasheet figures of the +3V3 consumers (nRF52840 PS v1.1, W25Q128JV Rev F, TMAG5273 SLYS045C,
-SSD1351 / NHD panel spec, DRV8837 SLVSBA4F, DRV5032 SBAS640) and the architecture.md section 8.2 sleep budget.
+SSD1351 / NHD panel spec, DRV8837 SLVSBA4F, DRV5032 ti.com/lit/ds/symlink/drv5032.pdf) and the architecture.md
+section 8.2 sleep budget. VSYS is applied at the main-board link connector: the harness drop belongs to the link
+harness tests (it is ~mV at the +3V3 load currents used here).
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ DS = "RT9080 DS9080-09"
 # --------------------------------------------------------------------------------------------- limits
 W25Q_VMIN = 2.7          # W25Q128JV Rev F 9.2: VCC 2.7-3.0 V allowed at FR <= 104 MHz (nRF QSPI <= 32 MHz)
 VCI_MAX = 3.5            # SSD1351 VCI 2.4-3.5 V (NHD panel spec, display research); tighter than the 3.6 V parts
-VDD_MAX = 3.6            # nRF52840 PS VDD max, W25Q128JV, TMAG5273, LIS2DW12 VDD max
 NRF_TR_VDD_MAX = 60e-3   # nRF52840 PS recommended operating conditions: tR_VDD (0 -> 1.7 V) <= 60 ms
 TMAG_RAMP_MIN = 3.0e3    # TMAG5273 SLYS045C: VCC ramp >= 3 V/ms, else firmware must run one W&S cycle after POR
 WS_VIH_K = 0.6           # WS2812C-2020-V6 VIH = 0.6 x VDD (Worldsemi PCN 30 Sep 2025; 0.55 x VDD in DS V1.0)
@@ -37,7 +38,8 @@ ESR_MIN = 1e-3           # DS9080-09 section 18: output capacitor ESR >= 1 mohm
 TJ_MAX = 125.0           # DS9080-09 section 12: recommended junction temperature range -40..125 C
 THETA_JA = 100.7         # DS9080-09 section 13: theta-JA(EVB), 4-layer 70x50 mm board (the main board is 4-layer)
 SPEC_IQ_MAX = 2e-6       # SPEC.md section 3: "LDO ... Iq <= 2 uA"
-BATOCP_DEFAULT = 1.0     # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A, the POR value before firmware sets 1.5 A
+BATOCP_DEFAULT = 1.0     # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A (POR default per power research; firmware
+#                          later writes 1.5 A, so start-up happens at 1 A)
 BQ_ILIM_500_MAX = 0.498  # BQ25180 SLUSE99C 7.5 ILIM 500 mA code: 498 mA max (TMR_ILIM 0xCD, firmware.md)
 SYS_REG = 4.5            # BQ25180 SYS_REG = 4.5 V on USB (architecture 6.5 / firmware register table)
 SYS_REG_ACC = 0.02       # BQ25180 SLUSE99C 7.5 VSYS_REG accuracy +/-2 %
@@ -68,7 +70,7 @@ TX = 14.8e-3 + 3.3e-3   # nRF52840 PS v1.1: ITX,PLUS8dBM,DCDC 14.8 mA + ICPU0 (6
 OTHERS = {        # added on top of TX for the peak step
     "W25Q128 page program": 25e-3,   # W25Q128JV Rev F 9.4 ICC5 max
     "TMAG5273 active": 3.0e-3,       # TMAG5273 SLYS045C active LP_LN=1, typ
-    "LIS2DW12 HP": 0.09e-3,          # LIS2DW12 high-performance mode
+    "LIS2DW12 HP": 0.09e-3,          # LIS2DW12 high-performance mode (~90 uA, sensing research)
     "SSD1351 VCI": 0.3e-3,           # NHD panel spec ICI max 300 uA
     "2x DRV8837 VCC": 3.0e-3,        # DRV883x SLVSBA4F IVCC awake, 1.5 mA max each
     "DRV5032 sample": 2.7e-3,        # DRV5032 ICC peak during sampling, max
@@ -249,9 +251,11 @@ def test_model_matches_datasheet_figures(check):
     """The behavioural model reproduces the DS9080-09 conditions it was fitted to (no design data involved)."""
     # Load transient (Fig. "Load Transient": RT9080-08, VIN 1.8 V, 1 mA -> 600 mA, ~20 us edges, 1 uF):
     # DS shows ~27 mV undershoot and ~23 mV overshoot. The model must not be more optimistic than the figure.
+    # The bench runs at VIN 2.0 V: at 1.8 V the Table 14 dropout of the 0.8 V option (1.05 V typ at 600 mA) would
+    # already bind in the model, although the figure shows the part regulating.
     deck = spicelib.Deck("RT9080 DS load transient")
     deck.include(LIB)
-    deck += ["VIN vin 0 1.8", "XU vin vin out 0 LDO3V3_RT9080 params: VNOM=0.8", "C1 out 0 1u", "RL out 0 800",
+    deck += ["VIN vin 0 2.0", "XU vin vin out 0 LDO3V3_RT9080 params: VNOM=0.8", "C1 out 0 1u", "RL out 0 800",
              "IL out 0 " + pwl([(0, 0), (300e-6, 0), (320e-6, 0.599), (700e-6, 0.599), (720e-6, 0)])]
     deck.tran("0.1u", "1.1m", extra="0.2u")
     deck.meas("tran v0 FIND v(out) AT=290u")
@@ -283,7 +287,7 @@ def test_model_matches_datasheet_figures(check):
     for name, corner, lo, hi in (("typ", TYP, 0.28, 0.34), ("max corner", LOW, 0.45, 0.53)):
         deck = spicelib.Deck("RT9080 DS dropout")
         deck.include(LIB)
-        c = dict(corner, ACC=0, LINE=0)
+        c = dict(corner, ACC=0, LINE=0, ILIM=0.98, IFB=0.72)   # dropout spec only: typ current limit
         deck += ["VIN vin 0 4", f"XU vin vin out 0 LDO3V3_RT9080 params: {params(c, 25, 3.3)}", "IL out 0 0.6"]
         deck.dc("VIN", 3.0, 4.2, 0.002)
         deck.meas(f"dc vdrop WHEN v(out)={0.98 * 3.3} RISE=1")
@@ -303,6 +307,31 @@ def test_model_matches_datasheet_figures(check):
     check_clean(r)
     check("DS soft start, EN -> 92 % VOUT", r["t92"] - 51e-6, 0.5 * 195e-6, 2 * 195e-6, "s",
           f"{DS} Fig. Power On from EN (~195 us to 92 %, read from the plot)")
+
+
+def test_spec_section3_ldo_requirements(main, check):
+    """SPEC 3: 'LDO >= 200 mA, Iq <= 2 uA, dropout <= 300 mV at 200 mA ... Input 10 uF, output 10 uF + 100 nF'.
+    Dropout with the DS max-dropout part at 60 C; capacitors from the netlist (nominal, and effective at the input
+    against the DS 1 uF input recommendation)."""
+    deck = spicelib.Deck("LDO SPEC dropout 200 mA")
+    deck.include(LIB)
+    c = dict(LOW, ACC=0, LINE=0, ILIM=0.98, IFB=0.72)
+    deck += ["VIN vin 0 4", f"XU vin vin out 0 LDO3V3_RT9080 params: {params(c, 60, ldo_vnom(main))}", "IL out 0 0.2"]
+    deck.dc("VIN", 3.0, 4.2, 0.002)
+    deck.meas(f"dc vdrop WHEN v(out)={0.98 * ldo_vnom(main)} RISE=1")
+    r = deck.run()
+    check_clean(r)
+    check("dropout @200 mA, DS max part, 60 C", r["vdrop"] - 0.98 * ldo_vnom(main), None, 0.300, "V",
+          "SPEC.md 3: dropout <= 300 mV at 200 mA")
+    check("current limit, DS min", LOW["ILIM"], 0.200, None, "A", f"SPEC.md 3: >= 200 mA ({DS} Table 14 ILIM >= 610 mA)")
+    loc = local_out_caps(main)
+    check(f"output capacitance at U1, nominal ({'+'.join(loc)})", sum(main.value(r) for r in loc), 10.1e-6 * 0.999, None, "F",
+          "SPEC.md 3: output 10 uF + 100 nF")
+    sheet = main.comps[ldo_ref(main)]["props"].get("Sheetname")
+    vin_loc = [r for r in caps_to_gnd(main, nets(main)[0]) if main.comps[r]["props"].get("Sheetname") == sheet]
+    c_in = min(sum(main.value(r) * cap_factor(main, r, VSYS_USB_MAX, t, -1) for r in vin_loc) for t in (-10, 60))
+    check(f"VSYS capacitance on U1's sheet ({'+'.join(vin_loc)}), effective at {VSYS_USB_MAX} V, -tol", c_in, 1e-6,
+          None, "F", f"{DS} section 18: input capacitor >= 1 uF close to VIN (SPEC 3: 10 uF)")
 
 
 def test_nominal_regulation(main, check):

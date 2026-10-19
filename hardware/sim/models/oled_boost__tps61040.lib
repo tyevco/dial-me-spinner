@@ -11,7 +11,7 @@
 *             after ~2.7 ms in ngspice 42, and (c) its soft-start counter mis-counts under ngspice
 *             (its 100 ns one-shot stretches to ~465 ns, so it advances ~3 counts per switching cycle).
 *   Port check (scratch run, vendor model under ngspice -D ngbehavior=psa, same L/D/C/divider):
-*     VIN 3.7 V / 20 mA : VOUT avg 13.019 vs 13.018 V, ripple 9.4 vs 9.0 mV, pulse rate 202 vs 210 kHz
+*     VIN 3.7 V / 20 mA : VOUT avg 13.019 vs 13.018 V, ripple 9.4 vs 9.0 mV, pulse rate 203 vs 210 kHz
 *     VIN 3.0 V / 40 mA : VOUT avg 12.977 vs 12.974 V, ripple 7.7 vs 7.2 mV, pulse rate 447 vs 461 kHz
 *     Peak switch current 0.441 vs 0.431 A: the port uses the datasheet 100 ns current-limit delay
 *     (SLVS413L 6.3.1 Eq. 1), the vendor model's RC buffer gives ~90 ns.

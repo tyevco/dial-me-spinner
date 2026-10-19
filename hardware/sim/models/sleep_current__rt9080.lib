@@ -1,0 +1,31 @@
+* =====================================================================================================
+* sleep_current__rt9080.lib -- RT9080-33GJ5 3.3 V LDO, DC model for the sleep-current budget (.op only)
+*
+* Part      : Richtek RT9080-33GJ5 (main board U1)
+* Datasheet : https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf  (DS9080-09, December 2024)
+*
+* Modelled (all at the DC operating point):
+*   VOUT     3.3 V nominal, tracks VIN when VIN < 3.3 V (dropout), smooth min() with 1 mV knee
+*   RPASS    0.52 ohm series pass resistance = VDROP 0.31 V typ / 600 mA (EC table, "3 V <= VOUT")
+*   IQ       2 uA typ / 4 uA max, ILOAD = 0, VIN >= VOUT + VDROP  (EC table "Quiescent Current")
+*   KGND     optional ground-current slope vs load (A/A). 0 by default (IQ only). The only light-load data
+*            is the "Ground Current vs. Load Current" plot (VIN 4.3 V, VOUT 3.3 V), which starts at 1 mA
+*            where IGND is about 58 uA (25 C; 53-65 uA over -40..65 C); the chord to IQ gives KGND = 0.056.
+*            The test uses it only as a sensitivity case: IGND below 1 mA load is NOT specified.
+*   Current conservation: the output current is drawn from VIN (F source), so the battery sees it.
+*   MAXC = 0 typical, 1 datasheet maximum (IQ only).
+*
+* NOT modelled: IQ vs temperature (no curve in DS9080-09), ground current in dropout (VIN < 3.3 V, not
+*   specified), line/load regulation, VOUT accuracy (+-2 %), output discharge (EN is tied to VIN), dynamics.
+* =====================================================================================================
+.subckt SC_RT9080 vin en gnd vout params: MAXC=0 KGND=0
+.param iq = {MAXC > 0.5 ? 4u : 2u}
+.param vnom = 3.3
+.param rpass = 0.52
+* EN rising threshold 0.9 V (EC table VEN_R); EN is tied to VIN on this board, so this only gates ship mode
+Eout vx gnd vol = '((vnom + v(vin,gnd) - sqrt((vnom - v(vin,gnd))**2 + 1e-6))/2) * (v(en,gnd) > 0.9 ? 1 : 0)'
+Rpass vx vy {rpass}
+Vsns vy vout 0
+Fin vin gnd Vsns 1
+Bgnd vin gnd I = '(v(en,gnd) > 0.9 ? 1 : 0) * (iq + KGND * max(i(Vsns), 0))'
+.ends SC_RT9080

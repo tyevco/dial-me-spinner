@@ -1,0 +1,72 @@
+* =====================================================================================================
+* load_switches__tps61040.lib  --  TI TPS61040 boost (U20), AVERAGED input/start-up model for the U21 load
+* =====================================================================================================
+* Part      : Texas Instruments TPS61040DBVR (SOT-23-5), LCSC C7722; EN tied to VIN (= OLED_VIN) on this board
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf  SLVS413L (Oct 2002, revised Aug 2026)
+* Purpose   : the load that the U21 TPS22917 sees on OLED_VIN while it ramps, and the boost's state while U21 is
+*             off.  It is cycle-averaged (no switching ripple) and is NOT a regulation-accuracy model of the
+*             13 V rail (that belongs to the boost circuit's own tests).
+* Modelled (values, datasheet reference):
+*   UVLO 1.5 V typ / 1.7 V max (Table 5.5 VUVLO; no minimum and no hysteresis given -> param uvlo=1.5,
+*        uvlo_hys=0.05 is an ASSUMPTION).  EN thresholds VIL max 0.4 V / VIH min 1.3 V (Table 5.5): EN is
+*        taken as high above 0.85 V (midpoint, ASSUMPTION; the tests use the guaranteed 0.4 V as the limit).
+*   Supply current: IQ 28 uA typ / 50 uA max with EN high, not switching; ISD 0.1 uA typ / 1 uA max with EN low
+*        (Table 5.5); both scaled to zero as VIN -> 0 (ASSUMPTION for VIN below the specified range).
+*   Peak-current PFM (section 6.4.1): switch on until IL = Ipk, off for at least toff_min = 400 ns (250/400/550 ns,
+*        Table 5.5), max on time 6 us (4/6/7.5 us); Ipk = ILIM + VIN/L * 100 ns (Eq. 1), ILIM 400 mA typ
+*        (350/400/450 mA, Table 5.5).  While VFB < VREF the next cycle starts right after toff_min, so the average
+*        inductor (= input) current is computed per cycle: DCM if the current reaches 0 within toff_min
+*        (Iavg = Ipk/2 * (ton + tfall)/(ton + toff_min)), otherwise CCM (Iavg = Ipk - dI/2, dI = (VOUT + 0.3 V -
+*        VIN) * toff_min / L).  0.3 V = average rectifier drop (B5819W at the start-up currents).
+*   Soft start (section 6.3.2): current limit ILIM/4 for 256 cycles, ILIM/2 for the next 256, then ILIM; the
+*        cycle count integrates 1/T of the averaged cycle above.
+*   Regulation: switching stops when VFB >= VREF (1.233 V typ, 1.208..1.258 V, Table 5.5); the averaged current
+*        fades out over a 5 mV FB band.
+*   Power transfer: Pout = eta * V(SW) * Iin with eta = 0.85 (ASSUMPTION, typical of the efficiency figures for
+*        VOUT 13-18 V at tens of mA, Figures 5-1..5-4), delivered into port OUT (= +13V_OLED, D21 cathode),
+*        never more current out than in.  D21 itself (load_switches__b5819w.lib) and L20 / C38 / C30 / C31 /
+*        C39 / R26 / R27 / C40 come from the netlist, so the non-switching paths (VIN - L20 - D21 - VOUT pre-charge,
+*        D21 reverse leakage back into OLED_VIN) are physical.
+* NOT modelled: switching ripple, the FB loop dynamics and line/load regulation, IFB bias (<= 1 uA), thermal
+*   shutdown, RDS(on) loss (folded into eta), the SW leakage (<= 10 uA at 28 V) and behaviour for EN between
+*   0.4 V and 1.3 V (undefined in the datasheet).
+* Pins: VIN SW FB EN GND OUT   (OUT is a modelling port, see "Power transfer")
+* =====================================================================================================
+
+.subckt LSW_TPS61040_AVG VIN SW FB EN GND OUT params: lind=10u ilim=0.4 toffmin=400n tonmax=6u vref=1.233
++ uvlo=1.5 uvlo_hys=0.05 iq=28u isd=0.1u eta=0.85
+* ---- enable: EN high (above 0.85 V) and VIN above UVLO (latched with hysteresis)
+B_ENH   ENH 0 V = 0.5 + 0.5*tanh((V(EN,GND) - 0.85)/0.02)
+B_UVC   UVC 0 V = (V(VIN,GND) + (V(UVD) > 0.5 ? {uvlo_hys} : 0)) > {uvlo} ? 1 : 0
+R_UV    UVC UVD 1k
+C_UV    UVD 0 10p
+B_ENI   ENI 0 V = V(ENH) * (V(UVD) > 0.5 ? 1 : 0)
+* ---- supply current from VIN
+B_IQ    VIN GND I = V(ENH) * {iq} * min(1, max(0, V(VIN,GND)/1.5)) + (1 - V(ENH)) * {isd} * min(1, max(0, V(VIN,GND)/0.5))
+* ---- soft-start cycle counter: V(NCY) = cycles / 1000, reset while not enabled
+B_NCYI  0 NCY I = V(ENI) > 0.5 ? 1e-12 * V(FSW) * V(GREG) : 0
+C_NCY   NCY 0 1n
+a_NCYR  %vd(ENI 0) %gd(NCY 0) lsw61_rst
+.model lsw61_rst aswitch(cntl_off=0.6 cntl_on=0.4 r_off=1e12 r_on=1k log=TRUE limit=TRUE)
+B_SS    SS 0 V = V(NCY) < 0.256 ? 0.25 : (V(NCY) < 0.512 ? 0.5 : 1)
+* ---- per-cycle averages (VI = inductor input voltage = VIN pin, VD = off-time inductor voltage)
+B_VI    VI 0 V = max(V(VIN,GND), 0.3)
+B_VD    VD 0 V = max(V(OUT,GND) + 0.3 - V(SW,GND), 0.02)
+B_IPK0  IPK0 0 V = {ilim}*V(SS) + V(VI)/{lind}*100n
+B_TON   TON 0 V = min({tonmax}, {lind}*V(IPK0)/V(VI))
+B_IPK   IPK 0 V = V(TON) * V(VI) / {lind}
+B_TFALL TFALL 0 V = {lind}*V(IPK)/V(VD)
+B_IAVG  IAVG 0 V = V(TFALL) <= {toffmin} ? V(IPK)/2*(V(TON)+V(TFALL))/(V(TON)+{toffmin})
++                  : V(IPK) - V(VD)*{toffmin}/{lind}/2
+B_TCYC  TCYC 0 V = V(TFALL) <= {toffmin} ? V(TON) + {toffmin}
++                  : V(VD)*{toffmin}/V(VI) + {toffmin}
+B_FSW   FSW 0 V = 1/V(TCYC)
+* ---- regulation (PFM stops above VREF) and the averaged input current, filtered 5 us
+B_GREG  GREG 0 V = min(1, max(0, ({vref} - V(FB,GND))/5m))
+B_ITGT  ITGT 0 V = V(ENI) * V(GREG) * V(IAVG)
+R_ITF   ITGT ITF 5k
+C_ITF   ITF 0 1n
+B_IIN   SW GND I = V(ITF) * min(1, max(0, V(SW,GND)/0.3))
+B_IOUT  GND OUT I = min(V(ITF) * min(1, max(0, V(SW,GND)/0.3)), {eta} * max(V(SW,GND),0) * V(ITF) * min(1, max(0, V(SW,GND)/0.3)) / max(V(OUT,GND), 0.5))
+R_FB    FB GND 1G
+.ends LSW_TPS61040_AVG

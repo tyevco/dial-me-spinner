@@ -61,7 +61,6 @@ C_U2_C2         0 U2_N14553136  1n
 * ---------------- power stage, gate (CT) drive, QOD, reverse-current blocking (TI U1_U2 block)
 I_U1_I1         U1_N15515882 GND DC 10n
 X_U1_U2_H1      U1_U2_N16803039 U1_U2_N145001 U1_U2_I_REVERSE 0 lsw17_DRIVER_H1
-M_U1_U2_M2      VOUT GATE U1_U2_N71809 U1_U2_N71809 lsw17_PMOS01
 X_U1_U2_U15     U1_U2_N16806836 VOUT U1_U2_N1275293 U1_U2_VRCB lsw17_COMPHYS_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=0.5
 R_U1_U2_R1      U1_U2_N16849773 0  1G
 V_U1_U2_V5      U1_U2_N16806836 0 22m
@@ -85,29 +84,36 @@ V_U1_U2_V2      U1_U2_N75775 0 1n
 * (and 0.37 / 0.45 ms with CT open against 0.065 / 0.12 ms), so it is replaced by a CT ramp + VOUT tracker:
 *  - CT pin: sinks I_ct = VIN / tON_k(VIN) while enabled, so the CT->VIN capacitor (CT + C_int) charges from 0 V
 *    to VIN in exactly tON = tON_k * CT (Table 7.6 tON: 3.0/3.4/3.6/3.8/4.0 us/pF at VIN 1/1.2/1.8/3.6/5 V; Eq. 2).
-*    TI's S3 still resets CT to VIN while disabled.  The pin ramps on to VIN + 0.3 V below VIN (CT pin about
-*    -0.3 V) to finish the enhancement, then the current fades out linearly over the last 20 mV.
+*    TI's S3 still resets CT to VIN while disabled.  The pin ramps on to VIN + 0.5 V below VIN (CT pin about
+*    -0.5 V) so the reference passes VIN (full enhancement), then the current fades out over the last 20 mV.
 *  - VOUT reference: Vref = k*swing - Vdly with swing = V(VIN) - V(CT), k = Vtot/VIN, Vdly = Vtot - 0.9*VIN,
 *    Vtot = tON_k * SRON_k (SRON_k = 1100/1000/1100/1900/2300 (mV/us)*pF, Table 7.6), so VOUT slews at
 *    SRON_k / CT (Eq. 1) and crosses 90 % of VIN exactly at tON.  tR(10-90 %) = 0.8*VIN*CT/SRON_k
 *    (1.58 ms @3.6 V, 1.79 ms @5 V for 1 nF, Table 7.6 1.6 / 1.8 us/pF).
-*  - Gate: VSG = Vt + A*(Vref - VOUT) (A = 20, clamped 0..VIN), plus a hand-over term that drives VSG to VIN as
-*    the CT swing goes from VIN to VIN + 0.3 V, through a 5 ns gate filter.  TI's PMOS01 / RVAR / body diode /
-*    RCB switch S10 remain the power path, so RON, QOD, IQ/ISD and RCB are the vendor's.
+*  - Pass element (replaces TI's PMOS01 M2, gate = CT): a forward current source that holds VOUT on Vref behind
+*    PMOS01's full-on channel resistance 1/(kp*(VIN-0.5)); once Vref passes VIN it is that resistance in both
+*    directions.  TI's RVAR (pass-resistance table), current sense H1, RCB switch S10 and body diode D6 stay in
+*    the path, so RON, RCB, QOD, IQ/ISD and the ON-pin logic remain the vendor's.  (A first version drove a
+*    PMOS gate from an error amplifier; it was numerically stiff, so the loop was removed.)
 *  - C_int = 33 pF (CT->VIN): Table 7.6 CT-open tON 120 us @3.6 V / 100 us @5 V = tON_k * C_int.
 B_SL_ICT        CT GND I = V(U1_N03821) > 0.5 ? V(VIN)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02)) : 0
 C_SL_INT        CT VIN 33p
 B_SL_TONK       SL_TONK 0 V = pwl(V(VIN), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
 B_SL_SRK        SL_SRK 0 V = pwl(V(VIN), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
 B_SL_VTOT       SL_VTOT 0 V = V(SL_TONK) * V(SL_SRK)
-B_SL_SWEND      SL_SWEND 0 V = V(VIN) + 0.3
-B_SL_VREF       SL_VREF 0 V = (V(VIN) > 0.2 ? V(SL_VTOT)/V(VIN) : 0) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
-B_SL_VSG        SL_VSG 0 V = V(U1_N03821) > 0.5 ?
-+                 min(V(VIN), max(0, max(0.5 + 20*(V(SL_VREF) - V(VOUT)),
-+                 0.5 + (V(VIN)-0.5) * min(1, max(0, (V(VIN)-V(CT)-V(VIN))/0.3))))) : 0
-B_SL_GDRV       SL_GDRV 0 V = V(VIN) - V(SL_VSG)
-R_SL_G          SL_GDRV GATE 50
-C_SL_G          GATE U1_U2_N71809 100p
+B_SL_SWEND      SL_SWEND 0 V = V(VIN) + 0.5
+B_SL_VRAW       SL_VRAW 0 V = (V(VIN) > 0.2 ? V(SL_VTOT)/V(VIN) : 0) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
+* soft start of the ramp (softplus, 50 mV knee, about 30 us at 1.9 V/ms): the real slew starts smoothly and a
+* hard corner only produces a numerical current spike in the output capacitance
+B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(V(SL_VRAW)/0.05))
+* pass element: forward current that makes VOUT follow Vref behind the full-on channel resistance of TI's
+* PMOS01 (1/(kp*(VIN - |vto|)), kp 9.75, vto -0.5); fully on (k_full = 1) once Vref passes VIN, where it is a
+* plain bidirectional resistor.  It sits where TI's PMOS sat (source node after S10 -> VOUT), so TI's RVAR
+* (pass resistance table), current sense H1 and the RCB switch S10 stay in series with it.
+B_SL_KF         SL_KF 0 V = min(1, max(0, (V(SL_VREF) - V(VIN))/0.05))
+B_SL_RCH        SL_RCH 0 V = 1/(9.75*max(V(VIN) - 0.5, 0.05))
+B_SL_PASS       U1_U2_N71809 VOUT I = V(U1_N03821) > 0.5 ? (V(SL_KF)*(V(U1_U2_N71809) - V(VOUT)) +
++                 (1 - V(SL_KF))*max(0, min(V(SL_VREF), V(U1_U2_N71809)) - V(VOUT))) / V(SL_RCH) : 0
 X_U1_U2_U1      QOD U1_U2_N16813094 U1_U2_N16813178 0 lsw17_RVAR params: RREF=1
 a_U1_U2_S4      %vd(U1_N03821 0) %gd(U1_U2_N16813094 GND) lsw17_S4
 a_U1_U2_S10     %vd(U1_U2_REVERSE_CTRL 0) %gd(U1_U2_N16803039 U1_U2_N71809) lsw17_S10

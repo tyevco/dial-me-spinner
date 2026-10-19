@@ -1,0 +1,30 @@
+* =====================================================================================================
+* load_switches__nrf52840_gpio.lib  --  nRF52840 (MDBT50Q-U1MV2) GPIO pad: push-pull output / disconnected input
+* =====================================================================================================
+* Part      : Nordic nRF52840 in the Raytac MDBT50Q-U1MV2 module (U10), pins P1.04 LED_PWR_EN, P1.02 OLED_VCC_EN,
+*             P0.06 LED_DIN_MCU
+* Datasheet : nRF52840 Product Specification v1.1, section 6.9.2 "GPIO electrical specification"
+*             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf
+*             (also https://docs.nordicsemi.com/bundle/ps_nrf52840/page/pin.html)
+* Modelled:
+*   Output high/low as a Thevenin source: the pad drives VDD (or GND) through rout.  The PS gives the current at
+*   VDD - 0.4 V (high) / VSS + 0.4 V (low), so rout = 0.4 V / I:
+*     standard drive  IOH,SD / IOL,SD = 1 / 2 / 4 mA (min/typ/max)  -> rout 400 / 200 / 100 Ohm
+*     high drive      IOH,HDH        = 6 / 9 / 14 mA (VDD >= 2.7 V) -> rout  67 /  44 /  29 Ohm
+*     (IOL,HDH 6/10/15 mA -> 67/40/27 Ohm; the high-side numbers are used for both edges)
+*   Disconnected input (reset, before firmware configures the pin, or pinctrl sleep with the input buffer off):
+*     CPAD = 3 pF (PS "Pad capacitance"), plus a leakage current ileak (A, + = sourced INTO the pad node).
+*     The PS gives NO pad leakage figure; ileak is a test ASSUMPTION and must be stated by the test.
+*   Control: node OUT (0 / 1 V logic) selects the level, node OE (0 / 1 V) enables the driver.
+* NOT modelled: VOH/VOL non-linearity beyond the 0.4 V point (the Thevenin line is optimistic at large currents
+*   for 'min' drive and pessimistic for 'max'), edge rate control, the internal 13 kOhm pull resistors (not used
+*   on these pins), input threshold (VIH 0.7 VDD / VIL 0.3 VDD are limits in the tests), ESD clamps.
+* =====================================================================================================
+
+.subckt LSW_NRF_GPIO PAD VDD GND OUT OE params: rout=200 cpad=3p ileak=0
+B_DRV    NDRV GND V = V(OUT,GND) > 0.5 ? V(VDD,GND) : 0
+a_OE     %vd(OE GND) %gd(NDRV PAD) lsw_nrf_oe
+.model lsw_nrf_oe aswitch(cntl_off=0.2 cntl_on=0.8 r_off=1e12 r_on={rout} log=TRUE limit=TRUE)
+C_PAD    PAD GND {cpad}
+I_LEAK   GND PAD DC {ileak}
+.ends LSW_NRF_GPIO
