@@ -617,6 +617,8 @@ BOARDS = {
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
                  light_power=("+3V3", "VBUS", "+13V_OLED"),  # +3V3 < 0.1 A, VBUS sense 2.4 mA, +13V_OLED < 30 mA
                  gnd_fanout=True,  # every GND SMD pad gets a via to the In1 plane before routing; GND is not routed
+                 # finer signal rules around the module's LGA (JLC 4-layer minimum 0.09/0.09 mm, 0.15 mm drill)
+                 rules=dict(track=0.12, clearance=0.10, via=0.40, via_drill=0.20),
                  post_fixed=main_post_fixed,
                  # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
                  pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM")},
@@ -673,17 +675,19 @@ def generate(board, pours=True):
     netpath = os.path.join(pdir, project_name(board) + ".net")
     comps, nets = pcbgen.load_netlist(netpath)
     bb = pcbgen.BoardBuilder(cfg["layers"], {LIB: os.path.join(pdir, "lib", LIB + ".pretty")})
-    bb.rules(track=0.15, clearance=0.13, via=0.45, via_drill=0.25, edge=0.3)
+    rules = cfg.get("rules", dict(track=0.15, clearance=0.13, via=0.45, via_drill=0.25))
+    bb.rules(edge=0.3, **rules)
     bb.set_origin(CX, CY)
     power = [n for n in nets if n in ("VSYS", "VLED", "VBUS", "VBAT", "+3V3", "GND", "+13V_OLED", "OLED_VIN")
              or n.endswith("/VSYS")]
     pt = cfg["power_track"]
     light = [n for n in power if n in cfg.get("light_power", ())]  # low-current rails: 0.2 mm eases the dense areas
-    bb.netclass("Power", [n for n in power if n != "GND" and n not in light], track=pt, clearance=0.13, via=0.5,
+    clr = rules["clearance"]
+    bb.netclass("Power", [n for n in power if n != "GND" and n not in light], track=pt, clearance=clr, via=0.5,
                 via_drill=0.25)
     if light:
-        bb.netclass("Supply", light, track=0.2, clearance=0.13, via=0.45, via_drill=0.25)
-    bb.netclass("Ground", ["GND"], track=pt, clearance=0.13, via=0.5, via_drill=0.25)
+        bb.netclass("Supply", light, track=0.2, clearance=clr, via=rules["via"], via_drill=rules["via_drill"])
+    bb.netclass("Ground", ["GND"], track=pt, clearance=clr, via=0.5, via_drill=0.25)
     fixed = cfg["fixed"](comps)
     bb.place_from_netlist(comps, nets, fixed, default=(CX, CY, 0.0, "F"))
     cfg["build"](bb, comps, nets)
