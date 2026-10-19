@@ -32,10 +32,12 @@ Limits (every one from a datasheet, quoted in each check's source string):
 
 The "capped" scenarios apply the firmware power policy of docs/firmware.md (5.8, 6.3, 7.4, 12.4): LED average
 150 mA sustained / 300 mA bursts at VBAT >= 3.65 V, 100 mA below 3.60 V and while the actuator moves, only a
-2 mA red cue and then SHIP below 3.53 V (VSENSE-1/4; the 3.48 V points of the old SHIP threshold are kept, a
-3.53 V reading can be 46 mV high), non-park actuator moves only from VSYS >= 3.55 V measured idle (MD-2; park
->= 3.30 V). The firmware also holds the OLED at C7 <= 08h below 3.75 V and during LED bursts (OLED-BST-2); the
-fw_scenarios points keep the panel at 100 % down to 3.60 V, which is the conservative direction.
+2 mA red cue below 3.53 V and SHIP below 3.465 V. Every threshold compares VBAT_est = calibrated reading - 75 mV
+(R1, VSENSE-1/4/5: the reading is up to 72 mV high, so the true VBAT is >= VBAT_est + 3 mV); SHIP is a reading below
+3.54 V (R2; the 3.48 V points of the old SHIP threshold are kept as old-rule evidence). Non-park actuator moves only
+from VSYS_est >= 3.54 V idle (MD-2, R4; park >= 3.30 V). The firmware also holds the OLED at C7 <= 08h below 3.75 V
+and during LED bursts (OLED-BST-2); the fw_scenarios points keep the panel at 100 % down to 3.60 V, which is the
+conservative direction.
 
 Corners: nominal (pack 100 mOhm, contacts as new, 25 C typical RON), worst (200 mOhm pack, contacts after
 environmental tests, 60 C datasheet-max RON / dropout, VSYS-GND wires 5 mm apart, every capacitor at -tol),
@@ -51,9 +53,13 @@ What the simulation shows (rev A netlists; xfail tests carry the evidence, *_wit
   * But the cap limits the average only: with all LEDs lit and their PWM aligned the ring pulls 0.72 A for
     70-210 us, VLED falls to 3.08-3.25 V at VBAT <= 3.70 V; a peak (lit-channel) budget is derived per VBAT
     (test_led_peak_budget_vs_vbat), and the firmware.md 6.3 table taken from it (PI-2) is guarded by
-    test_firmware_capped_sync_pwm_transient_with_fw_rule and test_led_peak_budget_table_with_fw_rule. Picked from a
-    VBAT reading 46 mV high (firmware.md 12.4) the rows break VLED at the worst corner
-    (test_led_peak_budget_table_reading_high_with_fw_rule: strict xfails, firmware rule insufficient).
+    test_firmware_capped_sync_pwm_transient_with_fw_rule and test_led_peak_budget_table_with_fw_rule. The rows are
+    looked up with VBAT_est (R1) and the 3.53 V row is derated to 0.26 A, 95 % of its derived budget (R3: 0.28 A left
+    +3.0 mV); test_led_peak_budget_table_reading_high_with_fw_rule runs every row at VBAT_est + 3 mV, the lowest true
+    VBAT of a 72 mV-high reading (its strict xfails, a row picked from the raw reading, are retired).
+  * On USB with a pack (NF-1, R7) the 3.48 V row or the INSTANTANEOUS 0.40 A sum holds at a 3.48 V pack; the sum read
+    as an average, or applied to a pack below ~3.43 V, does not (strict xfails, not allowed by the rule).
+  * WS2812B drop-in (PI-3, R10): the 1.0 A instantaneous cap from VBAT_est 3.91 V (test_ws2812b_dropin_threshold_*).
   * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses); the "no supplement"
     profile (PI-4) is guarded by test_usb_without_battery_with_fw_rule.
   * Ground offset between the boards <= ~47 mV; the I2C low level seen by the BQ25180 is 0.30 V (VIL 0.4 V).
@@ -177,26 +183,55 @@ def motor_r_fw(temp: float) -> float:
 
 # firmware policy (docs/firmware.md 5.8, 6.3, 7.4, 12.4)
 FW_LED_BURST, FW_LED_SUST, FW_LED_LOW, FW_LED_MOVING, FW_LED_CUE = 0.300, 0.150, 0.100, 0.100, 0.002
-# LEDs off except the red cue below 3.53 V, and SHIP after 3 such readings (VSENSE-1, VSENSE-4)
-FW_V_FULL, FW_V_DERATE, FW_V_OFF, FW_V_SHIP = 3.65, 3.60, 3.53, 3.53
+# VBAT measurement (R1; docs/firmware.md 12.4, VSENSE-1/4/5): the calibrated reading can be up to 72 mV HIGH (aged unit
+# at -10/60 C) and 78 mV LOW (fresh -10..60 C about +48/-54 mV, aged at 25 C about +30/-36 mV, fresh 15-35 C about
+# +/-24 mV). Every firmware threshold that protects a datasheet limit compares a TRUE-cell value against
+# VBAT_est = reading - FW_VREAD_MARGIN, so the true VBAT is at least VBAT_est + 3 mV (fw_vtrue_min). The full +72 mV
+# goes with the worst corner (60 C, aged contacts).
+FW_VREAD_HIGH, FW_VREAD_LOW, FW_VREAD_MARGIN = 0.072, 0.078, 0.075
+# thresholds on VBAT_est: LEDs off except the red cue below 3.53 V (FW_V_OFF); SHIP below VBAT_est 3.465 V = a reading
+# of 3.54 V, true >= VBATPOR max 3.46 V + 5 mV (R2; VSENSE-1, VSENSE-4)
+FW_V_FULL, FW_V_DERATE, FW_V_OFF, FW_V_SHIP = 3.65, 3.60, 3.53, 3.465
 # superseded SHIP threshold (3.48 V before VSENSE-1/4). Kept as the low-battery evidence point of the strict xfails
-# and of the passing lowbat / USB-low-pack checks (3.53 V there would loosen them). A unit can still sit at it: a
-# 3.53 V reading can be up to 46 mV high (firmware.md 12.4), and it is the lowest row of the instantaneous budget,
-# the one used on USB (PI-2, NF-1)
+# and of the passing lowbat / USB-low-pack checks (3.53 V there would loosen them). It is the lowest row of the
+# instantaneous budget, the one used on USB (PI-2, NF-1). Under R2 the lowest true VBAT of a running unit is
+# fw_vtrue_min(FW_V_SHIP) = 3.468 V, 12 mV lower (the old-rule points keep 3.48 V)
 FW_V_SHIP_OLD = 3.48
-# the rested-VBAT estimate the derating and the PI-2 rows are picked from can read up to 46 mV high over -10..60 C and
-# with ageing (docs/firmware.md 12.4; VSENSE-1, VSENSE-4); about +/-10 mV only at 25 +/- 10 C on a fresh unit, so the
-# full 46 mV goes with the worst corner (60 C, aged contacts)
-FW_VREAD_HIGH = 0.046
-FW_V_OLED_DIM = 3.75                 # OLED C7 <= 08h below this rested VBAT and during LED bursts (OLED-BST-2)
-FW_VSYS_PARK = 3.30        # park moves from VSYS >= 3.30 V; non-park moves only from >= 3.55 V measured idle (MD-2)
-# instantaneous lit-channel budget, docs/firmware.md 6.3 (PI-2): (rested VBAT row, allowed aligned ring peak A);
-# the full ring from 3.90 V, about 0.23 A less while the actuator moves
-FW_PK_ROWS = ((3.48, 0.19), (3.53, 0.28), (3.60, 0.33), (3.65, 0.42), (3.70, 0.51), (3.80, 0.69))
+
+
+def fw_vtrue_min(vbat_est: float) -> float:
+    """Lowest true cell voltage a VBAT_est can stand for (R1): the reading is at most FW_VREAD_HIGH above the true
+    value and VBAT_est = reading - FW_VREAD_MARGIN, so true >= VBAT_est + 3 mV."""
+    return vbat_est + FW_VREAD_MARGIN - FW_VREAD_HIGH
+
+
+FW_V_OLED_DIM = 3.75                 # OLED C7 <= 08h below this VBAT_est and during LED bursts (OLED-BST-2)
+# park moves from VSYS >= 3.30 V; non-park moves only from VSYS_est (idle reading - 75 mV) >= 3.54 V, i.e. a reading
+# >= 3.615 V (MD-2, R4)
+FW_VSYS_PARK = 3.30
+# instantaneous lit-channel budget, docs/firmware.md 6.3 (PI-2, R3): (VBAT_est row, allowed aligned ring peak A), the
+# row at or below VBAT_est (so row <= true VBAT - 3 mV); the full ring from 3.90 V, about 0.23 A less while the
+# actuator moves; the table assumes the OLED-BST-2 dimming (C7 <= 08h below VBAT_est 3.75 V and during LED bursts).
+# R3: a row whose documented-load case leaves VLED < 10 mV above 3.3 V at the worst corner is derated to 95 % of the
+# derived budget (test_led_peak_budget_vs_vbat), rounded down to 0.01 A. Only the 3.53 V row was affected: the
+# documented 3.53 V sustained load (100 mA, 0.28 A peak, OLED C7 <= 08h) left +3.0 mV at true 3.53 V and +6.2 mV at
+# true VBAT_est + 3 mV, so it is 0.95 x 0.2758 A = 0.262 -> 0.26 A (+13.4 / +16.5 mV). Every other documented-load
+# case keeps >= 40.6 mV (worst corner), the 3.48 V row is used on USB only (+214 mV there).
+FW_PK_DERATE = 0.95
+FW_PK_ROWS = ((3.48, 0.19), (3.53, 0.26), (3.60, 0.33), (3.65, 0.42), (3.70, 0.51), (3.80, 0.69))
 FW_PK_V_FULL, FW_PK_MOVING = 3.90, 0.23
-FW_PK_USB_ROW = 3.48       # on USB: this row until CHG_STAT reports CV/done (NF-1) ...
-FW_USB_TOTAL = 0.40        # ... or keep the total on-USB load (LEDs + OLED + actuator) <= 0.40 A (NF-1)
-FW_PK_B_FULL = 1.0         # WS2812B-2020-V6 variant (12 mA/ch): instantaneous cap about 1.0 A at full battery (PI-3)
+# on USB (NF-1, R7): while VBAT_est >= 3.48 V, either this row until CHG_STAT reports CV/done ...
+FW_PK_USB_ROW = 3.48
+# ... or the INSTANTANEOUS on-USB sum (lit channels x I_ch + OLED boost input + actuator) <= 0.40 A, not an average.
+# The 0.40 A sum needs the same VBAT_est >= 3.48 V condition (rule adjustment of this suite): with the load near ILIM
+# the BQ25180 runs in DPPM / supplement and SYS follows the pack (VLED = 3.3 V at a 3.434 V pack, worst corner)
+FW_USB_TOTAL = 0.40
+FW_VOCV_EMPTY = 3.30       # 0 % SoC point of the docs/firmware.md 12.4 OCV table: a cell self-discharged after SHIP
+# WS2812B-2020-V6 variant (12 mA/ch, PI-3, R10): instantaneous cap about 1.0 A from VBAT_est >= 3.91 V (true
+# >= 3.913 V). Worst corner, 300 mA bursts with the OLED at C7 <= 08h (the binding phase): VLED = 3.3 V at true
+# 3.9025 V, 3.31 V at 3.9123 V (VBAT_est 3.90 V would leave +0.4 mV, so 3.91 V keeps the R3 10 mV margin). Below it the
+# table rows apply in amperes (the ">= 3.90 V full ring" row means the C ring's 0.72 A, 60 lit B channels)
+FW_PK_B_FULL, FW_PK_B_V = 1.0, 3.91
 # "no supplement" profile on USB (pack absent, BUVLO_STAT = 1 or CHG_STAT = precharge), firmware.md 6.3 / 13.3, PI-4:
 # ILIM 100 mA phase: LEDs <= 20 mA cue, OLED off, no flash erase, BLE TX 0 dBm, total <= 70 mA;
 # ILIM 500 mA phase: no actuator, LEDs <= 100 mA peak-limited, OLED C7 <= 08h, total <= 400 mA
@@ -204,14 +239,21 @@ FW_NOSUP_LED100, FW_NOSUP_TOTAL100 = 0.020, 0.070
 FW_NOSUP_LED500, FW_NOSUP_TOTAL500 = 0.100, 0.400
 RULE_PI1 = ("with fw rule PI-1 (docs/firmware.md 6.3 / 11.2, SPEC 5.4): limiter active from the first frame after "
             "reset; MCUboot and the recovery image keep LED_PWR_EN, OLED_VCC_EN and MOT_NSLEEP low")
-RULE_PI2 = ("with fw rule PI-2 (docs/firmware.md 6.3): lit channels x I_ch <= 0.19/0.28/0.33/0.42/0.51/0.69 A at "
-            "VBAT 3.48/3.53/3.60/3.65/3.70/3.80 V, full ring >= 3.90 V, 0.23 A less while the actuator moves")
-RULE_PI2_READ = (RULE_PI2 + "; row and derating picked from the rested-VBAT estimate, which reads up to 46 mV high "
-                 "over -10..60 C and ageing (docs/firmware.md 12.4, VSENSE-1/4)")
-RULE_NF1 = ("with fw rule NF-1 (docs/firmware.md 6.3 / 13.3): on USB the 3.48 V row (0.19 A) until CHG_STAT reports "
-            "CV/done, or total on-USB load (LEDs + OLED + actuator) <= 0.40 A")
-RULE_PI3 = ("with fw rule PI-3 (docs/firmware.md 6.1 / 6.3, SPEC 5.4): the WS2812B variant only with the "
-            "instantaneous cap, about 1.0 A at full battery")
+RULE_PI2 = ("with fw rule PI-2 (docs/firmware.md 6.3, R3): lit channels x I_ch <= " +
+            "/".join(f"{p:.2f}" for _, p in FW_PK_ROWS) + " A at VBAT_est " +
+            "/".join(f"{v:.2f}" for v, _ in FW_PK_ROWS) + " V, full ring >= 3.90 V, 0.23 A less while the actuator "
+            "moves; OLED C7 <= 08h below VBAT_est 3.75 V and during bursts (OLED-BST-2)")
+RULE_PI2_READ = (RULE_PI2 + "; row, derating and OLED level picked from VBAT_est = calibrated reading - 75 mV, the "
+                 "reading up to 72 mV high (aged, -10/60 C; R1, docs/firmware.md 12.4, VSENSE-1/4/5)")
+RULE_NF1 = ("with fw rule NF-1 (docs/firmware.md 6.3 / 13.3, R7): on USB, while VBAT_est >= 3.48 V, the 3.48 V row "
+            "(0.19 A) until CHG_STAT reports CV/done, or the INSTANTANEOUS on-USB sum (lit channels x I_ch + OLED "
+            "boost input + actuator) <= 0.40 A, not an average")
+RULE_PI3 = ("with fw rule PI-3 (docs/firmware.md 6.1 / 6.3, SPEC 5.4, R10): the WS2812B variant only with the "
+            f"instantaneous cap, {FW_PK_B_FULL:.1f} A from VBAT_est >= {FW_PK_B_V:.2f} V, the PI-2 rows (A) below")
+# POF (R8): nRF52840 POFWARN at 2.9 V (docs/firmware.md 12.4) + VPOFTOL 5 % (nRF52840 PS v1.1 5.3.8.4); firmware ignores
+# POFWARN for 5 ms after raising OLED_VCC_EN or LED_PWR_EN (the enable dips stay above VBOR and the W25Q128 2.7 V)
+POF_LIMIT = 2.9 * 1.05
+FW_POF_BLANK = 5e-3
 RULE_PI4 = ("with fw rule PI-4 (docs/firmware.md 6.3 / 13.3, SPEC 5.4): no-supplement profile, ILIM 100 mA: LEDs "
             "<= 20 mA cue, OLED off, no flash erase, TX 0 dBm, <= 70 mA; ILIM 500 mA: no actuator, LEDs <= 100 mA "
             "peak-limited, OLED C7 <= 08h, <= 400 mA")
@@ -658,7 +700,7 @@ def longest_below(res, vec: str, thr: float) -> float:
 def fw_scenarios(n_led: int) -> dict:
     """Firmware power policy points (docs/firmware.md): name -> (VBAT rested, LED cap A, OLED ICC A, motor).
     The OLED stays at 100 % at 3.65 / 3.70 V although OLED-BST-2 now dims it below 3.75 V (conservative); at 3.53 and
-    3.48 V only park moves are allowed since MD-2 (VSYS < 3.55 V), modelled with the same coil current."""
+    3.48 V only park moves are allowed since MD-2 (VSYS_est < 3.54 V, R4), modelled with the same coil current."""
     return {
         "full@3.65": (FW_V_FULL, FW_LED_BURST, OLED_ICC_MAX, "off"),
         "full@3.70": (3.70, FW_LED_BURST, OLED_ICC_MAX, "off"),
@@ -691,13 +733,17 @@ def hw_loads(sync: bool, ich=WS_ICH) -> Loads:
 
 # ------------------------------------------------------- documented firmware rules (for the *_with_fw_rule guards)
 def fw_peak_cap(vbat: float, n_led: int, moving: bool = False, ich: float = WS_ICH, usb: bool = False) -> float:
-    """Instantaneous (lit-channel) budget of docs/firmware.md 6.3 (PI-2): the row at or below the rested VBAT, the
-    full ring from 3.90 V, 0.23 A less while the actuator moves; on USB the 3.48 V row (NF-1). Below the lowest row
-    the table allows nothing (only the red cue runs there)."""
+    """Instantaneous (lit-channel) budget of docs/firmware.md 6.3 (PI-2, R3): the row at or below vbat (VBAT_est, R1;
+    a guard that passes the true VBAT instead gets the same or a higher row, the conservative direction), the full
+    ring from 3.90 V, 0.23 A less while the actuator moves; on USB the 3.48 V row (NF-1). Below the lowest row the
+    table allows nothing (only the red cue runs there). WS2812B variant (ich 12 mA, PI-3, R10): FW_PK_B_FULL from
+    VBAT_est FW_PK_B_V, below it the rows in amperes, the '>= 3.90 V full ring' row being the C ring's 0.72 A."""
     full = 3 * n_led * ich
     v = FW_PK_USB_ROW if usb else vbat
-    if v >= FW_PK_V_FULL:
-        pk = full
+    if ich > WS_ICH and v >= FW_PK_B_V:
+        pk = FW_PK_B_FULL
+    elif v >= FW_PK_V_FULL:
+        pk = 3 * n_led * WS_ICH
     else:
         rows = [p for vr, p in FW_PK_ROWS if vr <= v + 1e-9]
         pk = rows[-1] if rows else 0.0
@@ -705,15 +751,16 @@ def fw_peak_cap(vbat: float, n_led: int, moving: bool = False, ich: float = WS_I
 
 
 def fw_policy(vbat: float) -> dict:
-    """Documented battery load policy at a rested VBAT (docs/firmware.md 5.8, 6.3, 7.4, 12.4):
+    """Documented battery load policy at a VBAT_est (R1; docs/firmware.md 5.8, 6.3, 7.4, 12.4; a guard that passes
+    the true VBAT gets the same or a higher-load policy, the conservative direction):
     phase -> (LED average cap A, OLED panel current A, actuator moving).
     OLED at C7 <= 08h below 3.75 V and while the LEDs burst above 150 mA (OLED-BST-2), else 100 % ('bright' mode);
     in the 3.60-3.65 V hysteresis band the 300 mA bursts are still allowed when VBAT comes from above; below 3.53 V
-    only the red cue, then SHIP; non-park moves need VSYS >= 3.55 V idle, park moves VSYS >= 3.30 V (MD-2): a park
-    move counts as moving (rested VBAT stands in for the idle VSYS)."""
+    only the red cue, SHIP below 3.465 V (R2); non-park moves need VSYS_est >= 3.54 V idle (R4), park moves VSYS >=
+    3.30 V (MD-2): a park move counts as moving (VBAT_est stands in for the idle VSYS)."""
     def oled(burst):
         return OLED_ICC_DIM if (vbat < FW_V_OLED_DIM or burst) else OLED_ICC_MAX
-    if vbat < FW_V_SHIP:
+    if vbat < FW_V_OFF:
         ph = {"cue": (FW_LED_CUE, OLED_ICC_DIM, False)}
         if vbat >= FW_VSYS_PARK:
             ph["cue+park"] = (FW_LED_CUE, OLED_ICC_DIM, True)
@@ -917,11 +964,14 @@ PI2_XFAIL_POINTS = (("worst", "full@3.70"), ("worst", "full@3.65"), ("worst", "m
                          + [("nominal", "derated@3.53", "idle"), ("worst", "derated@3.53", "idle")])
 def test_firmware_capped_sync_pwm_transient_with_fw_rule(main, base, check, cname, point, actuator):
     """Guard for the strict xfails of test_firmware_capped_sync_pwm_transient, rule PI-2 (docs/firmware.md 6.3
-    instantaneous budget): the same decks (scenario VBAT, average cap and OLED level, aligned LED and coil PWM, TX
+    instantaneous budget, R3): the same decks (scenario VBAT, average cap and OLED level, aligned LED and coil PWM, TX
     bursts, boost ripple) and limits, with the lit channels limited so that the aligned ring peak is the table row at
-    or below VBAT (0.42 A at 3.65 V, 0.51 A at 3.70 V, 0.28 A at 3.53 V), 0.23 A less while the actuator moves
-    (moving@3.65: 0.19 A; derated@3.53 moves the actuator, a park move under MD-2: 0.05 A). 'idle': the derated@3.53
-    point with the actuator idle, where the rule allows the full 0.28 A row (more LED current than the scenario)."""
+    or below VBAT (0.42 A at 3.65 V, 0.51 A at 3.70 V, 0.26 A at 3.53 V), 0.23 A less while the actuator moves
+    (moving@3.65: 0.19 A; derated@3.53 moves the actuator, a park move under MD-2: 0.03 A). 'idle': the derated@3.53
+    point with the actuator idle, where the rule allows the full 0.26 A row (more LED current than the scenario).
+    Conservative on two counts: the row comes from the true VBAT (the rule looks it up with VBAT_est <= true - 3 mV,
+    R1) and full@3.65 / full@3.70 keep the scenario's OLED at 100 %, which OLED-BST-2 does not allow below 3.75 V
+    (VLED margins there +0.4 / +1.8 mV; with the documented C7 <= 08h the same rows keep >= +41 mV)."""
     s = System(main, base, CORNERS[cname])
     vbat, cap, icc, motor = fw_scenarios(s.n_led)[point]
     moving = motor == "run" and actuator != "idle"
@@ -933,14 +983,21 @@ def test_firmware_capped_sync_pwm_transient_with_fw_rule(main, base, check, cnam
     check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2), rule=RULE_PI2)
 
 
-@pytest.mark.parametrize("vbat,phase", [(v, p) for v in (3.53, 3.60, 3.65, 3.70, 3.80, FW_PK_V_FULL)
-                                        for p in fw_policy(v)])
+# the battery-only table rows (3.48 V is used on USB only, NF-1) plus FW_V_OLED_DIM: from VBAT_est 3.75 V the 3.70 V
+# row runs with the OLED back at 100 % outside bursts, the lowest VBAT of that combination
+PI2_GUARD_VBAT = (3.53, 3.60, 3.65, 3.70, FW_V_OLED_DIM, 3.80, FW_PK_V_FULL)
+
+
+@pytest.mark.parametrize("vbat,phase", [(v, p) for v in PI2_GUARD_VBAT for p in fw_policy(v)])
 def test_led_peak_budget_table_with_fw_rule(main, base, check, vbat, phase):
-    """Guard for rule PI-2 row by row (docs/firmware.md 6.3; complements the xfail-point guard above): at the worst
-    corner, at each table row's VBAT (the lowest VBAT that row is used at), every phase the documented policy allows
-    there (fw_policy: 300 mA bursts from 3.60 V, 150 / 100 mA sustained, 100 mA while moving; the OLED at the
-    documented level, C7 <= 08h below 3.75 V and during bursts) with the row's lit-channel peak, 0.23 A less while
-    moving, aligned LED / coil PWM, TX bursts and boost ripple."""
+    """Guard for rule PI-2 row by row (docs/firmware.md 6.3, R3; complements the xfail-point guard above): at the worst
+    corner, at each table row's VBAT (the lowest VBAT that row is used at; 3.75 V: the 3.70 V row with the OLED back
+    at 100 %), every phase the documented policy allows there (fw_policy: 300 mA bursts from 3.60 V, 150 / 100 mA
+    sustained, 100 mA while moving; the OLED at the documented level, C7 <= 08h below 3.75 V and during bursts) with
+    the row's lit-channel peak, 0.23 A less while moving, aligned LED / coil PWM, TX bursts and boost ripple. The pack
+    sits at the row VBAT itself, 3 mV below the lowest true VBAT the rule picks the row at (R1: VBAT_est + 3 mV, see
+    the reading-high guard below). R3 derating: the 3.53 V row was 0.28 A (sustained: VLED 3.3030 V, +3.0 mV < 10 mV)
+    and is 0.26 A (95 % of the derived 0.2758 A budget, rounded down): 3.3134 V, +13.4 mV."""
     s = System(main, base, WORST)
     cap, icc, moving = fw_policy(vbat)[phase]
     pk = fw_peak_cap(vbat, s.n_led, moving)
@@ -951,42 +1008,32 @@ def test_led_peak_budget_table_with_fw_rule(main, base, check, vbat, phase):
     check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2), rule=RULE_PI2)
 
 
-# reviewer: the cases where the documented rule, picked from a 46 mV-high reading, breaks VLED >= 3.3 V at the worst
-# corner (VLED min in the review run, true VBAT = row - 46 mV)
-PI2_READ_HIGH_FAILS = {(3.53, "sustained"): 3.256, (3.60, "burst"): 3.294, (3.60, "sustained"): 3.296,
-                       (3.65, "burst"): 3.294, (3.70, "burst"): 3.295, (3.80, "sustained"): 3.297}
+# retired strict xfails (the R1 rule now applied): under the old rule PI-2 picked the row, the cap and the OLED level
+# from the reading itself, documented up to 46 mV high, and at the worst corner (true VBAT = row - 46 mV) VLED fell to
+# 3.2561 / 3.2935 / 3.2961 / 3.2941 / 3.2951 / 3.2974 V at 3.53-sustained / 3.60-burst / 3.60-sustained / 3.65-burst /
+# 3.70-burst / 3.80-sustained (< 3.3 V). With VBAT_est = reading - 75 mV (R1) and the R3 table the same points give
+# 3.3165 / 3.3436 / 3.3462 / 3.3441 / 3.3453 / 3.3480 V.
 
 
-def _pi2_read_high_param(vbat, phase):
-    if (vbat, phase) not in PI2_READ_HIGH_FAILS:
-        return pytest.param(vbat, phase)
-    return pytest.param(vbat, phase, marks=pytest.mark.xfail(strict=True, reason=(
-        f"DESIGN ISSUE (firmware rule insufficient): PI-2 picks its row (and the derating its cap) from the rested-VBAT "
-        f"estimate, which firmware.md 12.4 allows to read up to 46 mV high over -10..60 C and ageing (VSENSE-1/4), but "
-        f"the 6.3 table was derived at the true VBAT with 0-5 mV of margin: a {vbat:.2f} V reading at the worst corner "
-        f"(true {vbat - FW_VREAD_HIGH:.3f} V, {phase}) gives VLED ~{PI2_READ_HIGH_FAILS[(vbat, phase)]:.3f} V < 3.3 V "
-        f"(WS2812C VDD min). The rule must pick the row from the reading minus 46 mV (or the rows must be derived at "
-        f"row - 46 mV)")))
-
-
-@pytest.mark.parametrize("vbat,phase", [_pi2_read_high_param(v, p) for v in (3.53, 3.60, 3.65, 3.70, 3.80, FW_PK_V_FULL)
-                                        for p in fw_policy(v)])
+@pytest.mark.parametrize("vbat,phase", [(v, p) for v in PI2_GUARD_VBAT for p in fw_policy(v)])
 def test_led_peak_budget_table_reading_high_with_fw_rule(main, base, check, vbat, phase):
-    """Guard for rule PI-2 with the documented VBAT measurement error (reviewer addition; docs/firmware.md 6.3 and
-    12.4, VSENSE-1/4): firmware picks the table row, the average cap and the OLED level from its rested-VBAT estimate,
-    and 12.4 says the calibrated reading can be up to 46 mV high over -10..60 C and with ageing. At the worst corner
-    (60 C, aged) a reading equal to a row's VBAT can therefore be a true VBAT 46 mV lower. Same deck, phases and limits
-    as test_led_peak_budget_table_with_fw_rule (policy and row from the READING), with the pack at reading - 46 mV.
-    (The suite already keeps the lowbat@3.48 points for the same reason: a 3.53 V reading can be a 3.484 V pack.)"""
+    """Guard for rule PI-2 with the documented VBAT measurement error, R1 (reviewer addition; docs/firmware.md 6.3 and
+    12.4, VSENSE-1/4/5): firmware picks the table row, the average cap and the OLED level from VBAT_est = calibrated
+    reading - 75 mV, and the reading can be up to 72 mV high (aged unit at -10/60 C). Parameter vbat is the VBAT_est
+    (each row VBAT, plus the 3.75 V OLED-BST-2 point), i.e. a reading 75 mV above it; at the worst corner (60 C, aged)
+    the true VBAT is the reading - 72 mV = VBAT_est + 3 mV, the lowest true VBAT the rule uses that row, cap and OLED
+    level at. Same deck, phases and limits as test_led_peak_budget_table_with_fw_rule. (A low reading, up to 78 mV,
+    only picks a lower row and more dimming.)"""
     s = System(main, base, WORST)
     cap, icc, moving = fw_policy(vbat)[phase]
     pk = fw_peak_cap(vbat, s.n_led, moving)
-    vtrue = vbat - FW_VREAD_HIGH
-    r = run_tran(s.deck(f"PI-2 row {vbat} read, true {vtrue:.3f}, {phase}",
+    reading, vtrue = vbat + FW_VREAD_MARGIN, fw_vtrue_min(vbat)
+    r = run_tran(s.deck(f"PI-2 row {vbat} est, true {vtrue:.3f}, {phase}",
                         fw_rule_loads(s.n_led, cap, icc, moving, sync=True, pk=pk), vbat=vtrue),
                  stop=1.2e-3, waves=("v(p_bat)",))
-    tag = (f"PI-2 row picked from a {vbat:.2f} V reading, true VBAT {vtrue:.3f} V, {phase} (LED cap {cap * 1e3:.0f} mA, "
-           f"{pk:.2f} A aligned peak, OLED {icc * 1e3:.1f} mA) worst")
+    tag = (f"PI-2 row picked from VBAT_est {vbat:.2f} V (reading {reading:.3f} V, {FW_VREAD_HIGH * 1e3:.0f} mV high), "
+           f"true VBAT {vtrue:.3f} V, {phase} (LED cap {cap * 1e3:.0f} mA, {pk:.2f} A aligned peak, OLED "
+           f"{icc * 1e3:.1f} mA) worst")
     check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2_READ), rule=RULE_PI2_READ)
 
 
@@ -1004,8 +1051,8 @@ def test_temperature_capped_full_budget(main, base, check, temp):
 
 @pytest.mark.parametrize("cname", ["nominal", "worst"])
 def test_vbat_3v0_end_of_discharge(main, base, check, cname):
-    """VBAT 3.0 V (BUVLO): with the LEDs, OLED and actuator off (firmware ships below 3.53 V), +3V3 must still be
-    valid for the flash right up to the BUVLO disconnect."""
+    """VBAT 3.0 V (BUVLO): with the LEDs, OLED and actuator off (firmware ships below VBAT_est 3.465 V), +3V3 must
+    still be valid for the flash right up to the BUVLO disconnect."""
     s = System(main, base, CORNERS[cname])
     r = run_tran(s.deck(f"3.0 V {cname}", Loads(), vbat=3.0), stop=1.2e-3)
     check(f"VBAT 3.0 V, LEDs/OLED/motor off, {cname}: +3V3 min", r["v3v3_min"], lo=V3V3_MIN, unit="V",
@@ -1133,10 +1180,9 @@ USB_LOWPACK_XFAIL = pytest.mark.xfail(strict=True, reason=(
 ])
 def test_usb_low_pack(main, base, check, cname, sync):
     """Verifier addition, 'VSYS as the charger delivers it' with a partly discharged pack: USB 5.0 V, ILIM 450 mA
-    (min), pack at 3.48 V (the old SHIP threshold, kept: SHIP is now below a 3.53 V reading, which can be 46 mV high,
-    so this is still the lowest rested VBAT a user normally plugs in at), firmware on-USB budget. When the load
-    exceeds ILIM the BQ25180 supplements from the pack (SLUSE99C 8.3.2 / 8.3.3), so the VBAT-dependent margins of the
-    battery-only cases apply on USB too."""
+    (min), pack at 3.48 V (the old SHIP threshold, kept as the old-rule evidence point; under R2 a running unit can
+    sit down to a true 3.468 V), firmware on-USB budget. When the load exceeds ILIM the BQ25180 supplements from the
+    pack (SLUSE99C 8.3.2 / 8.3.3), so the VBAT-dependent margins of the battery-only cases apply on USB too."""
     s = System(main, base, CORNERS[cname])
     vbat = FW_V_SHIP_OLD
     tag = f"USB 5.0 V, pack {vbat} V {cname}, on-USB budget" + (", aligned PWM" if sync else ", average")
@@ -1153,38 +1199,50 @@ def test_usb_low_pack(main, base, check, cname, sync):
 
 
 NF1_AVG_XFAIL = pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE (firmware rule insufficient): NF-1's alternative 'keep the total on-USB load (LEDs + OLED + "
-    "actuator) <= 0.40 A' does not bound the PWM peaks when the 0.40 A is the limiter's average current (its "
-    "firmware.md 6.3 current model) and the 3.48 V lit-channel row is lifted: LEDs 150 mA average with all 48 lit "
+    "NOT ALLOWED BY THE RULE (evidence that an average is not enough): NF-1 (R7) requires the on-USB 0.40 A to be the "
+    "INSTANTANEOUS sum (lit channels x I_ch + OLED boost input + actuator). Read as the limiter's average current (its "
+    "firmware.md 6.3 current model) with the 3.48 V lit-channel row lifted: LEDs 150 mA average with all 48 lit "
     "(aligned 0.72 A peaks) + OLED 100 % (~0.17 A) = 0.32 A <= 0.40 A, pack 3.48 V, USB ILIM 450 mA min -> the pack "
-    "supplements during the peaks and VLED falls to ~3.16 V worst / ~3.26 V nominal < 3.3 V (WS2812C VDD min). "
-    "The 0.40 A must be the instantaneous sum (lit channels x I_ch + OLED + actuator; 'total0.40-inst' passes), or "
-    "the 3.48 V row must stay in force with it"))
+    "supplements during the peaks and VLED falls to ~3.16 V worst / ~3.26 V nominal < 3.3 V (WS2812C VDD min); "
+    "'total0.40-inst' passes"))
+NF1_LOWPACK_XFAIL = pytest.mark.xfail(strict=True, reason=(
+    "NOT ALLOWED BY THE RULE (evidence for the VBAT_est >= 3.48 V condition of NF-1's 0.40 A branch, a rule "
+    "adjustment of this suite: R7 as given has no VBAT condition there): with the instantaneous on-USB sum at 0.40 A "
+    "the load sits at ILIM (450 mA min with +3V3), the BQ25180 runs in DPPM / supplement and SYS follows the pack. "
+    "A cell self-discharged after SHIP to the 0 % OCV point (3.30 V) is still above VLOWV 3.0 V, so CHG_STAT reports "
+    "fast charge and NF-1 (not the PI-4 no-supplement profile) applies: VLED ~3.16 V worst / ~3.20 V nominal < 3.3 V "
+    "(WS2812C VDD min). Worst-corner crossing at a 3.434 V pack; at 3.48 V the same split passes (+47 mV)"))
 
 
 @pytest.mark.parametrize("cname,variant", [(c, v) for c in ("nominal", "worst")
                                            for v in ("row3.48-idle", "row3.48-moving", "total0.40-inst",
                                                      "total0.40-inst-oled-off", "total0.40-inst-moving")]
-                         + [pytest.param(c, "total0.40-avg", marks=NF1_AVG_XFAIL) for c in ("nominal", "worst")])
+                         + [pytest.param(c, "total0.40-avg", marks=NF1_AVG_XFAIL) for c in ("nominal", "worst")]
+                         + [pytest.param(c, "total0.40-inst-lowpack", marks=NF1_LOWPACK_XFAIL)
+                            for c in ("nominal", "worst")])
 def test_usb_low_pack_with_fw_rule(main, base, check, cname, variant):
     """Guard for the strict xfails test_usb_low_pack[*-True], rule NF-1 (docs/firmware.md 6.3 'On USB' and 13.3
-    step 3, SPEC 5.4): the same deck (USB 5.0 V, ILIM 450 mA min, pack 3.48 V, OLED 100 %, aligned LED / coil PWM, TX
-    bursts, boost ripple) and limits, SYS_REG at the firmware 4.4 V (0x20), with the on-USB rule applied:
+    step 3, SPEC 5.4, R7): the same deck (USB 5.0 V, ILIM 450 mA min, pack 3.48 V, OLED 100 %, aligned LED / coil PWM,
+    TX bursts, boost ripple) and limits, SYS_REG at the firmware 4.4 V (0x20), with the on-USB rule applied. Both
+    branches hold while VBAT_est >= 3.48 V, i.e. a true pack >= 3.483 V (R1), so the 3.48 V pack is 3 mV conservative:
     'row3.48-idle': the 3.48 V row, lit channels x 5 mA <= 0.19 A, average = peak (the strictest average any cap
     allows under that peak), actuator idle;
     'row3.48-moving': the same row while the actuator moves (0.19 - 0.23 A < 0: all-zero LED frame), LED cap 100 mA;
-    'total0.40-*': the alternative, total on-USB load (LEDs + OLED + actuator) <= 0.40 A. The docs say neither how
-    the 0.40 A splits nor whether it is instantaneous or average, so several splits run:
-    'total0.40-inst': instantaneous, actuator idle, OLED 100 % at its SYS_REG input current, aligned ring peak (and
-    average) = 0.40 A - OLED (the worst split found: the OLED adds SYS load that is not on VLED);
+    'total0.40-*': the alternative, the INSTANTANEOUS on-USB sum (lit channels x I_ch + OLED boost input + actuator)
+    <= 0.40 A (R7). The docs do not say how the 0.40 A splits, so several splits run:
+    'total0.40-inst': actuator idle, OLED 100 % at its SYS_REG input current, aligned ring peak (and average) = 0.40 A
+    - OLED (the worst split found: the OLED adds SYS load that is not on VLED);
     'total0.40-inst-oled-off': OLED off, ring peak = average = 0.40 A (reviewer addition);
     'total0.40-inst-moving': OLED off, the actuator's share the documented ~0.23 A (both coils on), ring peak
     0.40 - 0.23 A with the 100 mA moving cap (reviewer addition);
     'total0.40-avg': the 0.40 A read as the limiter's average current, the on-USB charging cap 150 mA (firmware.md 6.3)
-    with all 48 LEDs lit and aligned (<= 0.40 A - OLED) -> strict xfail, the rule is insufficient in that reading.
+    with all 48 LEDs lit and aligned (<= 0.40 A - OLED) -> strict xfail, not allowed by the rule (evidence that an
+    average is not enough);
+    'total0.40-inst-lowpack': 'total0.40-inst' with a cell self-discharged to the 0 % OCV point (3.30 V), below the
+    VBAT_est >= 3.48 V condition -> strict xfail, not allowed by the rule (evidence for that condition).
     The CV/done branch is not guarded: the docs do not say which row applies after CHG_STAT reports CV/done."""
     s = System(main, base, CORNERS[cname])
-    vbat, vsysreg = FW_V_SHIP_OLD, BQ_VSYSREG_FW
+    vbat, vsysreg = (FW_VOCV_EMPTY if variant.endswith("-lowpack") else FW_V_SHIP_OLD), BQ_VSYSREG_FW
     i_oled = s.boost(vsysreg, OLED_ICC_MAX)["PIN"] / vsysreg     # OLED boost input current at the regulated SYS
     if variant == "row3.48-idle":
         pk = fw_peak_cap(vbat, s.n_led, moving=False, usb=True)
@@ -1192,7 +1250,7 @@ def test_usb_low_pack_with_fw_rule(main, base, check, cname, variant):
     elif variant == "row3.48-moving":
         pk = fw_peak_cap(vbat, s.n_led, moving=True, usb=True)
         loads = fw_rule_loads(s.n_led, FW_LED_MOVING, OLED_ICC_MAX, True, sync=True, pk=pk)
-    elif variant == "total0.40-inst":
+    elif variant in ("total0.40-inst", "total0.40-inst-lowpack"):
         pk = FW_USB_TOTAL - i_oled
         loads = fw_rule_loads(s.n_led, pk, OLED_ICC_MAX, False, sync=True, pk=pk)
     elif variant == "total0.40-inst-oled-off":
@@ -1254,6 +1312,11 @@ def test_led_rail_inrush(main, base, check, cname):
         worst = dict(ibat=max(worst["ibat"], r["ibat_max"]), ilsw=max(worst["ilsw"], r["ilsw_max"]),
                      v3v3=min(worst["v3v3"], r["v3v3_min"]), vsys=min(worst["vsys"], r["vsys_min"]))
     tag = f"LED rail turn-on, VBAT 3.7 {cname}" + (", C7/C8/C9 extremes" if cname == "worst" else "")
+    # R8: the +3V3 dip at LED_PWR_EN against the POFWARN level, recorded only (firmware ignores POFWARN for 5 ms after
+    # raising LED_PWR_EN / OLED_VCC_EN; the binding limit is the W25Q128JV 2.7 V checked below)
+    check(f"{tag}: +3V3 min - POFWARN limit at LED_PWR_EN (record)", worst["v3v3"] - POF_LIMIT, None, None, "V",
+          f"informational (R8): nRF52840 POFWARN 2.9 V + VPOFTOL 5 % = {POF_LIMIT:.3f} V (docs/firmware.md 12.4, "
+          f"nRF52840 PS v1.1 5.3.8.4); below 0 POFWARN fires, ignored for {FW_POF_BLANK * 1e3:.0f} ms after the enable")
     check(f"{tag}: I(BAT) peak", worst["ibat"], hi=IBAT_OCP, unit="A", source=SRC_OCP)
     check(f"{tag}: TPS22917 switch current peak", worst["ilsw"], hi=LSW_IPLS, unit="A", source=SRC_LSW)
     check(f"{tag}: +3V3 min", worst["v3v3"], lo=V3V3_MIN, unit="V", source=SRC_3V3)
@@ -1415,12 +1478,36 @@ def test_ws2812b_dropin_peak_with_fw_rule(main, base, check, cname):
     """Guard for the strict xfail test_ws2812b_dropin_peak, rule PI-3 (docs/firmware.md 6.1 / 6.3, SPEC 5.4): the same
     deck (WS2812B-2020-V6, 12 mA/ch, 300 mA average cap, OLED 100 %, aligned PWM, VBAT 4.2 V) and limit with the
     instantaneous cap at full battery: lit channels x 12 mA <= 1.0 A (83 of 144 channels), at the nominal corner of
-    the xfail and at the worst corner."""
+    the xfail and at the worst corner. The VBAT_est from which the 1.0 A is allowed (R10) is guarded below."""
     s = System(main, base, CORNERS[cname])
-    loads = fw_rule_loads(s.n_led, FW_LED_BURST, OLED_ICC_MAX, False, sync=True, pk=FW_PK_B_FULL, ich=WSB_ICH)
+    pk = fw_peak_cap(4.2, s.n_led, ich=WSB_ICH)
+    loads = fw_rule_loads(s.n_led, FW_LED_BURST, OLED_ICC_MAX, False, sync=True, pk=pk, ich=WSB_ICH)
     r = run_tran(s.deck(f"WS2812B PI-3 rule {cname}", loads, vbat=4.2), stop=1.2e-3)
-    check(f"WS2812B drop-in with the PI-3 instantaneous cap ({FW_PK_B_FULL:.1f} A aligned), 300 mA cap, VBAT 4.2 V "
+    check(f"WS2812B drop-in with the PI-3 instantaneous cap ({pk:.1f} A aligned), 300 mA cap, VBAT 4.2 V "
           f"{cname}: I(BAT) peak", r["ibat_max"], hi=IBAT_OCP, unit="A", source=f"{SRC_OCP}; {RULE_PI3}")
+
+
+@pytest.mark.parametrize("phase", list(fw_policy(FW_PK_B_V)))
+def test_ws2812b_dropin_threshold_with_fw_rule(main, base, check, phase):
+    """Guard for the VBAT threshold of rule PI-3 (R10; docs/firmware.md 6.1 / 6.3, SPEC 5.4): the WS2812B-2020-V6
+    (12 mA/ch) gets the 1.0 A instantaneous cap only from VBAT_est >= FW_PK_B_V (3.91 V). Worst corner, pack at the
+    lowest true VBAT that VBAT_est allows (VBAT_est + 3 mV, R1), every phase the documented policy allows there
+    (fw_policy: 300 mA bursts with the OLED at C7 <= 08h, 150 mA sustained with the OLED at 100 %, 100 mA while the
+    actuator moves with 1.0 - 0.23 A), aligned LED / coil PWM, TX bursts, boost ripple, every supply limit.
+    Derivation (bisection on the true VBAT, worst corner): VLED = 3.3 V at 3.9025 V for the burst phase (binding;
+    3.31 V at 3.9123 V), 3.8582 V sustained, 3.8029 V moving; the review run at 3.90 V gave 3.2973 V (-2.7 mV). So
+    VBAT_est 3.90 V (true 3.903 V) would leave +0.4 mV, and 3.91 V keeps the R3 10 mV margin. The OLED at 100 %
+    during a burst (the 4.2 V guard deck above, not allowed by OLED-BST-2) needs a true 3.9405 V."""
+    s = System(main, base, WORST)
+    cap, icc, moving = fw_policy(FW_PK_B_V)[phase]
+    pk = fw_peak_cap(FW_PK_B_V, s.n_led, moving, ich=WSB_ICH)
+    vtrue = fw_vtrue_min(FW_PK_B_V)
+    r = run_tran(s.deck(f"WS2812B PI-3 threshold {phase}",
+                        fw_rule_loads(s.n_led, cap, icc, moving, sync=True, pk=pk, ich=WSB_ICH), vbat=vtrue),
+                 stop=1.2e-3, waves=("v(p_bat)",))
+    tag = (f"WS2812B drop-in, PI-3 cap from VBAT_est {FW_PK_B_V:.2f} V, true VBAT {vtrue:.3f} V, {phase} (LED cap "
+           f"{cap * 1e3:.0f} mA, {pk:.2f} A aligned peak, OLED {icc * 1e3:.1f} mA) worst")
+    check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI3), rule=RULE_PI3)
 
 
 def led_peak_budget(s: System, vbat: float, icc: float, motor_avg: float = 0.0, iters: int = 10) -> float:
@@ -1467,8 +1554,8 @@ def test_led_peak_budget_vs_vbat(main, base, check):
 def test_proposed_peak_cap_fix(main, base, check, vbat):
     """Fix check: with the ring's aligned peak limited to 95 % of the derived budget (fewer lit channels instead of
     lower PWM duty) the worst-corner sync-PWM transient keeps VLED >= 3.3 V at the low-VBAT policy points.
-    (Not the documented values: firmware.md 6.3 rounds the budget to 0.28 / 0.42 / 0.51 A, which the
-    *_with_fw_rule guards check.)"""
+    (Not the documented values: firmware.md 6.3 uses 0.26 / 0.42 / 0.51 A, the 3.53 V row being this 95 % rounded
+    down (R3) and the others the derived budget rounded, which the *_with_fw_rule guards check.)"""
     s = System(main, base, WORST)
     icc = OLED_ICC_MAX if vbat >= FW_V_DERATE else OLED_ICC_DIM
     peak = 0.95 * led_peak_budget(s, vbat, icc)
