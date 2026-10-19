@@ -610,7 +610,7 @@ HARN_PTS = [
     concat(pol(7.5, BOT_SLOT_A + 8), [15.3]), concat(pol(3.6, BOT_SLOT_A), [15.4]), [0, 0, 15.4],
     [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]),
     // out of the hub C-gap past the flange (r 8.5), under C11/R12 (bottom z 28.55/28.7) and over the cap ring
-    // (top z 26.0), clear of U12 (r 11, theta 260); then between the hub flange and C1/R1
+    // (top z 26.0), clear of U12 (r 14.6, theta 254); then between the hub flange and C1/R1
     [0.3, -9.3, 27.35], [2.5, -10.0, 27.35], [5.5, -8.6, 27.35], [8.6, -7.0, 27.35],
     bp_point(J1P, 0, J1P[8] + 1.0, 27.6)];   // ends at the J1 plug back face (route for the current PCB)
 module harness() color(c_wire) chain(HARN_PTS, HARN_D);
@@ -620,7 +620,7 @@ COAX_PTS = [
     [-14.6, 19.9, 7.5], [-14.6, 19.9, 14.2], [-12.0, 17.0, 15.0],
     concat(pol(8.0, BOT_SLOT_A - 6), [15.3]), concat(pol(3.4, BOT_SLOT_A - 10), [15.4]), [0.6, 0.3, 16.2],
     [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.0]),
-    // over the rotating hub (cap ring top 26.0) while r < 12.6, threading between U12 (r 11, theta 260, bottom
+    // over the rotating hub (cap ring top 26.0) while r < 12.6, threading between U12 (r 14.6, theta 254, bottom
     // z 27.65) and the module's inner corner, then down to z 26.0 beside the module (u.FL faces outward)
     concat(pol(12.5, 244), [27.0]), concat(pol(14.5, 246), [26.0]), concat(pol(23.5, 242), [26.0]),
     [UFLP[2] + 1.9, UFLP[3] - 1.9, 26.2]];   // ends at the u.FL plug body face (plug box ±1.3)

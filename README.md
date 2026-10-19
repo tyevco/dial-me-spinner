@@ -244,7 +244,7 @@ quietly start passing.
   * a printed mechanical mock-up to check the antenna shelf, the harness and
     coax path and the ring's ESD bleed path, and to measure the RF antenna
     (VNA/RSSI), spin-down and detent feel, plus a bench test of the stepper's
-    free-mode cogging before the PCB is frozen;
+    free-mode cogging before the PCB order;
   * bring-up of the first prototype ([docs/bringup.md](docs/bringup.md)) and
     the items to verify on it;
   * firmware, following [docs/firmware.md](docs/firmware.md).

@@ -265,7 +265,7 @@ class Router:
             if not isinstance(it, pcbnew.PAD) and _is_via(it):
                 hx, hy = TO_MM(it.GetPosition().x), TO_MM(it.GetPosition().y)
                 grid.mark_circle(vblk, hx, hy, TO_MM(it.GetDrillValue()) / 2 + self.hole2hole + via_drill / 2 + m)
-            if isinstance(it, pcbnew.PAD) and it.GetAttribute() == pcbnew.PAD_ATTRIB_SMD:
+            if isinstance(it, pcbnew.PAD) and it.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN):
                 for lay in (pcbnew.F_Cu, pcbnew.B_Cu):
                     if it.IsOnLayer(lay):
                         grid.mark_polys(vblk, _item_polys(it, lay), via_d / 2 + m)

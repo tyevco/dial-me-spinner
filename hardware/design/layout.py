@@ -1113,6 +1113,24 @@ def gnd_plane_fixup(path):
     return done, left
 
 
+def remove_vias_in_pads(path):
+    """Delete every via whose ring lands on an SMD or connector pad (an open via in a pad wicks the solder away; the
+    TC2030 pogo pins need flat pads). The pads it served are fanned out or routed again afterwards."""
+    b = pcbnew.LoadBoard(path)
+    pads = [p for fp in b.GetFootprints() for p in fp.Pads()
+            if p.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN)]
+    gone = []
+    for v in list(b.GetTracks()):
+        if v.Type() != pcbnew.PCB_VIA_T:
+            continue
+        hit = next((p for p in pads if p.HitTest(v.GetPosition(), v.GetWidth(pcbnew.F_Cu) // 2)), None)
+        if hit is not None:
+            gone.append(f"{v.GetNetname().split('/')[-1]}@{hit.GetParentFootprint().GetReference()}.{hit.GetNumber()}")
+            b.Delete(v)
+    pcbnew.SaveBoard(path, b)
+    return gone
+
+
 def complete_routing(board, out):
     """After Freerouting: copper inside no-track rule areas goes, GND pads off the plane get a via, then the grid router
     (finish_route) joins what is left."""
@@ -1137,6 +1155,9 @@ def complete_routing(board, out):
     gone = enforce_keepouts(out)
     if gone:
         print(f"[{board}] removed {len(gone)} tracks/vias inside keep-outs: {sorted(set(gone))}")
+    gone = remove_vias_in_pads(out)
+    if gone:
+        print(f"[{board}] removed {len(gone)} vias sitting on SMD/connector pads: {gone}")
     done, left = gnd_plane_fixup(out)
     if done or left:
         print(f"[{board}] GND plane fix-up: {done} pads given a via, {len(left)} without room")

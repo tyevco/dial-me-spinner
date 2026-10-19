@@ -538,6 +538,8 @@ def stitch_vias(b, net_name="GND", pitch=3.0, via=0.5, drill=0.25, clearance=0.2
         for p in pads:
             if p.GetNetCode() != code and p.HitTest(pt, acc):
                 return False
+            if p.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN) and p.HitTest(pt, rv + MM(0.05)):
+                return False
         for p in holes:  # hole-to-hole spacing applies to every net
             if (p.GetPosition() - pt).EuclideanNorm() < MM(drill / 2 + 0.25) + p.GetDrillSize().x // 2:
                 return False
@@ -599,6 +601,9 @@ def fanout_vias(b, net_name="GND", pads=None, via=0.5, drill=0.25, track=0.25, c
                 return False
         for pd in allpads:
             if pd.GetNetCode() != code and any(pd.IsOnLayer(lay) for lay in cu) and pd.HitTest(pt, acc):
+                return False
+            # no via ring on any SMD / connector pad, even of the same net: an open via in a pad wicks the solder
+            if pd.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN) and pd.HitTest(pt, rv + MM(0.05)):
                 return False
         for h in holes:  # drill-to-drill 0.25 mm, and via copper to a (NPTH) hole edge 0.25 mm
             if (h.GetPosition() - pt).EuclideanNorm() < max(MM(drill / 2), rv) + MM(0.25) + h.GetDrillSize().x // 2:
