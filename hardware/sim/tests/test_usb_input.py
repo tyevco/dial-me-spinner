@@ -337,8 +337,9 @@ class Net:
         elif p.tvs in b._shorted:
             L.append(f"V{p.tvs}_short {tv}_i 0 0")
         else:
-            k = f"{tv}_i" if b.pins[p.tvs]["1"] == vb else node_name(b.pins[p.tvs]["1"])
-            a = f"{tv}_i" if b.pins[p.tvs]["2"] == vb else node_name(b.pins[p.tvs]["2"])
+            tvn = {"GND": "0", vb: f"{tv}_i", p.dp_b: "dpj1", p.dm_b: "dmj1"}
+            k = tvn.get(b.pins[p.tvs]["1"], node_name(b.pins[p.tvs]["1"]))
+            a = tvn.get(b.pins[p.tvs]["2"], node_name(b.pins[p.tvs]["2"]))
             L.append(f"X{p.tvs} {k} {a} USBIN_SMF5V0A {self.tvs_params()}")
         # charger IN
         L.append(f"VIin {branch[p.chg]} vin 0")
@@ -350,14 +351,14 @@ class Net:
             node = "vin" if best == p.chg else branch[best]
             L += cap_lines(b, ref, node, "b", self.cscale.get(f"b:{ref}", 1.0), self.tfac(), self.derate)
         # ESD array: VBUS pin on its branch, I/Os on D+/D- at the U2 pads
+        # verifier fix: every U2 pin is mapped onto this builder's node for its net (before, a pin on VBUS other than
+        # pin 5, e.g. a GND/VBUS swap, landed on an unconnected node 'n_vbus' and the wrong connection was invisible)
         f = b.funcs[p.esd]
-        esd_vbus_node = branch[p.esd] if f["VBUS"] == vb else node_name(f["VBUS"])
-        L.append(f"VIesd {esd_vbus_node} vesd 0")
-        sig_node = {p.dp_b: "dpesd", p.dm_b: "dmesd"}
-        gnd = "0" if f["GND"] == "GND" else node_name(f["GND"])
+        u2n = {"GND": "0", vb: branch[p.esd], p.dp_b: "dpesd", p.dm_b: "dmesd"}
+        L.append(f"VIesd {u2n.get(f['VBUS'], node_name(f['VBUS']))} vesd 0")
         if self.esd_fitted():           # verifier fix: Design.remove(U2) used to be ignored (U2 was always in the deck)
-            L.append(f"X{p.esd} {sig_node.get(f['I/O1'], node_name(f['I/O1']))} {gnd} "
-                     f"{sig_node.get(f['I/O2'], node_name(f['I/O2']))} vesd USBIN_USBLC6_2 {self.esd_params()}")
+            L.append(f"X{p.esd} {u2n.get(f['I/O1'], node_name(f['I/O1']))} {u2n.get(f['GND'], node_name(f['GND']))} "
+                     f"{u2n.get(f['I/O2'], node_name(f['I/O2']))} vesd USBIN_USBLC6_2 {self.esd_params()}")
         else:
             L.append(f"R{p.esd}_absent vesd 0 1e12")
         # D+/D-: J1 -> U2 -> link connector
