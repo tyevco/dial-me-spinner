@@ -9,14 +9,22 @@ against it).  Limits:
   * Panel VCC 12.5-13.5 V ...... NHD-1.5-128128G rev 3, Electrical Characteristics ("Supply Voltage for Display")
   * Panel ICC .................. same table: 50 % ON 29.0 mA max, 100 % ON 42.0 mA max (VCC 13 V)
   * SSD1351 VCC abs max 19 V ... Solomon SSD1351 Rev 1.3 Table 11-1
-  * TPS61040 SW <= 30 V (abs max), VIN <= 6 V, f <= 1 MHz, COUT >= 1 uF, L 2.2-47 uH (SLVS413L 5.1 / 5.3 / 7.2.2)
+  * TPS61040 SW <= 30 V (abs max), VIN <= 6 V, f <= 1 MHz, COUT >= 1 uF, CIN 4.7 uF, L 2.2-47 uH
+    (SLVS413L 5.1 / 5.3 / 7.2.2); FB <= VIN + 0.3 V (5.1 abs max) with the boost unpowered
   * L20 Isat 0.72 A (rated, 30 % L drop) ... Sunlord SWPA series datasheet rev 2019/04/01, SWPA3015S100MT row
   * D21 IFRM 1.5 A, VRRM 40 V ... CJ B5817W-5819W rev D (Mar 2015) Maximum Ratings
   * TPS22917 IPLS 2.5 A, VIN <= 5.5 V, ISD,VIN <= 100 nA ... SLVSDW8B Tables 7.1 / 7.3 / 7.5
-  * VCC up before AFh: firmware waits >= 200 ms after OLED_VCC_EN (SPEC.md 5.3 / NHD example init sequence)
+  * VCC up before AFh: firmware waits 200 ms after OLED_VCC_EN (firmware.md step 23 / NHD init sequence); the
+    same step allows shortening it but "never below 5 ms" (checked: xfail)
   * VCC must float when off: no path VSYS -> VCC ... SSD1351 Rev 1.3 8.9 note (2); TPS61040 SLVS413L 6.3.3
   * Headroom: at VCC = 12.5 V the boost must deliver the panel ICC firmware allows at that VSYS + the divider
     current (measured with VCC clamped at 12.5 V, see capability(); a run from 13 V can take ms to droop)
+  * USB only, battery dead (no BQ25180 supplement): enabling VCC must not pull VSYS below 3.0 V, the level the
+    +3V3 rail is designed for (architecture.md; BQ25180 SLUSE99C ILIM, 8.3.3)
+
+Off state: with U21 open, OLED_VIN has no DC path (as on the board), so EN-low states start from explicit initial
+conditions (init="off") instead of a DC operating point; the TPS61040 keeps regulating from C38 for tens of ms
+after OLED_VCC_EN falls (verified 3 ms window; the UVLO-chatter regime after that is not simulated).
 
 Supply corners: VSYS on battery = VBAT 3.0 / 3.7 / 4.2 V (BQ25180 BATFET path); on USB VSYS = SYS_REG 4.5 V
 +2 % = 4.59 -> 4.6 V (BQ25180 SLUSE99C VSYS_REG_ACCURACY).  The firmware low-battery rule (firmware.md 7.4:
@@ -67,8 +75,8 @@ U21_ISD_MAX = 100e-9
 SRC_ISD = "TPS22917 SLVSDW8B Table 7.5: ISD,VIN 100 nA max (-40..85 C)"
 T_AF = 0.200
 SRC_TAF = "SPEC.md 5.3 / NHD init sequence: AFh >= 200 ms after OLED_VCC_EN, VCC must be in range by then"
-UVLO_MAX = 1.7
-SRC_UVLO = "TPS61040 SLVS413L 5.5: VUVLO 1.7 V max (boost off below it); SSD1351 8.9: VCC off before tOFF 100 ms"
+T_AF_MIN = 5e-3
+SRC_TAF_MIN = "firmware.md 7.x step 23: the VCC-to-AFh wait may be shortened after measurement, 'never below 5 ms'"
 SRC_FLOAT = ("SSD1351 Rev 1.3 8.9 note (2) VCC floats when off / note (1) held near VCI by ESD path; "
              "TPS61040 SLVS413L 6.3.3 (disabled boost passes VIN to VOUT)")
 
@@ -102,6 +110,12 @@ C_ESR = 0.008                                 # Samsung CL21A106 |ESR| 5-10 mOhm
 # nominal (marked) values give the largest inrush and the slowest start.
 DERATE_13V = 0.29
 DERATE_VSYS = 0.80
+# The same three curve points (0 V: 1.0, ~4 V: 0.80, 13 V: 0.29), integrated: a cap charged 0 -> 13 V stores
+# E = int V C(V) dV, i.e. this fraction of 1/2 C_marked 13^2.  Used where the charge drawn from VSYS during start-up
+# matters (marked values overstate it, the 13 V value understates it).
+_DB = ((0.0, 1.0), (4.0, DERATE_VSYS), (13.0, DERATE_13V))
+DERATE_ENERGY = sum((b[0] - a[0]) * (a[0] * (2 * a[1] + b[1]) + b[0] * (a[1] + 2 * b[1])) / 6
+                    for a, b in zip(_DB, _DB[1:])) / (13.0 ** 2 / 2)          # = 0.535
 
 TEMPS = (-10.0, 25.0, 60.0)
 WEAK_PASSIVES = dict(ron=0.140, dcr=L20_DCR_MAX, scale={"L20": 0.8})  # TPS22917 RON max, DCR max, L -20 %
@@ -142,6 +156,12 @@ def cout_effective(d) -> float:
         c = d.value(ref) * (1 - d.tol(ref))
         tot += c * (DERATE_13V if d.value(ref) >= 1e-6 else 1.0)
     return tot
+
+
+def cin_fitted(d) -> float:
+    """Marked value of every fitted capacitor between OLED_VIN (U20 VIN) and GND in the netlist."""
+    return sum(d.value(r) for r in d.on_net("OLED_VIN", "C")
+               if d.fitted(r) and r not in d._shorted and set(d.pins[r].values()) == {"OLED_VIN", "GND"})
 
 
 def ipeak_eq1(vin: float, l_h: float, ilim: float = 0.450) -> float:
@@ -185,7 +205,8 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
     dcr = (L20_DCR_TYP if dcr is None else dcr) * (1 + CU_TCR * (temp - 20))
     sc = dict(scale or {})
     if derate:   # X5R bulk caps (>= 1 uF) on the boost output and input, found from the netlist
-        for net, k in (("+13V_OLED", DERATE_13V), ("OLED_VIN", DERATE_VSYS)):
+        k13 = DERATE_ENERGY if derate == "energy" else DERATE_13V      # "energy": start-up charge from VSYS
+        for net, k in (("+13V_OLED", k13), ("OLED_VIN", DERATE_VSYS)):
             for ref in d.on_net(net, "C"):
                 if set(d.pins[ref].values()) == {net, "GND"} and d.value(ref) >= 1e-6:
                     sc[ref] = sc.get(ref, 1.0) * k
@@ -242,7 +263,8 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
         vfb0 = v0 * r27 / (r26 + r27) if d.fitted("R26") and d.fitted("R27") else u20["VREF"]
         ics = {n["VSYS"]: vsys, n["OLED_VIN"]: vsys, n["OLED_BST_SW"]: vsys, "n_l20_dcr": vsys, "n_d21_a": vsys,
                "n_u21_vin": vsys, n["+13V_OLED"]: v0, n["OLED_BST_FB"]: vfb0,
-               n["OLED_LSW_CT"]: u21_ct_ready(vsys), n["OLED_VCC_EN"]: 3.3, "xu20.cnt": 600, "xu21.en": 1}
+               n["OLED_LSW_CT"]: u21_ct_ready(vsys), n["OLED_VCC_EN"]: 3.3, "xu20.cnt": 600, "xu20.ena": 1,
+               "xu21.en": 1}   # xu20.ena = 1: enabled from t = 0, else the soft-start count is cleared at t = 0
         deck += ".ic " + " ".join(f"v({k})={v:.6g}" for k, v in ics.items())
     elif init == "off":
         # long after OLED_VCC_EN went low: U21 open (CT = VIN), OLED_VIN drained to 0 V (worst case for the FB pin
@@ -339,6 +361,8 @@ def test_static_ratings(main, check):
     check("L20 max (tolerance)", hi("L20"), None, 47e-6, "H", "TPS61040 SLVS413L 7.2.2.1: L 2.2-47 uH")
     check("COUT effective at 13 V (fitted netlist caps, min tol, DC bias)", cout_effective(d), 1e-6, None, "F",
           "TPS61040 SLVS413L 5.3: COUT >= 1 uF (Samsung CL21A106 DC-bias -71 % at 13 V)")
+    check("CIN fitted at U20 (marked, OLED_VIN to GND)", cin_fitted(d), 4.7e-6, None, "F",
+          "TPS61040 SLVS413L 5.3 CIN 4.7 uF (recommended) / 7.2.2.5")
     check("R27 (R2 of the divider)", d.value("R27"), None, 200e3, "ohm", "TPS61040 SLVS413L 7.2.2.2: R2 <= 200 kOhm")
     check("R26 (R1 of the divider)", d.value("R26"), None, 2.2e6, "ohm", "TPS61040 SLVS413L 7.2.2.2: R1 <= 2.2 MOhm")
     check("VSYS max at U21 VIN", VSYS_USB, None, 5.5, "V", "TPS22917 SLVSDW8B Table 7.3: VIN <= 5.5 V")
@@ -366,12 +390,13 @@ def test_nominal_regulation(main, check):
 
 
 def _tolerance_runs(d, ifb):
-    """VFB max / light load / derated caps (highest VCC) and VFB min / full load (lowest VCC), for every
-    R26/R27 tolerance corner (Design.extremes), with FB bias current `ifb` pushing the same way."""
+    """VFB max / light load / derated caps / USB (highest VCC) and VFB min / full white at the lowest VSYS that
+    firmware allows it (3.6 V: lowest VCC), for every R26/R27 tolerance corner (Design.extremes), with FB bias
+    current `ifb` pushing the same way."""
     jobs = []
     for corner in d.extremes(["R26", "R27"]):
         jobs.append(("hi", corner, dict(U20_TYP, VREF=VREF_MAX, IFB=+ifb), 4.6, ICC_LIGHT))
-        jobs.append(("lo", corner, dict(U20_TYP, VREF=VREF_MIN, IFB=-ifb), 4.2, ICC_100_MAX))
+        jobs.append(("lo", corner, dict(U20_TYP, VREF=VREF_MIN, IFB=-ifb), VSYS_FW, ICC_100_MAX))
 
     def one(job):
         side, corner, u20, vsys, icc = job
@@ -388,7 +413,7 @@ def test_regulation_over_divider_and_reference_tolerance(main, check):
     vmin = min(r["vmin"] for s, _, r in out if s == "lo")
     soft_checks(check, [("VCC max: VFB max, R corners, 1 mA, VSYS 4.6 V", vmax, None, VCC_MAX, "V",
                          SRC_VCC + "; " + SRC_VFB),
-                        ("VCC min: VFB min, R corners, 42 mA, VSYS 4.2 V", vmin, VCC_MIN, None, "V",
+                        ("VCC min: VFB min, R corners, 42 mA, VSYS 3.6 V", vmin, VCC_MIN, None, "V",
                          SRC_VCC + "; " + SRC_VFB)])
 
 
@@ -498,16 +523,48 @@ def test_temperature(main, check):
     soft_checks(check, rows)
 
 
+WORST_START = dict(u20=dict(U20_WEAK), ron=0.140, dcr=L20_DCR_MAX)   # slowest start: weak boost, RON / DCR max
+
+
+def _worst_start_scale(d):
+    """L20 -20 % (lowest power per cycle), C37 and the +13V_OLED caps at their maximum tolerance (slowest ramp,
+    most charge), all from the netlist tolerances."""
+    sc = {"L20": 1 - d.tol("L20"), "C37": 1 + d.tol("C37")}
+    for ref in d.on_net("+13V_OLED", "C"):
+        sc[ref] = 1 + d.tol(ref)
+    return sc
+
+
+_START_CACHE = {}
+
+
+def startup_worst(d):
+    """VSYS 3.0 V, marked caps at +tol, weak parts (cached: two tests read it)."""
+    key = (tuple(sorted(d._override.items())), frozenset(d._removed), frozenset(d._shorted))
+    if key not in _START_CACHE:
+        _START_CACHE[key] = startup(d, "startup worst", vsys=3.0, derate=False, tstop=9e-3,
+                                    scale=_worst_start_scale(d), **WORST_START)
+    return _START_CACHE[key]
+
+
 def test_startup_inrush_and_overshoot(main, check):
-    """OLED_VCC_EN rising with the display off: VSYS 3.0 V with marked caps (slowest start, longest inrush) and
-    USB 4.6 V with derated caps (fastest edge, largest overshoot)."""
-    jobs = [(3.0, False, 5.6e-3), (VSYS_USB, True, 4.3e-3)]
+    """OLED_VCC_EN rising with the display off: VSYS 3.0 V with marked caps (slowest start, longest inrush), USB
+    4.6 V with derated caps (fastest edge, largest overshoot), and VSYS 3.0 V with the slowest parts (weak TPS61040,
+    L20 -20 %, C37 and output caps +tol) for the start-up time."""
+    jobs = [(3.0, False, 5.6e-3), (VSYS_USB, True, 4.3e-3), "worst"]
 
     def one(job):
+        if job == "worst":
+            return job, startup_worst(main)
         vs, der, tstop = job
         return job, startup(main, f"startup {vs} V", vsys=vs, derate=der, tstop=tstop)
     rows = []
-    for (vs, der, _), r in pmap(one, jobs):
+    for job, r in pmap(one, jobs):
+        if job == "worst":
+            rows.append(("VCC reaches 12.5 V after OLED_VCC_EN, VSYS 3.0 V, slowest parts", r["tup"] - 20e-6, None,
+                         T_AF, "s", SRC_TAF))
+            continue
+        vs, der, _ = job
         tag = f"VSYS {vs} V, caps {'derated' if der else 'marked'}"
         rows += [(f"VCC reaches 12.5 V after OLED_VCC_EN, {tag}", r["tup"] - 20e-6, None, T_AF, "s", SRC_TAF),
                  (f"VCC overshoot peak, {tag}", r["vpk"], None, VCC_MAX, "V", SRC_VCC),
@@ -517,6 +574,53 @@ def test_startup_inrush_and_overshoot(main, check):
                  (f"D21 peak current at start-up, {tag}", r["idpk"], None, D21_IFRM, "A", SRC_IFRM),
                  (f"SW peak at start-up, {tag}", r["swpk"], None, SW_MAX, "V", SRC_SW)]
     soft_checks(check, rows)
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware.md step 23): the documented floor for the "
+                   "VCC-to-AFh wait, 'never below 5 ms', is shorter than the worst-case VCC rise (~6.3 ms at VSYS "
+                   "3.0 V with a weak TPS61040, L20 -20 %, C37 +10 %); 4.9 ms even with typical parts")
+def test_startup_time_vs_firmware_floor(main, check):
+    """The slowest start (see startup_worst) against the shortest wait firmware.md allows before AFh."""
+    r = startup_worst(main)
+    check("VCC reaches 12.5 V after OLED_VCC_EN, VSYS 3.0 V, slowest parts (vs firmware floor)",
+          r["tup"] - 20e-6, None, T_AF_MIN, "s", SRC_TAF_MIN)
+
+
+SRC_USB = ("architecture.md +3V3 row: the rail is designed for VSYS >= BUVLO 3.0 V (+3V3 >= 2.9 V, W25Q128 needs "
+           ">= 2.7 V); BQ25180 SLUSE99C 7.5 ILIM, 8.3.3 no supplement below BUVLO; firmware.md 13.3 / 6.3")
+
+
+def usb_start(d, title, ilim):
+    """OLED_VCC_EN rising while VSYS comes only from USB through the BQ25180 input limit (battery dead or absent:
+    no supplement), with the VSYS capacitors of both boards (marked values) and no other VSYS load - all of which
+    favour the result.  Output caps at their energy-equivalent C(V) (DERATE_ENERGY)."""
+    b = spicelib.Design("base")
+    deck = build(d, title, vsys=4.5, icc=0.0, derate="energy", en="step", t_en=20e-6, init="off")
+    deck.include("oled_boost__bq25180.lib")
+    deck.lines = [ln for ln in deck.lines if not ln.startswith(("VSRC ", "RSRC "))]
+    deck += f"XBQ {d.node('VSYS')} 0 BQ25180_SYS_OB params: ILIM={ilim}"
+    deck += [ln[0] + "BASE_" + ln[1:] for ln in b.passives(nets={"VSYS", "GND"})]   # base board, via J3
+    deck.meas("tran vsysmin MIN v(n_vsys)")
+    deck.meas("tran vend AVG v(n_p13v_oled) FROM=6.5m TO=7m")
+    return run(deck, 7e-3)
+
+
+def test_usb_500ma_oled_enable(main, check):
+    """USB at the 500 mA input-limit code (450 mA min), battery dead: the OLED supply may start."""
+    r = usb_start(main, "usb 500 mA", 0.450)
+    soft_checks(check, [("VSYS min during OLED start-up, USB ILIM 500 mA code (450 mA min), no battery",
+                         r["vsysmin"], 3.0, None, "V", SRC_USB),
+                        ("VCC settled, USB only", r["vend"], VCC_MIN, VCC_MAX, "V", SRC_VCC)])
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with USB at the 100 mA pre-enumeration limit and a dead / "
+                   "absent battery (no supplement), the boost start-up (~0.25 A for ~2 ms) pulls VSYS to ~2.5 V; "
+                   "firmware.md 13.3 / 6.3 still allow the OLED on in that state")
+def test_usb_100ma_dead_battery_oled_enable(main, check):
+    """USB at the 100 mA input-limit code (98 mA max, the most favourable), battery below BUVLO."""
+    r = usb_start(main, "usb 100 mA", 0.098)
+    check("VSYS min during OLED start-up, USB ILIM 100 mA code (98 mA max), battery below BUVLO", r["vsysmin"],
+          3.0, None, "V", SRC_USB)
 
 
 def test_load_steps(main, check):
@@ -667,6 +771,43 @@ def test_fault_ct_capacitor_missing_detected(main, check):
     r = startup(main, "fault C37", vsys=VSYS_USB, derate=False, tstop=1.5e-3)
     check("FAULT C37 missing: L20 peak at start-up must exceed Isat (detected)", r["ilpk"], L20_ISAT, None, "A",
           SRC_ISAT)
+
+
+@pytest.mark.fault
+def test_fault_output_caps_missing_detected(main, check):
+    """C30 and C39 (both bulk output caps) left off: the static COUT check, now taken from the fitted netlist
+    parts, must see less than the TPS61040 minimum."""
+    main.remove("C30").remove("C39")
+    check("FAULT C30 + C39 off: effective COUT must fall below 1 uF (detected)", cout_effective(main), None, 1e-6,
+          "F", "TPS61040 SLVS413L 5.3: COUT >= 1 uF")
+
+
+@pytest.mark.fault
+def test_fault_cin_missing_detected(main, check):
+    """C38 (boost input cap) left off: the static CIN check must flag it."""
+    main.remove("C38")
+    check("FAULT C38 off: CIN at U20 must fall below 4.7 uF (detected)", cin_fitted(main), None, 4.7e-6 * 0.999,
+          "F", "TPS61040 SLVS413L 5.3 CIN 4.7 uF / 7.2.2.5")
+
+
+@pytest.mark.fault
+def test_fault_ct_shorted_detected(main, check):
+    """C37 shorted (solder bridge CT-VIN): U21 never turns on, so VCC never reaches the panel minimum; the
+    start-up check reports it (time = inf) instead of the harness erroring out."""
+    main.short("C37")
+    r = startup(main, "fault C37 short", vsys=3.7, derate=False, tstop=8e-3)
+    check("FAULT C37 shorted: VCC must not reach 12.5 V within 8 ms (detected)", r["tup"], 8e-3, None, "s",
+          SRC_TAF + " (start-up never completes)")
+
+
+@pytest.mark.fault
+def test_fault_l20_bridged_detected(main, check):
+    """L20 bridged (pads shorted): SW sits on OLED_VIN, the boost cannot store energy and VCC only reaches about
+    VSYS - D21 drop after OLED_VCC_EN."""
+    main.short("L20")
+    r = startup(main, "fault L20 short", vsys=VSYS_USB, derate=False, tstop=6e-3)
+    check("FAULT L20 bridged: VCC after start-up must stay below the panel minimum (detected)", r["vend"], None,
+          VCC_MIN, "V", SRC_VCC)
 
 
 # ----------------------------------------------------------------------------------------------- Monte Carlo

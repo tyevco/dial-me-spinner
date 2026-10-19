@@ -104,18 +104,19 @@ def _rename(lines, tag):
 
 
 def vsys_network(deck, main, base, corner="bat3.7", temp=25, i3v3=I_3V3, ronbat="55m", ronin="0.27", vsysreg=4.5,
-                 i_extra=0.0):
+                 i_extra=0.0, ilim=0.475):
     """BQ25180 power path -> base VSYS caps -> link harness -> main-board VSYS caps + always-on +3V3 load.
 
     Main-board VSYS node is n_vsys; +3V3 is an ideal LDO limited by the RT9080 dropout (n_p3v3).
-    i_extra: an additional DC load on VSYS (e.g. the detent motor during a move)."""
+    i_extra: an additional DC load on VSYS (e.g. the detent motor during a move).
+    ilim: BQ25180 input current limit on USB (500 mA code 475 mA typ; 0.1 for the 100 mA code)."""
     if i_extra:
         deck += f"IEXTRA n_vsys 0 DC {i_extra:.6g}"
     c = CORNERS[corner]
     deck.include(LIB_BQ)
     if c["usb"]:
         deck += (f"XBQ n_vsys_b 0 LSW_BQ25180_USB params: vbus={c['vbus']} vbat={c['vbat']} rpack={RPACK[temp]} "
-                 f"ronbat={ronbat} ronin={ronin} vsysreg={vsysreg}")
+                 f"ronbat={ronbat} ronin={ronin} vsysreg={vsysreg} ilim={ilim:.6g}")
     else:
         deck += f"XBQ n_vsys_b 0 LSW_BQ25180_BAT params: vbat={c['vbat']} rpack={RPACK[temp]} ronbat={ronbat}"
     deck += _rename(base.passives(nets={"VSYS", "GND"}), "b")
@@ -304,6 +305,13 @@ class SimulationError(RuntimeError):
 
 def run(deck, *, need=()):
     res = deck.run()
+    # The TPS22917 macro-model's logic edges can stall ngspice's trapezoidal step control at a switching instant
+    # ("Timestep too small") for some otherwise harmless loads; the same deck then runs with Gear integration.
+    # Only that error triggers the retry, and any error of the retry is still fatal.
+    if any(re.search(r"(?i)timestep too small", e) for e in res["_errors"]) and \
+            not any("method=gear" in o for o in deck.options):
+        deck.options.append("option method=gear")
+        res = deck.run()
     errors = list(res["_errors"])
     # The XSPICE ilimit block (BQ25180 USB input FET) prints "**** ERROR **** / CLIMIT function linear range less
     # than zero" for one Newton iteration while ngspice's gmin stepping explores the operating point; the step
@@ -778,10 +786,10 @@ def test_phantom_normal_off_state(main, base, check):
 U21_CASES = [(c, 25) for c in ("bat3.0", "bat3.7", "bat4.2", "usb4.5", "usb5.5")] + [("bat3.0", -10)]
 
 
-def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0):
+def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0, ilim=0.475):
     d = Deck(f"U21 turn-on {corner} {temp}C")
     d += f".temp {temp}"
-    vsys_network(d, main, base, corner, temp, i_extra=i_extra)
+    vsys_network(d, main, base, corner, temp, i_extra=i_extra, ilim=ilim)
     sense(d, "n_vsys", "n_u21_vin", "n_iu21")
     tps22917(d, main, "U21", vin_node="n_u21_vin")
     oled_input(d, main)

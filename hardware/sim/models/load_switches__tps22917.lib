@@ -22,6 +22,9 @@
 *     test_model_turn_on_matches_table_7_6 checks tR, tON and SRON at 3.6 V and 5 V every run.
 * (3) FIXED vendor artifact: TI's F1 sank its IIN,RCB leakage (~0.3 uA) out of VOUT permanently; it is now
 *     gated by the RCB latch, as Table 7.5 specifies IIN,RCB only for VOUT > VIN.
+* (5) FIXED by the independent verifier (2026-10-19): (a) the slew block used the instantaneous VIN for its
+*     constants, which made a VIN sag regenerative (24 A into 445 uF); it now uses VIN low-passed with 1 ms;
+*     (b) S3 (CT reset while disabled) 1 -> 100 Ohm for trapezoidal-integration robustness.  Details at both.
 * (4) ADDED parameters (defaults leave the behaviour unchanged):
 *     ron_add  extra pass resistance (Ohm) added to TI's RVAR U4: the tests use it to apply the Table 7.5 RON
 *              max-vs-temperature rows (temperature is not modelled, vendor note 2).
@@ -156,7 +159,11 @@ X_U1_U1_U44     ON_INT_PRE U1_N03821 U1_U1_N427944 lsw17_AND2_BASIC_GEN params: 
 a_U1_U1_S1      %vd(U1_U1_N427964 0) %gd(U1_U1_ON_A 0) lsw17_S1
 a_U1_S4         %vd(ON_INT_PRE GND) %gd(ON GND) lsw17_S4ON
 * ---------------- switch models (TI DRIVER_*/CONTROL_*/CHANNEL_* VSWITCH -> aswitch, same values)
-.model lsw17_S3   aswitch(cntl_off=0.8 cntl_on=0.2 r_off=1e9   r_on=1    log=TRUE limit=TRUE)
+* S3 r_on 1 -> 100 Ohm (verifier): TI's 1 Ohm dumps the CT capacitor (charged to VIN + 0.5 V at the end of the
+* ramp) as a ~4.7 A, 1 ns spike at every turn-off, and ngspice's trapezoidal step control then stalls at the
+* turn-off edge for some loads (e.g. the DNP C43 fitted).  100 Ohm resets 1 nF in ~0.5 us; SLVSDW8B specifies
+* no CT discharge, and nothing observable here depends on CT resetting faster than that.
+.model lsw17_S3   aswitch(cntl_off=0.8 cntl_on=0.2 r_off=1e9   r_on=100  log=TRUE limit=TRUE)
 .model lsw17_S11  aswitch(cntl_off=0   cntl_on=1   r_off=1e9   r_on=0.1  log=TRUE limit=TRUE)
 .model lsw17_S4   aswitch(cntl_off=0.9 cntl_on=0.1 r_off=1e9   r_on=1m   log=TRUE limit=TRUE)
 .model lsw17_S10  aswitch(cntl_off=1   cntl_on=0   r_off=1e9   r_on=0.1m log=TRUE limit=TRUE)

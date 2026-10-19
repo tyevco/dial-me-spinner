@@ -48,9 +48,11 @@ Bvin vinc 0 V = min(max(V(VIN,GND), 1.8), 5.0)
 Bict ict 0 V = V(vinc) < 3.6 ? 1.1u + (V(vinc)-1.8)*(0.8u/1.8) : 1.9u + (V(vinc)-3.6)*(0.4u/1.4)
 Btk tonk 0 V = V(vinc) < 3.6 ? 3.6e6 + (V(vinc)-1.8)*(0.2e6/1.8) : 3.8e6 + (V(vinc)-3.6)*(0.2e6/1.4)
 Bdel vdel 0 V = V(ict)*V(tonk) - 0.9*V(vinc)
-* ---- CT ramp: sink I_CT from CT (external C37 returns to VIN), stop when fully on; reset when off
+* ---- CT ramp: sink I_CT from CT (external C37 returns to VIN), stop when fully on; reset when off.
+*      The stop fades out over 50 mV, 0.5 V past the end of the ramp (VOUT = VIN there already): a hard switch
+*      left CT parked on the threshold and made ngspice chatter once the circuit went idle (verifier fix).
 Cint CT VIN {CINT}
-Bct CT GND I = V(en) > 0.5 ? (V(VIN,CT) < V(vdel) + V(VIN,GND) + 0.5 ? V(ict) : 0) : -V(VIN,CT)*1m
+Bct CT GND I = V(en) > 0.5 ? V(ict)*min(max((V(vdel) + V(VIN,GND) + 0.5 - V(VIN,CT))/0.05, 0), 1) : -V(VIN,CT)*1m
 * ---- pass element: forward only, follows the ramp target, RON when fully on
 Bout VIN VOUT I = V(en) > 0.5 ? max(min(max(V(VIN,CT) - V(vdel), 0), V(VIN,GND)) - V(VOUT,GND), 0)/{RON} : 0
 * ---- QOD (open on this board) and supply current

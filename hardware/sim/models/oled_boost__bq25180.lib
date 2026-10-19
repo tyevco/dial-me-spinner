@@ -1,0 +1,27 @@
+* =====================================================================================================
+* oled_boost__bq25180.lib  --  TI BQ25180 VIN -> SYS path with input current limit, battery absent / below
+*                              BUVLO (USB-only supply of VSYS), for the OLED boost start-up check
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments BQ25180YBGR (base board U1)
+* Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf  (SLUSE99C, Sep 2021, revised Jan 2023)
+* Vendor    : no transient model of the power path is published; this is a two-parameter abstraction.
+*
+* Modelled:
+*   SYS regulation  VSYS_REG = 4.5 V (SYS_REG_CTRL = 010, the reset value; 7.5 "VSYS_REG"), output
+*                   resistance RSYS (default 69 mOhm: the same source resistance the OLED tests use).
+*   Input limit     the VIN -> SYS current never exceeds ILIM (7.5 "ILIM": 100 mA code 80 / 90 / 98 mA
+*                   min / typ / max at VIN 5 V; 500 mA code 450 / 475 / 498 mA).  Default 98 mA (the
+*                   most favourable value for the system).
+*   No supplement   8.3.3: the battery supplements SYS only when VBAT > VBUVLO.  With a dead (below
+*                   BUVLO) or absent battery nothing else feeds SYS, so above ILIM VSYS simply falls.
+*
+* NOT modelled: the ILIM loop dynamics (ideal and instantaneous here, which favours the system), VINDPM /
+*   VDPPM, the SYS short protection (8.3.7.4: SYS < 1.6 V turns the input FET off for ~200 us and retries),
+*   thermal regulation, charging current (it would only reduce what is left for SYS), BATOCP.
+*
+* Pins: SYS GND     params: VREG ILIM RSYS
+* =====================================================================================================
+.subckt BQ25180_SYS_OB SYS GND params: VREG=4.5 ILIM=0.098 RSYS=0.069
+Bsys GND SYS I = min(max((V(vreg_n,GND) - V(SYS,GND))/{RSYS}, 0), {ILIM})
+Vreg vreg_n GND {VREG}
+.ends BQ25180_SYS_OB
