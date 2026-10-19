@@ -58,11 +58,19 @@ RON_BAT = 0.055          # BQ25180 SLUSE99C 7.5 RON_BAT 55 mohm typ (BATFET, bat
 VBSUP1 = 0.04            # BQ25180 SLUSE99C 7.5 VBSUP1: SYS supplemented from BAT below VBAT - 40 mV
 BATOCP_SET = 1.5         # BQ25180 IBAT_OCP after firmware init (CHARGECTRL1 0x92 = 1.5 A, firmware.md 13.1)
 RON_LSW = 0.08           # TPS22917 RON 80 mohm typ (power research / TPS22917 DS) - U2 in a VLED short
-SPEC_IQ_MAX = 2e-6       # SPEC.md section 3: "LDO ... Iq <= 2 uA"
-BATOCP_DEFAULT = 1.0     # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A (POR default per power research; firmware
+SPEC_LDO_IQ = "Iq ≤ 2 µA typ / 4 µA max"   # SPEC.md section 3, LDO bullet, quoted exactly (LDO-1; it read
+#                          "Iq <= 2 uA" before, which a DS9080-09 max part breaks). spec_ldo_iq() checks the SPEC text
+SPEC_IQ_TYP = 2e-6       # SPEC.md section 3: Iq <= 2 uA typ (DS9080-09 Table 14 IQ 2 uA typ)
+SPEC_IQ_MAX = 4e-6       # SPEC.md section 3: Iq <= 4 uA max (DS9080-09 Table 14 IQ 4 uA max)
+BATOCP_DEFAULT = 1.0    # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A (POR default per power research; firmware
 #                          later writes 1.5 A, so start-up happens at 1 A)
 BQ_ILIM_500_MAX = 0.498  # BQ25180 SLUSE99C 7.5 ILIM 500 mA code: 498 mA max (TMR_ILIM 0xCD, firmware.md)
-SYS_REG = 4.5            # BQ25180 SYS_REG = 4.5 V on USB (architecture 6.5 / firmware register table)
+SYS_REG_FW = 4.4         # BQ25180 SYS_REG (0x0A) = 0x20, SYS_REG_CTRL 001: SYS 4.4 V on USB (firmware.md 13.1 row 8,
+#                          SPEC 3 / 5.4; hardware/sim LED-DATA-V3, LDO-2)
+SYS_REG_POR = 4.5        # SYS_REG_CTRL 010: the BQ25180 POR default (USB before firmware init) and the only other value
+#                          firmware.md 13.1 allows (never 011-111 while the LEDs may run; bq25180.c asserts it)
+SYS_REG = SYS_REG_POR    # the checks use the 4.5 V window: a higher SYS is the conservative corner for every one of them
+#                          (U1 VIN range, VSYS cap DC bias and slew, WS2812C VIH, VCI max, dissipation, reverse bias)
 SYS_REG_ACC = 0.02       # BQ25180 SLUSE99C 7.5 VSYS_REG accuracy +/-2 %
 VBUVLO = 3.0             # BQ25180 BUVLO setting 3.0 V (CHARGECTRL1 0x92): lowest VSYS on battery
 SAG = 0.3                # power research design rule: total system peak keeps the cell sag below 0.3 V

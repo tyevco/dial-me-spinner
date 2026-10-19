@@ -161,8 +161,9 @@ OLED_ETA = 0.75                                     # TPS61040 efficiency (conse
 BOOST_ILIM = (0.350, 0.400, 0.450)                  # SLVS413L 5.5 ILIM
 BOOST_VFB = 1.233                                   # SLVS413L 5.5 VFB typ
 BOOST_VF = 0.45                                     # B5819W drop at ~0.4 A (assumed; only shapes the ripple)
-# detent stepper (docs/firmware.md 5.3): coil + rDS(on) 20.3 Ohm, run current 160 mA, PWM 25 kHz;
-# microstep at 45 deg drives both coils at 160 mA x cos 45
+# detent stepper (docs/firmware.md 5.3): coil + rDS(on) 20.3 Ohm (firmware.md now 20.33 Ohm at 25 C, temperature
+# compensated, MD-3: motor_r_fw; 20.3 is kept for the full-on current, the larger value), run current 160 mA, PWM
+# 25 kHz; microstep at 45 deg drives both coils at 160 mA x cos 45
 MOTOR_RCOIL, MOTOR_IRUN, MOTOR_FPWM = 20.3, 0.160, 25e3
 MOTOR_I45 = MOTOR_IRUN * math.cos(math.pi / 4)
 
