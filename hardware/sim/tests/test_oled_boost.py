@@ -106,6 +106,8 @@ VSYS_FW_OLD = 3.6                             # OLD firmware.md 7.4 full-white t
 VSYS_FW_RULE = 3.75                           # firmware.md 7.4 / 12.4: full white only from rested VBAT 3.75 V
 SRC_FW_BST2 = ("firmware rule (hardware/sim, OLED-BST-2): firmware.md 7.4 / 12.4, SPEC 5.3: C7 <= 08h and "
                "<= 30 % white below rested VBAT 3.75 V and while the LEDs exceed their 150 mA sustained cap")
+I_LED_SUST_FW = 0.150                         # firmware.md 6.3 / 7.4: LED sustained cap; up to it the OLED may stay
+#                                               at full white (OLED-BST-2), so the guard also loads VSYS with it
 # VSYS source: BQ25180 RON_BAT 55 mOhm typ (SLUSE99C 7.5) + link harness 8.5 + 5.7 mOhm (architecture.md 4.2)
 R_SRC = 0.055 + 0.0085 + 0.0057
 
@@ -344,13 +346,16 @@ def steady(d, title, *, t_settle=0.3e-3, t_meas=0.5e-3, freq=False, **kw):
     return res
 
 
-def capability(d, title, *, vsys, **kw):
+def capability(d, title, *, vsys, vsys_load=0.0, **kw):
     """Largest average current the boost delivers into VCC held at the panel minimum (12.5 V) by an ideal
     source: with VCC below the set point FB < VREF, so the TPS61040 runs flat out.  Because the deliverable
     current rises as VOUT falls, capability >= load at 12.5 V means the loaded equilibrium is >= 12.5 V.
-    (A time-domain run from 13 V can take several ms to droop to that equilibrium, so it is not used here.)"""
+    (A time-domain run from 13 V can take several ms to droop to that equilibrium, so it is not used here.)
+    vsys_load: other DC load (A) on the main-board VSYS node, which drops VSYS across R_SRC (default none)."""
     deck = build(d, title, vsys=vsys, icc=0.0, derate=True, vcc0=VCC_MIN, **kw)
     deck += f"VCLAMP {d.node('+13V_OLED')} 0 {VCC_MIN}"
+    if vsys_load:
+        deck += f"IVSYS_LOAD {d.node('VSYS')} 0 DC {vsys_load:g}"
     deck.meas("tran idav AVG i(vprb_d21) FROM=0.05m TO=0.25m")
     return run(deck, 0.25e-3)["idav"]
 
@@ -516,16 +521,24 @@ def test_headroom_at_firmware_full_white_threshold_with_fw_rule(main, check):
     <= 30 % white below rested VBAT 3.75 V, so full white (42 mA NHD 100 %-ON maximum) is allowed only from
     3.75 V.  Same weak-part stack as test_headroom_at_firmware_full_white_threshold (ILIM 350 mA, toff 550 ns,
     ton 4 us, RDS 1 ohm, L20 -20 %, DCR max, U21 RON max) at VSYS 3.75 V: at 25 C as there, plus -10 / 60 C.
+    The rule lets full white run together with the LEDs up to their 150 mA sustained cap (the ring is on the main
+    board, so its current also drops VSYS across the BATFET + harness), so each temperature runs once with no other
+    VSYS load (the xfail twin's deck) and once with 150 mA DC on VSYS.
     Below 3.75 V the 29 mA cap is covered down to 3.0 V by test_supply_corners_headroom."""
     vs, icc = VSYS_FW_RULE, ICC_100_MAX
+    jobs = [(temp, iled) for temp in TEMPS for iled in (0.0, I_LED_SUST_FW)]
 
-    def one(temp):
-        return temp, capability(main, f"capability {vs} V {temp:g} C (fw rule)", vsys=vs, temp=temp,
-                                u20=dict(U20_WEAK), **WEAK_PASSIVES)
-    soft_checks(check, [(f"boost current at VCC 12.5 V, weak parts, {temp:g} C, VSYS {vs} V (fw rule OLED-BST-2: "
-                         f"full white only from rested VBAT 3.75 V; load {icc:g} mA + divider)", i,
-                         load_at_min(main, icc), None, "A", SRC_HEADROOM + "; " + SRC_FW_BST2)
-                        for temp, i in pmap(one, TEMPS)])
+    def one(job):
+        temp, iled = job
+        return job, capability(main, f"capability {vs} V {temp:g} C LED {iled:g} A (fw rule)", vsys=vs, temp=temp,
+                               vsys_load=iled, u20=dict(U20_WEAK), **WEAK_PASSIVES)
+    soft_checks(check, [(f"boost current at VCC 12.5 V, weak parts, {temp:g} C, VSYS {vs} V"
+                         + (f" + LEDs {iled * 1e3:g} mA on VSYS" if iled else "")
+                         + f" (fw rule OLED-BST-2: full white only from rested VBAT 3.75 V and LEDs <= 150 mA; "
+                         f"load {icc:g} mA + divider)", i, load_at_min(main, icc), None, "A",
+                         SRC_HEADROOM + "; " + SRC_FW_BST2
+                         + ("; firmware.md 6.3 LED sustained cap 150 mA" if iled else ""))
+                        for (temp, iled), i in pmap(one, jobs)])
 
 
 def test_peak_currents_and_stress(main, check):

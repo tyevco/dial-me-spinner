@@ -17,8 +17,9 @@ Numbers that no document fixes yet (trace lengths, harness capacitance) are in L
 and the worst-case set doubles them.
 
 Supply corners. Every circuit here runs from +3V3, an RT9080-33 LDO on VSYS (DS9080-09: +/-2 % accuracy,
-0.31 V dropout at 600 mA). VBAT 3.7 / 4.2 V and USB VBUS 4.5 / 5.0 / 5.5 V (VSYS = 4.5 V from the
-BQ25180) all leave the LDO in regulation, so +3V3 = 3.3 V +/-2 %. At VBAT 3.0 V the LDO is in dropout,
+0.31 V dropout at 600 mA). VBAT 3.7 / 4.2 V and USB VBUS 4.5 / 5.0 / 5.5 V (VSYS = the BQ25180 SYS_REG:
+4.4 V as docs/firmware.md 13.1 row 8 sets it, 4.5 V POR default) all leave the LDO in regulation, so
++3V3 = 3.3 V +/-2 %. At VBAT 3.0 V the LDO is in dropout,
 so +3V3 is about 2.99 V. The base-side parts see VBAT directly (BTN_N gate drive).
 
 TWIM master timing (TWIM table below): the nRF52840 at 400 kHz holds SCL low for only 1.25 us (Nordic errata
@@ -100,7 +101,7 @@ RT9080_RDROP = 0.31 / 0.6               # DS9080-09 dropout 0.31 V at 600 mA (VO
 I_3V3_ACTIVE = 0.02                     # +3V3 load while sounding / bus active (estimate: nRF CPU + radio)
 VDD = {
     "vbat3.0": 3.0 - RT9080_RDROP * I_3V3_ACTIVE,   # VBAT 3.0 V: LDO in dropout
-    "lo": 3.3 * (1 - RT9080_ACC),                   # VBAT 3.7/4.2 V or USB 4.5-5.5 V (VSYS 4.5 V), +3V3 -2 %
+    "lo": 3.3 * (1 - RT9080_ACC),                   # VBAT 3.7/4.2 V or USB 4.5-5.5 V (VSYS 4.4/4.5 V), +3V3 -2 %
     "nom": 3.3,
     "hi": 3.3 * (1 + RT9080_ACC),                   # same supply states, +3V3 +2 %
 }
