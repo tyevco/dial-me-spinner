@@ -266,7 +266,7 @@ def window(w, key, t1, t2):
 
 
 def tavg(t, y):
-    return float(np.trapz(y, t) / (t[-1] - t[0]))
+    return float(np.trapezoid(y, t) / (t[-1] - t[0]))
 
 
 # ---------------------------------------------------------------- hold / stall operating point
@@ -451,10 +451,11 @@ def rated_reference(pps, ke, lph, stall):
     deck += "VI m 0 0"
     t1, t2 = t0 + (nsteps - 4) * ts, t0 + nsteps * ts
     deck.tran(f"{ts / 400:.3g}", f"{t2:.6g}", 0, f"{ts / 400:.3g}")
-    deck.meas(f"tran iavg AVG abs(i(vi)) from={t1:.9g} to={t2:.9g}")
+    deck.wave("i(vi)")
     r = deck.run()
     check_ran(r)
-    return r["iavg"]
+    t, i = window(r["waves"], "i(vi)", t1, t2)
+    return tavg(t, np.abs(i))
 
 
 def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, rds=RDS_MAX, lph=L_NOM, ke=KE_MAX,
@@ -516,17 +517,19 @@ def test_fullstep_stepping(main, base, check, cid, supname, temp, pps, stall):
           "detent research: load <= 0.5 N; F = 0.78 N x I/I_rated-drive")
     ipk = float(max(np.max(np.abs(w["ia"])), np.max(np.abs(w["ib"]))))
     check("peak coil / OUT current", ipk, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT 1.8 A")
-    tw, vs = window(w, "vsys", tm["t_e"], tm["t_last"])
-    check("VM (VSYS) max while stepping", float(vs.max()), None, SYS_ABS_MAX, "V",
+    # the whole run (incl. the energise step) for the extremes, the stepping window for ripple / regen
+    _, vs_all = window(w, "vsys", 0, tm["t_stop"])
+    tw, vs = window(w, "vsys", tm["t0"] - 0.1 * ts, tm["t_last"])
+    check("VM (VSYS) max, whole move", float(vs_all.max()), None, SYS_ABS_MAX, "V",
           f"{DS_BQ} Table 7.1 SYS abs max (lowest abs max on VSYS)")
     check("VM ripple pk-pk while stepping", float(vs.max() - vs.min()), None, None, "V", "info")
-    _, il = window(w, "ilink", tm["t_e"], tm["t_last"])
+    _, il = window(w, "ilink", tm["t0"] - 0.1 * ts, tm["t_last"])
     check("link current per VSYS contact (peak)", float(il.max()) * SHARE_WORST, None, JST_I_CONTACT, "A",
           "JST SH 1 A/contact (SPEC §2)")
     check("link current, most negative (regen back to base)", float(il.min()), None, None, "A", "info")
     if not sup.usb:
-        _, vb = window(w, "vbat", tm["t_e"], tm["t_last"])
-        check("BAT pin min while stepping", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V")
+        _, vb = window(w, "vbat", 0, tm["t_stop"])
+        check("BAT pin min, whole move", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V")
 
 
 # ------------------------------------------------ turn-off kick through the body diodes
