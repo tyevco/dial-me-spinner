@@ -1,0 +1,48 @@
+* =====================================================================================================
+* motor_drive__bq25180.lib -- power-path (SYS/BAT) behaviour of the TI BQ25180 as seen by the VSYS loads
+*
+* Part      : BQ25180YBGR (base board U1)
+* Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf  SLUSE99C (September 2021, revised January 2023)
+* No vendor SPICE model of the BQ25180 is published, so this is written from the datasheet.
+*
+* Modelled (value, datasheet reference):
+*   - Battery only (usb = 0): BATFET on, BAT <-> SYS through RON_BAT = 55 mOhm typ / 90 mOhm max
+*     (Table 7.5, VBAT = 4.5 V, IBAT = 500 mA). Bidirectional (the FET is on).
+*   - USB present (usb = 1): SYS regulated to vsysreg (SYS_REG_CTRL = 010 -> 4.5 V; accuracy +-2 %,
+*     Table 7.5 VSYS_REG_ACCURACY) through the input FET RON_IN = 270 mOhm typ / 470 mOhm max from
+*     vbus, input current limited to ilim (ILIM = 500 mA setting: 450 / 475 / 498 mA, Table 7.5).
+*     The input path can only source current. The regulation loop is a 20 mOhm source (rreg, an
+*     assumed load regulation); min/max are smoothed with a 1 mA corner for convergence.
+*   - Supplement mode (section 8.3.3): with usb = 1, the battery feeds SYS when V(SYS) < V(BAT) - VBSUP1
+*     (40 mV typ), unregulated, through RON_BAT.
+*   - Charging (usb = 1, param ichg): a SYS -> BAT sink of ichg, cut back linearly by DPPM when SYS
+*     falls toward VBAT + VDPPM (0.1 V typ, section 8.3.2). ichg = 0 models charge done / terminated:
+*     after termination the BATFET is off (section 8.1.1.4) and nothing on the BQ25180 side sinks
+*     current from SYS (the worst case for energy dumped back into VSYS).
+*
+* NOT modelled:
+*   - BATOCP trip (1.5 A, Table 7.5) and BUVLO disconnect (3.0 V, 60 us deglitch tBUVLO, Table 7.6):
+*     the tests check the currents and the BAT voltage against these limits instead.
+*   - VINDPM, thermal regulation, the SYS regulation loop dynamics (ideal, instantaneous), battery
+*     tracking / pass-through SYS modes, the 25 Ohm SYS pull-down (only in ship/shutdown), TS/NTC.
+*   - Absolute maximum for SYS and BAT ("all other pins") = 5.5 V (Table 7.1): checked by the tests.
+* =====================================================================================================
+
+.subckt BQ25180_PATH SYS BAT GND params: usb=0 vbus=5 vsysreg=4.5 ilim=0.475 ron_in=0.27 ron_bat=0.055
++ vbsup1=0.04 ichg=0 vdppm=0.1 rreg=0.02
+* battery-only BATFET (usb = 0): bidirectional resistor; with usb = 1 it is open (1 GOhm)
+Rbatfet BAT SYS {usb > 0.5 ? 1e9 : ron_bat}
+* USB input path: source only, limited by the regulation target, the input-FET drop and ILIM
+* smooth min/max with a 1 mA corner keep Newton iterations well behaved:
+*   smin(a,b) = (a + b - sqrt((a-b)^2 + 1e-6))/2,  smax0(a) = (a + sqrt(a^2 + 1e-6))/2   (amps, as node volts)
+Bx1 x1 GND V = ({vsysreg} - V(SYS,GND))/{rreg}
+Bx2 x2 GND V = ({vbus} - V(SYS,GND))/{ron_in}
+Bm1 m1 GND V = 0.5*(V(x1) + V(x2) - sqrt((V(x1) - V(x2))**2 + 1e-6))
+Bm2 m2 GND V = 0.5*({ilim} + V(m1) - sqrt(({ilim} - V(m1))**2 + 1e-6))
+Bin GND SYS I = {usb}*0.5*(V(m2) + sqrt(V(m2)**2 + 1e-6))
+* supplement: ideal-diode BAT -> SYS below V(BAT) - VBSUP1 (usb = 1 only)
+Bxs xs GND V = (V(BAT,GND) - {vbsup1} - V(SYS,GND))/{ron_bat}
+Bsup BAT SYS I = {usb}*0.5*(V(xs) + sqrt(V(xs)**2 + 1e-6))
+* charging sink SYS -> BAT, reduced by DPPM as SYS approaches VBAT + VDPPM
+Bchg SYS BAT I = {usb} * {ichg} * 0.5*(1 + tanh((V(SYS,GND) - V(BAT,GND) - {vdppm} - 0.05)/0.02))
+.ends BQ25180_PATH

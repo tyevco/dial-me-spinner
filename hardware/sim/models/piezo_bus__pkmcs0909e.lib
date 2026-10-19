@@ -1,0 +1,41 @@
+* =====================================================================================================
+* piezo_bus__pkmcs0909e.lib : Murata PKMCS0909E4000-R1 piezo sounder (BZ1), Butterworth-Van Dyke model
+* -----------------------------------------------------------------------------------------------------
+* Part      : Murata PKMCS0909E4000-R1, 9.0 x 9.0 x 1.9 mm SMD piezo sounder, external drive, magnet-free
+* Datasheet : Murata flyer VPPT-BUZJ083-D (LCSC C910763 copy) and Murata "Product Search Data Sheet"
+*             PKMCS0909E4000-R1, last updated 02/26/2024 (https://www.farnell.com/datasheets/4154291.pdf),
+*             https://www.murata.com/en-us/products/productdetail?partno=PKMCS0909E4000-R1
+* Modelled:
+*   * Free capacitance cf = 9 nF (the value Murata gives distributors; TME / Farnell list "9 nF" / "9000 pF".
+*     The public Murata sheets give no capacitance). Tolerance +/-30 % is used for the corners: Murata's
+*     piezo-element datasheets specify +/-30 % at 1 kHz (e.g. 7BB-12-9: 8 nF +/-30 %). ASSUMPTION.
+*   * Mode A at fa = 4.0 kHz ("Frequency 4.0 kHz", spec table; small SPL peak of the Frequency Response
+*     figure, page 3), Q = 4 read from that peak's width (~3.5 .. 4.6 kHz). Coupling C1a = 0.05*cf: ASSUMED.
+*   * Mode B at fb = 8.0 kHz, the main SPL peak (87 dB at 8 kHz in the page-3 Frequency Response figure),
+*     Q = 7 from the same figure (-3 dB ~7.5 .. 8.6 kHz). Coupling C1b = 0.316*cf, which gives a
+*     resonant resistance R1b = 1/(2*pi*fb*Q*C1b) = 1.0 kohm at cf = 9 nF, the resonant impedance Murata
+*     specifies for its 9 mm piezo element 7BB-12-9 (8 nF, 9 kHz, 1 kohm). ASSUMPTION by analogy.
+*   * C0 = cf - C1a - C1b, so the 1 kHz (below-resonance) capacitance equals cf.
+*   * Insulation resistance 1 Gohm (keeps the node DC-defined; Murata does not specify it).
+*   * Ratings used by the tests (not inside the model): SPL 65 dB min at +/-1.5 Vo-p, 4.0 kHz square wave,
+*     10 cm; maximum input voltage +/-12.5 Vo-p; operating temperature -40..+85 C.
+* NOT modelled: acoustic output (SPL), temperature drift of capacitance and resonance (no Murata data),
+*   higher modes above 10 kHz, the 2.7 kHz SPL peak, non-linearity, mechanical shock charge generation.
+* =====================================================================================================
+.subckt PKMCS0909E p n params: cf=9n ka=0.05 fa=4k qa=4 kb=0.316 fb=8k qb=7
+.param c1a={ka*cf}
+.param l1a={1/((2*3.14159265*fa)**2*c1a)}
+.param r1a={2*3.14159265*fa*l1a/qa}
+.param c1b={kb*cf}
+.param l1b={1/((2*3.14159265*fb)**2*c1b)}
+.param r1b={2*3.14159265*fb*l1b/qb}
+.param c0={cf-c1a-c1b}
+C0 p n {c0}
+RA p ma {r1a}
+LA ma mb {l1a}
+CA mb n {c1a}
+RB p mc {r1b}
+LB mc md {l1b}
+CB md n {c1b}
+RINS p n 1G
+.ends PKMCS0909E

@@ -1,0 +1,25 @@
+* =====================================================================================================
+* power_integrity__rt9080.lib -- RT9080-33 low-dropout regulator (+3V3), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : Richtek RT9080-33GJ5, 600 mA, 2 uA Iq LDO, fixed 3.3 V, TSOT-23-5
+* Datasheet : https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf   DS9080-09 (December 2024)
+*
+* MODELLED (section 14 Electrical Characteristics, TA = 25 C):
+*   VSET     output voltage 3.3 V, accuracy +/-2 % at 1 mA (VVOUT_ACC) -> tests use 3.234 V (worst low)
+*   RDROP    dropout as a resistance: VDROP at 600 mA for VOUT >= 3 V is 0.31 typ / 0.53 max V
+*            -> RDROP = 0.517 typ / 0.883 max Ohm; dropout is defined at VOUT = 98 % of nominal (Note 7),
+*            so in dropout VOUT = VIN - I * RDROP
+*   GM       load regulation <= 1 % from 1 mA to 600 mA (VLOAD_REG max) -> 33 mV / 0.6 A -> GM = 18 A/V
+*   ILIM     current limit >= 610 mA (ILIM min)
+*   EN       rising threshold 0.9 V (VEN_R min) -- EN is tied to VSYS on this board
+*   Iq       2 uA typ at no load (IQ) -> 1.65 MOhm from VIN to GND
+* NOT MODELLED: loop dynamics (the error amplifier acts instantly through GM; the DS gives only typical
+*   load-transient plots), PSRR, line regulation (0.35 %/V max), fold-back current limit (0.6 A),
+*   over-temperature protection, temperature dependence of VDROP (the DS specifies it at 25 C only),
+*   output discharge (80 Ohm, EN low).
+* =====================================================================================================
+
+.subckt RT9080_PI VIN EN VOUT VSS params: VSET=3.3 RDROP=0.517 GM=18 ILIM=0.61 RQ=1.65meg
+Bp VIN VOUT I = { min(1, max(0, (v(EN,VSS) - 0.9)/0.05 + 0.5)) * min(min(ILIM, GM*max(0, VSET - v(VOUT,VSS))), max(0, v(VIN,VOUT))/RDROP) }
+Rq VIN VSS {RQ}
+.ends RT9080_PI

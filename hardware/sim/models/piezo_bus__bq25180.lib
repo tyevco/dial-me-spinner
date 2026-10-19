@@ -1,0 +1,34 @@
+* =====================================================================================================
+* piezo_bus__bq25180.lib : TI BQ25180 I2C (SCL/SDA) and /INT open-drain pins, behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : TI BQ25180YBGR (base board U1), DSBGA-8
+* Datasheet : TI SLUSE99C (September 2021, revised January 2023), https://www.ti.com/lit/ds/symlink/bq25180.pdf
+* Modelled:
+*   * Open-drain pull-down: level-1 NMOS calibrated to VOL = 0.4 V max at 5 mA sink
+*     (section 7.5, I2C INTERFACE "VOL Output low threshold level, IL = 5 mA sink current", and LOGIC PINS
+*     "VOL ... IL = 5 mA, VPULLUP = 3.3 V, /INT pin"), i.e. the weakest compliant part. Gate drive vg is the
+*     charger's internal logic level, not published: 1.8 V is used (lower saturation current; the 0.4 V
+*     calibration point is unaffected).
+*   * High-level leakage ILKG = 1 uA max (section 7.5, SDA/SCL and /INT): DC current source pin -> gnd.
+*   * Pin capacitance ci = 10 pF: not in SLUSE99C, so the I2C device limit is used
+*     (NXP UM10204 Rev 7.0 Table 10, Ci max 10 pF).
+*   * BQ25180_IN : SCL as seen by the bus (input; the part never stretches SCL in the tests).
+* Limits the tests apply (not in the model): VIL 0.4 V max / VIH 1.3 V min (section 7.5, at VPULLUP 1.8 V),
+*   I2C standard / fast mode only (section 8.3.14), /INT = 128 us active-low pulse and pull-up
+*   1 kohm .. 20 kohm (Table 6-1 pin functions), ILKG 1 uA.
+* NOT modelled: the I2C state machine and watchdog, the TS/MR pin, power path, temperature drift.
+* =====================================================================================================
+.subckt BQ25180_OD pin gnd on params: iol=5m vol=0.4 vg=1.8 ci=10p ilkg=1u vt=0.5
+.param kpr=1m
+.param wn={iol/kpr/((vg-vt)*vol-vol*vol/2)*1u}
+MN pin gn gnd gnd NBQ W={wn} L=1u
+.model NBQ NMOS level=1 vto={vt} kp={kpr} lambda=0 gamma=0
+BGN gn gnd V = {vg}*min(max(V(on,gnd),0),1)
+CI pin gnd {ci}
+ILK pin gnd DC {ilkg}
+.ends BQ25180_OD
+
+.subckt BQ25180_IN pin gnd params: ci=10p ilkg=1u
+CI pin gnd {ci}
+ILK pin gnd DC {ilkg}
+.ends BQ25180_IN

@@ -1,0 +1,47 @@
+* =====================================================================================================
+* piezo_bus__lis2dw12.lib : ST LIS2DW12 digital I/O (I2C SDA/SCL, INT1/INT2 push-pull), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : ST LIS2DW12TR (U31), LGA-12 2 x 2 mm
+* Datasheet : ST DS11811 Rev 8 (July 2019), https://www.st.com/resource/en/datasheet/lis2dw12.pdf
+* Modelled:
+*   * Digital output stage: level-1 NMOS / PMOS calibrated to the Table 4 limits
+*       VOL = 0.2 V max at IOL = 4 mA,  VOH = VDD_IO - 0.2 V min at IOH = 4 mA
+*     (footnote 5: 4 mA is the maximum driving capability). These are the weakest compliant parts.
+*   * LIS2DW12_OD : SDA open drain ("Default: (SDA) input open drain", Table 3 pin 4).
+*   * LIS2DW12_PP : INT1/INT2 push-pull ("Default: push-pull output forced to Gnd", Table 3 pins 11/12;
+*     CTRL3.PP_OD = 0). Logic input `in` 0..1 V selects low/high.
+*   * LIS2DW12_IN : SCL input.
+*   * Pin capacitance ci = 10 pF: not given in DS11811, so the I2C-bus device limit is used
+*     (NXP UM10204 Rev 7.0 Table 10, Ci max 10 pF).
+* Limits the tests apply (not in the model): VIH = 0.8*VDD_IO, VIL = 0.2*VDD_IO (Table 4), I2C fast mode
+*   timing (Table 7: f(SCL) 400 kHz, tw(SCLH) 0.6 us, tsu(SDA) 100 ns), measurement points
+*   0.2*VDD_IO / 0.8*VDD_IO (Table 7 note).
+* NOT modelled: input leakage (not specified), the internal pull-ups on CS and SDO/SA0 (strapped to
+*   +3V3 on this board), the I2C state machine, temperature drift.
+* =====================================================================================================
+.subckt LIS2DW12_OD pin gnd on params: iol=4m vol=0.2 vg=3.3 ci=10p vt=0.5
+.param kpr=1m
+.param wn={iol/kpr/((vg-vt)*vol-vol*vol/2)*1u}
+MN pin gn gnd gnd NLIS W={wn} L=1u
+.model NLIS NMOS level=1 vto={vt} kp={kpr} lambda=0 gamma=0
+BGN gn gnd V = {vg}*min(max(V(on,gnd),0),1)
+CI pin gnd {ci}
+.ends LIS2DW12_OD
+
+.subckt LIS2DW12_PP pin vddio gnd in params: ioh=4m iol=4m vdrop=0.2 vg=3.3 ci=10p vt=0.5
+.param kpr=1m
+.param den={(vg-vt)*vdrop-vdrop*vdrop/2}
+.param wp={ioh/kpr/den*1u}
+.param wn={iol/kpr/den*1u}
+MP pin gp vddio vddio PLIS W={wp} L=1u
+MN pin gn gnd gnd NLIS W={wn} L=1u
+.model PLIS PMOS level=1 vto={-vt} kp={kpr} lambda=0 gamma=0
+.model NLIS NMOS level=1 vto={vt} kp={kpr} lambda=0 gamma=0
+BGN gn gnd V = V(vddio,gnd)*(1-min(max(V(in,gnd),0),1))
+BGP gp gnd V = V(vddio,gnd)*(1-min(max(V(in,gnd),0),1))
+CI pin gnd {ci}
+.ends LIS2DW12_PP
+
+.subckt LIS2DW12_IN pin gnd params: ci=10p
+CI pin gnd {ci}
+.ends LIS2DW12_IN

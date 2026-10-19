@@ -1,0 +1,45 @@
+* =====================================================================================================
+* motor_drive__stepper.lib -- one phase (coil) of the 2-phase PM can-stack micro linear stepper
+*
+* Part      : VIC-TECH VSM08102 class micro linear stepper (8 mm, 20 full steps/rev, M2x0.4 lead screw),
+*             or its 10 mm sibling. Off-board, on J40 (pins 1-2 = coil A, 3-4 = coil B).
+* Datasheet : vendor product page (no datasheet PDF published):
+*             https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html
+*             (as captured in the project's detent research, detent.full.json, verified 2026-10).
+*             Inductance / back-EMF bound from Faulhaber AM0820 (8 mm, 20 steps/rev PM stepper) datasheet
+*             2020 edition, 3 V winding 0150: 18 Ohm, 3.9 mH (1 kHz), back-EMF 1.3 V per k step/s.
+*
+* Modelled (value, source):
+*   - Phase resistance r25 = 20 Ohm at 25 C (vendor: "20 Ohm/phase"); tolerance param tol (fraction,
+*     +-10 % used as the corner; the vendor states none, +-10 % is the usual can-stack figure).
+*   - Copper temperature coefficient alpha = 0.00393 /K (annealed copper, physical constant), so
+*     R(-10 C) = 0.862*r25, R(60 C) = 1.138*r25. Param temp_c.
+*   - Phase inductance lph: default 4.3 mH = the AM0820 3 V winding (3.9 mH at 18 Ohm) scaled to 20 Ohm
+*     at the same L/R (0.21 ms, AM0820 electrical time constant). Bounds used by the tests: 2-10 mH.
+*   - Back-EMF of a rotor turning at a constant pps (full steps/s): sinusoid at the electrical
+*     frequency pps/4 (4 full steps per electrical cycle, 5 pole pairs), amplitude ke*pps/1000 V.
+*     ke bounds: 0.27 V per k step/s (lower bound, from the vendor's >= 2.0 gf.cm pull-out torque at
+*     500 PPS and 165 mA: Kt >= 0.86 mN.m/A) up to 1.37 V per k step/s (AM0820 scaled to 20 Ohm).
+*     Load angle delta (rad): phase A emf = -E*sin(2*pi*fe*(t-t0) - delta), phase B emf =
+*     +E*cos(2*pi*fe*(t-t0) - delta) for a stator field at angle 2*pi*fe*(t-t0). delta = pi/2 (rotor at
+*     the pull-out angle) puts the emf in phase with the drive: the lowest-current, worst case.
+*     The emf exists only while the rotor turns: tg < time < tstop.
+*   - Rated drive: 3.3-5 V across the phase (vendor), i.e. 165 mA at 3.3 V and 25 C, the condition at
+*     which the >= 80 gf (0.78 N) pull-out thrust at 500 PPS is quoted. Used as the reference
+*     ("required") current by the tests.
+*
+* NOT modelled:
+*   - Rotor dynamics, detent (cogging) torque and pull-out: the rotor is forced to turn at the stepping
+*     rate (or held still for stall/hold). The tests therefore compare coil current with the current
+*     the same model draws at the vendor's rating condition, assuming thrust proportional to current.
+*   - Magnetic saturation, eddy/iron losses, winding capacitance, thermal mass (self-heating is
+*     covered only through the temp_c corner), magnet flux temperature drift.
+* =====================================================================================================
+
+.subckt PMSTEP_PHASE P N params: r25=20 tol=0 temp_c=25 alpha=0.00393 lph=4.3m ke=1.37 pps=0 delta=1.5708
++ t0=0 tg=0 tstop=1e3 phb=0
+R1 P a {r25*(1 + tol)*(1 + alpha*(temp_c - 25))}
+L1 a b {lph}
+B1 b N V = (time > tg && time < tstop) ? (ke*pps/1000)*((1 - phb)*(-sin(6.283185307*(pps/4)*(time - t0) - delta))
++ + phb*cos(6.283185307*(pps/4)*(time - t0) - delta)) : 0
+.ends PMSTEP_PHASE

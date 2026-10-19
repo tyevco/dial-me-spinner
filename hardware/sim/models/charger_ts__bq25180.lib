@@ -1,0 +1,36 @@
+* =====================================================================================================
+* charger_ts__bq25180.lib -- TI BQ25180 TS/MR pin (NTC bias + push-button sense), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part:       Texas Instruments BQ25180YBGR (base board U1, ball D1 = TS/MR)
+* Datasheet:  https://www.ti.com/lit/ds/symlink/bq25180.pdf -- SLUSE99C, Sept 2021, revised January 2023
+* Modelled (pin TS/MR only):
+*   its_ad   TS bias with a valid adapter, always on: ITS_BIAS / ITSMR 36.5 / 38 / 39.5 uA (Table 7.5,
+*            "BATTERY NTC MONITOR" and "PUSH BUTTON TIMERS AND THRESHOLDS", adapter present).
+*   its_bat  battery-only bias: ITSMR 60 uA typ (Table 7.5, no min/max given), pulsed ON for
+*            tTS_DUTY_ON = 4 ms every tTS_DUTY_ON + tTS_DUTY_OFF = 4 + 196 ms (Table 7.6; section 8.3.8)
+*            while EN_PUSH = 1 (SHIP_RST bit 0, reset 1). pulsed = 0 holds the source in its ON phase
+*            (for DC analyses of the ON window); tdel shifts the first pulse.
+*   adapter-valid detect (selects the bias mode): VIN > vuvloz (VIN_LOWV start charging 3.15 V max),
+*            VIN - VBAT > vsleepz (VSLEEPZ 100/135/185 mV), VIN < vovp (VIN_OVP 5.5/5.7/5.9 V) (Table 7.5).
+*   vclamp   active clamp on an open pin: VTS_CLAMP 2.2 / 2.8 / 3.3 V (Table 7.5, TS open-circuit),
+*            modelled as a soft sink (10 mS above vclamp), so an open pin settles within ~10 mV of vclamp.
+*   cpin     pin capacitance: NOT in the datasheet, 10 pF assumed.
+* NOT modelled (the test applies these Table 7.5 / 7.6 numbers to the simulated pin voltage instead):
+*   the COLD/COOL/WARM/HOT comparators (VT1..VT10 entry/exit), the 90 mV button-press comparator (VTSMR),
+*   VTS_ENZ, the WAKE1/WAKE2/LPRESS timers and the TS_CONTROL register options. The datasheet gives
+*   these thresholds at VIN = 5 V only; no VIN, VBAT or temperature dependence is modelled beyond the
+*   min/max limits, and their correlation with ITS is unknown (the test treats them as independent).
+*   No TS deglitch time is specified anywhere in SLUSE99C.
+* =====================================================================================================
+.func cts_bq_sp(x) {(x > 0) ? (x + ln(1 + exp(-x))) : ln(1 + exp(x))}
+
+.subckt CTS_BQ25180_TSMR tsmr vin vbat params: its_ad=38u its_bat=60u en_push=1 pulsed=1 tdel=0
++ ton=4m toff=196m vclamp=2.8 cpin=10p vuvloz=3.15 vsleepz=0.135 vovp=5.7
+Vpul pul 0 PULSE(0 1 {tdel} 1u 1u {ton} {ton+toff})
+Rpul pul 0 1Meg
+Bad ad 0 V = u(V(vin) - vuvloz) * u(V(vin) - V(vbat) - vsleepz) * u(vovp - V(vin))
+Rad ad 0 1Meg
+Bts 0 tsmr I = V(ad)*its_ad + (1 - V(ad))*en_push*its_bat*(pulsed*V(pul) + (1 - pulsed))
+Bclamp tsmr 0 I = 10m*0.01*cts_bq_sp((V(tsmr) - vclamp)/0.01)
+Cpin tsmr 0 {cpin}
+.ends CTS_BQ25180_TSMR

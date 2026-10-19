@@ -1,0 +1,57 @@
+* =====================================================================================================
+* led_data__nrf52840_gpio.lib -- nRF52840 GPIO push-pull output stage (P0.06 = I2S0 SDOUT = LED_DIN_MCU)
+*
+* Part      : Nordic nRF52840 (inside the Raytac MDBT50Q module, U10), GPIO in output mode,
+*             DRIVE = S0S1 (standard) or H0H1 (high drive), PIN_CNF[n].DRIVE.
+* Datasheet : nRF52840 Product Specification 4413_417 v1.1 (2019-02-28),
+*             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf (mirror of
+*             https://docs.nordicsemi.com/bundle/ps_nrf52840/page/gpio.html), section 6.9.3.1
+*             "GPIO Electrical Specification" (p.156-157), Table 172 (recommended operating
+*             conditions, p.611) and Table 173 (absolute maximum ratings, p.612).
+*             The PS states (section 2) that its electrical tables apply over the recommended operating
+*             conditions, i.e. TA = -40 ... +85 C and VDD = 1.7 ... 3.6 V, so the min/max IOH/IOL corners
+*             below already contain the temperature spread.
+*
+* Modelled (all from PS 6.9.3.1):
+*   - Pull-up / pull-down as voltage-controlled current sources I = s * ISAT * tanh(Vds / VK), where s is
+*     the pre-driver state (0..1). ISAT is set so that I(Vds = 0.4 V) equals the table current exactly:
+*       IOH,SD  = 1 / 2 / 4 mA   (min/typ/max) at VOH = VDD - 0.4 V, standard drive, VDD >= 1.7 V
+*       IOL,SD  = 1 / 2 / 4 mA   (min/typ/max) at VOL = VSS + 0.4 V
+*       IOH,HDH = 6 / 9 / 14 mA  (min/typ/max) at VDD - 0.4 V, high drive, VDD >= 2.7 V
+*       IOL,HDH = 6 / 10 / 15 mA (min/typ/max) at VSS + 0.4 V, high drive, VDD >= 2.7 V
+*     (so VOH,SD / VOH,HDH >= VDD - 0.4 V at 0.5 mA / 5 mA hold by construction at the min corner).
+*     The LED data line loads the pin with only ~35 uA DC (R41 100 k + DI leakage). The PS gives no VOH at that
+*     current; a MOSFET's I-V is concave in Vds, so the drop at a small current is at most the chord value
+*     0.4 V x I / IOH(min) (13 mV at 33 uA, standard drive). The tanh shape is concave and reproduces that bound.
+*   - Shape VK and pre-driver edge TEDGE (10-90 %, first-order) fitted to the PS dynamic table
+*     (typical, "based on simulations"), with CPAD = 3 pF (PS CPAD typ) inside the pin:
+*       tRF,15/25/50pF  (standard) = 9 / 13 / 25 ns  -> fit VK = 3.0 V, TEDGE = 2.5 ns
+*                                                       (model 8.9 / 13.3 / 24.7 ns, 10-90 %, VDD 3.0 V)
+*       tHRF,15/25/50pF (high)     = 4 / 5 / 8 ns    -> fit VK = 1.0 V, TEDGE = 4.0 ns
+*                                                       (model 3.9 / 5.0 / 7.8 ns)
+*     test_led_data.py::test_gpio_model_reproduces_ps_tables re-checks both fits on every run.
+*   - Pad ESD clamps to VDD and VSS (generic diode, see NOT modelled).
+*
+* Parameters: IOH, IOL = table current at 0.4 V drop (A); VK (V); TEDGE (s); CPAD (F).
+*   Corner use (in the test): weak = min column, strong = max column, typical = typ column; TEDGE is scaled
+*   with the same ratio for weak/strong (conservative assumption: a slow pre-driver goes with a weak driver).
+*
+* NOT modelled: the real I-V curve beyond the single 0.4 V table point (the tanh shape is a fit to the
+*   typical tRF table, not a published curve); output-current-dependent VDD/VSS bounce inside the module;
+*   the ESD clamp I-V (PS gives none: generic diode IS=1e-15 A, N=1, RS=5 ohm); the 10-90 % rise/fall times
+*   are typical-only in the PS; package/module trace from the die to module pad 22 (a few mm, part of CPAD here).
+*
+* Pins: out = pad, ctl = ideal logic input (0 V = low, 1 V = high, referenced to gnd), vdd, gnd
+* =====================================================================================================
+.subckt NRF52840_GPIO_OUT out ctl vdd gnd params: IOH=2m IOL=2m VK=3.0 TEDGE=2.5n CPAD=3p
+.param ISU={IOH/tanh(0.4/VK)} ISD={IOL/tanh(0.4/VK)}
+* pre-driver: first-order lag, 10-90 % = TEDGE (= 2.197 tau)
+Rpre ctl s 1k
+Cpre s gnd {TEDGE/2.1972/1k}
+Bup vdd out I = max(min(v(s,gnd),1),0)*ISU*tanh(v(vdd,out)/VK)
+Bdn out gnd I = max(min(1-v(s,gnd),1),0)*ISD*tanh(v(out,gnd)/VK)
+Cpad out gnd {CPAD}
+Desdh out vdd D_NRF_ESD
+Desdl gnd out D_NRF_ESD
+.model D_NRF_ESD D(IS=1e-15 N=1 RS=5)
+.ends NRF52840_GPIO_OUT

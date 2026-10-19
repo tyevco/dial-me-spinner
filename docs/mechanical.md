@@ -73,13 +73,13 @@ z is measured from the desk. θ = 0° is the USB-C direction, CCW seen from abov
 | 1.0–2.5 | base cup floor, PA12 | OD 70, wall 1.6, wall top 14.3 | as SPEC; bottom chamfer 0.6 |
 | 2.5–8.5 | LiPo bay | pack ≤ 6.0 thick, \|x\| ≤ 27.5, \|y\| ≤ 17.25, leads at θ 180 | as SPEC (envelope 55 × 34.5 × 6.0). BOM pack 503450-class, ≤ 5.6 max (§13). Leads leave the θ 180 end at y ≈ −7.5, clear of the θ 180 guide column. |
 | 2.5–5.5 | antenna shelf (printed, part of the cup) | "printed shelf along the chord y = +26" | shelf y 18.8–33.4, \|x\| ≤ 18.25 |
-| 5.5–5.75 | **antenna** Molex 146153-0100 (34.9 × 9) | centred on y = 26, outer edge ≤ r 33, ≥ 4 mm from the pack | ⚠ centred on **y = 23.5** (corners at r 33.0); 1.75 mm from the pack |
-| 2.5–9.5 | base-board supports | 2× M2 bosses at r 21, θ 90/270 + USB-C shell | θ 270 boss as SPEC (M2 × 3 heat-set insert); ⚠ θ 90 boss replaced by a rib at y 17.75–18.75, \|x\| ≤ 6 (no screw); USB shell captured in a wall slot |
+| 5.5–5.75 | **antenna** Molex 146153-0100 (34.9 × 9) | centred on y = 23.5, corners ≤ r 33, ≥ 1.75 mm from the pack | as SPEC (corners at r 33.0) |
+| 2.5–9.5 | base-board supports | one M2 boss at r 20, θ 270; rib under the θ 90 edge (y 17.75–18.75); USB-C shell | as SPEC: boss with an M2 × 3 heat-set insert (0.25 mm from the pack envelope); rib \|x\| ≤ 6, no screw; USB shell captured in a wall slot |
 | 9.5–11.1 | base board Ø46 + USB tab to r 34.6 | as SPEC | from the PCB |
 | 11.1–12.6 | TS-1187A at the centre | | body 5.1 × 5.1 × 1.0 (verify), actuator Ø2.5 to 12.6 |
 | 11.1–16.6 | base-board parts | tall parts in the open sectors | from the PCB; J2 (PH, 5.5 tall) clashes (§3 B3) |
 | 2.5/6.5–11.5 | 3 guide columns / ear | pins + springs at r 29, θ 60/180/300 | θ 300: column from the floor. θ 180: ⚠ column from the floor at **r 30**. θ 60: ear z 6.5–11.5 above the antenna. Stop face (top) at 11.5. Ø3 brass pins pressed + bonded + Ø1 cross pin. |
-| 12.0–14.3 | **FA spider plate** PA12-GF | 3 spokes at 60/180/300, hub r ≤ 6, outer ring r 26–30, pre-gap 0.15 | spokes ±18° (open sectors ±42°); ⚠ USB notch in the ring (\|y\| ≤ 5.6); under-bosses Ø6.4 at the guides (z 12.0) are the hard stop: **0.50 mm** travel |
+| 12.0–14.3 | **FA spider plate** PA12-GF | 3 spokes ±18° at 60/180/300, hub r ≤ 6, outer ring r 26–30 with a USB notch (\|y\| ≤ 5.6), pre-gap 0.15 | as SPEC; under-bosses Ø6.4 at the guides (z 12.0) are the hard stop: **0.50 mm** travel |
 | 13.5–14.8 | M2 × 3 brass stop screws | "preload ≈ 4 N up against stops" | heads in Ø4.6 counterbores (floor 13.5) |
 | 12.75 | press pad face | "centre boss over the switch, pre-gap 0.15" | Ø3 × 1.0 silicone pad in the spindle bottom; pre-gap set per unit (0.03–0.23, §8) |
 | 12.8–29.05 (+ spigot to 32.3) | **spindle**, turned 316L, Ø8 h6, bore Ø6 | hollow Ø8 × 1.0, z 12.8–29.1, clamped to plate and board, slots at z ≈ 14.5–16 and under the board | bottom flange Ø10 × 0.6 in a D-recess under the plate; solid end with the pad pocket; slots θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), 5.0 wide; ⚠ M4×0.5 spigot through the board's Ø5 hole |
@@ -114,7 +114,7 @@ z is measured from the desk. θ = 0° is the USB-C direction, CCW seen from abov
 | Rotor hub top (cap ring, 26.0) to board bottom | 3.10 | 3.10 |
 
 **Interference check (`clash_report.txt`, CGAL, plus the per-part tables in `calcs_output.txt` §11).**
-Every mechanical part clears. What still collides comes from the current PCB placement, and section 3 (B1–B6) says what
+Every mechanical part clears. What still collides comes from the current PCB placement, and section 3 (B1–B5) says what
 to change:
 
 * **U10 MDBT50Q + its mated u.FL:** the module's inner end reaches r 6.8, 1.5 mm into the brass hub (r ≤ 8.5), and the
@@ -136,36 +136,36 @@ to change:
 
 | # | SPEC says | Problem (numbers) | Model / recommendation | Severity |
 |---|---|---|---|---|
-| A1 | Antenna 146153-0100 on a shelf along chord **y = +26**, outer edge ≤ r 33, ≥ 4 mm from the pack side (y 17.25) | Its 34.9 × 9 outline at y = 26 has corners at **r 35.1**, outside the cup ID (33.4). With corners at r ≤ 33 the centre can be at most **y = 23.5**, which leaves **1.75 mm** to the pack. A 4 mm gap needs the inner edge at y ≥ 21.25, so the corners end up at r ≥ 34.9. | Model: centre y = 23.5, z 5.5–5.75. **SPEC fix:** a **≤ 30 mm-wide pack** (\|y\| ≤ 15) restores 4.0 mm with the antenna at y 23.5 (~10–20 % less capacity), or accept 1.75 mm and measure S11 (§15 #9). | **High** (RF) |
-| A2 | Base board: 2× M2 bosses at r 21, **θ 90**/270 | A Ø5 boss at (0, 21) sits on the antenna (y 19–28) and puts a screw over its centre. The θ 90 region of the board outside the pack (y > 17.25) is all antenna or the 1.75 mm gap. Moving the boss to θ 60/120 at r 21 (reviewer's option) does not help: a Ø5 boss there reaches y 15.7, inside the pack. | Model: θ 270 boss at the PCB hole. **θ 90 replaced by a support rib** (y 17.75–18.75, \|x\| ≤ 6, no screw) between pack and antenna. USB shell = 3rd support, captured in a wall slot (the board slides in radially, then the θ 270 screw locks it). The base PCB has already dropped the θ 90 hole. | Medium |
+| A1 | *(adopted in SPEC rev of 02:50)* Antenna on chord y = +26, ≥ 4 mm from the pack | At y = 26 the corners are at **r 35.1**, outside the cup ID (33.4). With corners at r ≤ 33 the centre can be at most **y = 23.5**, which leaves **1.75 mm** to the pack. | SPEC now: y 23.5, ≥ 1.75 mm, base-board copper keep-out. Remaining RF risk: a **≤ 30 mm-wide pack** (\|y\| ≤ 15) would restore 4.0 mm (~10–20 % less capacity); otherwise measure S11 (§15 #9). | Medium (RF) |
+| A2 | *(adopted)* Base board: 2× M2 bosses at r 21, θ 90/270 | A boss at (0, 21) sat on the antenna. Moving it to θ 60/120 at r 21 does not help: a Ø5 boss there reaches y 15.7, inside the pack. | SPEC now: one boss at r 20, θ 270 + a rib under the θ 90 edge + the USB shell (captured in a wall slot: the board slides in radially, then the θ 270 screw locks it). Note: at r 20 the Ø5 boss is only **0.25 mm** from the pack envelope; r 21 gives 1.25 mm. | Low |
 | A3 | Guide pins + springs at r 29, θ 60/180/300 | **θ 60** is above the antenna, so the pin cannot reach the floor. **θ 180** at r 29: the pin (x −30.5…−27.5) touches the pack end (x −27.5), which is also where the leads exit. | θ 300: column from the floor. **θ 180 moved to r 30** (column from the floor at x ≤ −27.8, 0.3 mm from the pack). θ 60: an ear z 6.5–11.5, 0.75 mm above the antenna. Leads must leave the pack end at \|y\| ≥ 4 (BOM). **SPEC fix:** θ 180 guide at r 30, or a pack ≤ 53 mm long (\|x\| ≤ 26.5). | Medium |
 | A4 | Guide hardware at θ 60 | A brass pin, steel spring (68 mm of wire, ≈ λ/2 at 2.44 GHz) and screw sit 0.75–9 mm above the antenna's +x end. | Fit PEEK pin, PEEK cross pin and nylon screw at θ 60 from the first build. Keep the 302 spring unless S11 says otherwise (§9). The pull-out is lower with PEEK (§8). | Medium (RF) |
 | A5 | 608 with "≥ 2.5–3 N wave-spring axial preload" | A spring between the outer race and the rotor cannot preload a single bearing, because both rotate. The only axial load is gravity (1.31 N) ± detent forces. The click-mode detent tilt moment ≈ 0.7 N × 29 mm ≈ 20 mN·m, against a gravity moment capacity Fa·dm/2 ≈ 10 mN·m. | The wave washer is a compliant **drop seat** (§10). For real preload: (a) gravity only (accept rocking; measure), (b) axisymmetric magnet-ring pair (rotor ring on the carrier underside + stator ring on the FA plate, ≈ +1.5–2 N, no cogging if uniform), (c) duplex 608 (≈ 2× friction, +7 mm). Fa 2.7 N costs 95 → 62 s (§4). | Medium |
 | A6 | "rotor hub tops out at z ≈ 25"; harness lies flat under the board on that basis | z 25.0 is the 608's own top face. Any drop-compliant outer-race seat (verifier requirement) needs a spring and a retainer above it. The minimum is a 0.5 mm wave washer + 0.5 mm cap: **top 26.0.** | **SPEC fix:** hub top **26.0**. The board-bottom rule then becomes: **parts over r 9.5–12.5 must keep their bottom at z ≥ 26.3** (hang ≤ 2.8 mm). The harness/coax under the board stay at z ≥ 26.9 (they do in the model). | **High** (PCB rule) |
 | A7 | Spindle Ø8 × 1.0 tube z 12.8–29.1 "clamped to the lower plate and to the main board" | A plain tube cannot be clamped at both ends. The bearing must go on from one end and something removable must hold the other. The old model (bonded socket, sliding hub) held nothing axially (review). | **Turned 316L spindle**: bottom flange in a D-recess under the plate, solid bottom with the press pad, **M4×0.5 spigot through the board's Ø5 centre hole + brass nut on the board top** (0.10 N·m ≈ 120 N clamp). One nut clamps board → hub → inner race → spacer → plate → flange (§4). **SPEC/PCB fix:** keep r ≤ 4.5 on the main-board top free for the nut (OD 7). | **High** |
-| A8 | FA plate outer ring r 26–30 (continuous) | The USB-C receptacle (z up to 14.36) sits at r 27.7–35 under the ring. | Notch \|y\| ≤ 5.6 in the ring at θ 0. | Low |
+| A8 | *(adopted)* FA plate outer ring r 26–30 (continuous) | The USB-C receptacle (z up to 14.36) sits at r 27.7–35 under the ring. | SPEC now has the notch \|y\| ≤ 5.6. | – |
 | A9 | Pre-gap 0.15, "FA moves 0.3–0.5" | TS-1187A travel is 0.25 ± 0.1 (verify). A fixed pre-gap and hard stop cannot cover that spread without crushing or missing the switch (the old 0.5 mm TPU dot put 14–26 N through the 1.6 N switch). | Hard stop **0.50** (SPEC's pressed clearance 1.2 mm kept). Silicone pad k ≈ 20–25 N/mm. **Pre-gap set per unit** = 0.38 − measured travel (0.03–0.23). The switch then sees 2.7 N (≤ 3.9 N worst) at the stop. Reject switches with travel > 0.32. §8. | Medium |
 | A10 | 3 feet at r 28 | A rim press tips the 227 g device at **1.60 N**, below the rim click force (1.9–2.4 N). | 3 × 70° **arc pads** (r 25–31): tip edge 28.1 mm, tip force 11.6 N. | **High** (Surface-Dial use) |
 | A11 | Actuator in the bowl, chord near θ 90; bottom keep-out θ 60–120 | A ~33 mm VSM08102 cannot lie radially (hub r ≤ 12.2, ring r ≥ 27). The working chord (y 15.5, inclined-slot link) sweeps **θ ≈ 35–160°**. | **PCB rule:** bottom-side parts in θ 30–160°, r 8.5–27 must keep their bottom at **z ≥ 27.8** (≤ 1.3 mm tall), except where `calcs_output.txt` §11 shows clearance. The parts there now (J40 2.95 mm, C74, U11) clear by 0.35–1.1 mm and must not move toward the corridor. The θ 120 board hole is unused. | Medium |
 | A12 | SPEC §7: no ferromagnetic part within 10 mm of the track; SPEC §8: an 8 mm stepper in the bowl r 12–27 | **Conflict.** Any Ø8 can in the bowl is within 10 mm of the track wherever r > 17. The VSM08102 can comes within **3.1 mm** of the nearest track magnet (r 24.9 vs magnet edge r 28, overlapping z), and its steel lead screw within 4.6 mm. The can cannot move inboard: the collar (r 12.2, top 26.0) blocks it. | Rough estimate of the can's cogging on the alternating track: **10–100 µN·m**, the same order as the bearing drag at 0.1–1 rev/s (18–44 µN·m). It may give preferred rest angles in FREE mode. **Bench test before PCB freeze** (§15 #2). Non-ferrous options: piezo (e.g. squiggle-type) or SMA actuators. Confirm the MDBT50Q shield-can material too. | **High** (to verify) |
 | A13 | Light box z 31.6–34.2, r 27–30 | The LED research wants a 4.0–4.5 mm air gap; this gives 2.6 mm. | Walls 0.1 above the LED tops; 24 septa (one per detent): a segmented "prize wheel" look. Uniformity to verify. | Low |
 | A14 | Detent LUT (research) at R_t 30 on the ring underside | SPEC: R_t 29 on the top face (pitch 3.80 vs 3.93 mm) | Expect ~2–5 % lower torque. Firmware self-calibrates from the in-well f_n. | Low |
-| A15 | Small inconsistencies | §2 says base board "Ø40", §8 "Ø46" (layout uses 46). "The battery sits 0.5 mm below" the base board, but ≤ 6.0 pack + bay floor 2.5 gives 1.0. | Model: Ø46, 1.0 mm swelling gap. | Low |
+| A15 | *(fixed in SPEC)* §2 said base board "Ø40", and "battery 0.5 mm below" | | SPEC now Ø46 and 1 mm | – |
 
 ### 3B. Current PCB placement (for the layout owner; from `board_parts.scad` and the clash check)
 
-Extracted from the boards as committed on 2026-10-19 (02:50). Re-run `extract_board_parts.py` and `check_clashes.sh`
-after every placement change. Fixed since the first extraction: J1 and J3 now face the centre, Q1 left the spoke
-zone, RT1 moved to the top side and the θ 90 base-board hole is gone.
+Extracted from the boards as of 2026-10-19 03:17 (base) / 02:48 (main). Re-run `extract_board_parts.py` and
+`check_clashes.sh` after every placement change. Fixed since the first extraction: J1 and J3 now face the centre, J2
+moved to θ 222° with its mouth outward, Q1 left the spoke zone, RT1 moved to the top side, the θ 90 base-board hole is
+gone and the antenna copper keep-out is in layout.py.
 
 | # | Part as placed | Problem | Fix |
 |---|---|---|---|
 | B1 | **U10 MDBT50Q** at r 14.5, θ 215, u.FL end inward (inner end at r 6.8) | The module overlaps the brass hub (r ≤ 8.5) by **1.5 mm** (static clash). The mated u.FL (bottom z 25.8, at r 6.7–10.3) clashes with the hub and sits 0.2 mm into the rotating cap ring (needs ≥ 0.3). The coax cannot reach it except through the hub. | Inner end at **r ≥ 8.8** (centre r ≥ 16.6) and **u.FL end facing outward** (u.FL at r ≈ 22.5, over the bowl). The coax then runs 14 mm along the module side, flat against the board. An inward u.FL needs its plug centre at r ≥ 13.8, which pushes the module over the track. |
 | B2 | **J1** (SM12B, 2.95 tall) at r 17.5, θ 330, mouth toward the centre | The back of the mated plug reaches **r 11.9** at z 26.15, **0.15 mm** above the rotating hub (needs ≥ 0.3). The harness (43 mm path) leaves the plug and turns between the hub flange (r 8.5) and C1/R1. | Move J1 out ≥ 0.6 mm (plug back at r ≥ 12.5), or keep it and let the plug back sit at z ≥ 26.3 (it cannot: 2.95 tall). |
-| B3 | **J2** (S2B-PH-SM4-TB, **5.5 mm tall**, verify), base r 17, θ 212 | Top z 16.6 under the rotor web (17.0 at rest, **16.5 pressed** → −0.10). The mated plug reaches r 26.5, into the FA ring (z 12.8–14.3), and the battery leads cross the ring. | Replace with **SM04B-SRSS-TB** (2.95 tall; pins 1+2 BAT+, 3+4 GND, 2 A per polarity) or with two solder pads plus strain relief. Mouth toward θ 180, plug back at r ≤ 24.5, so the leads drop past the board edge inside the FA ring (r 23–25.5). |
+| B3 | **J2** (S2B-PH-SM4-TB, **5.5 mm tall**, verify), base r 17, θ 222, mouth outward (SPEC) | Top z 16.6 under the rotor web (17.0 at rest, **16.5 pressed** → −0.10). The mated plug reaches r 26.3, into the FA ring (z 12.8–14.3), and the battery leads cross the ring. | Replace with **SM04B-SRSS-TB** (2.95 tall; pins 1+2 BAT+, 3+4 GND, 2 A per polarity) or with two solder pads plus strain relief, placed so the plug back is at r ≤ 24.5 and the leads drop past the board edge inside the FA ring (r 23–25.5). SPEC change. |
 | B5 | **R42** (0402, LED_D48 pull-down), main top, r 30.4–31.05 | Under the top-cover skirt (r ≥ 30.6) | Move to r ≤ 30.2 |
-| B6 | Base-board θ 270 hole at **r 20** (SPEC r 21) | The Ø5 boss under it is 0.25 mm from the pack envelope (\|y\| ≤ 17.25) | Put it back at r 21 (boss 1.25 mm from the pack) |
-| B8 | Base-board copper over the antenna | The board covers the antenna's inner 4 mm (y 19–23), 3.75 mm above it | No pours on either layer of the base board for y > 17 (θ 50–130°, r > 17); route only what must cross |
+
 
 ---
 
@@ -525,14 +525,14 @@ stops).
 
 ## 9. Antenna placement and RF options
 
-**Placement (SPEC with the A1 deviation).**
+**Placement (SPEC).**
 
 * **Antenna:** Molex **146153-0100**, 34.9 × 9 × 0.1, dual-band, ground-plane independent, ≈ 3 dBi
   ([Molex](https://www.molex.com/ja-jp/products/part-detail/1461530100)), on the printed shelf at z 5.5, centred at
-  (0, 23.5), long axis along x. Stick it with its own adhesive; its cable end is toward −x (verify on the Molex
+  (0, 23.5), long axis along x (SPEC). Stick it with its own adhesive; its cable end is toward −x (verify on the Molex
   drawing).
-* **Distances:** 9.9 mm below the ring bottom; 1.75 mm in plan from the pack side (A1); 0.75 mm under the θ 60 guide
-  ear (A4).
+* **Distances:** 9.9 mm below the ring bottom; 1.75 mm in plan from the pack side (SPEC, A1); 0.75 mm under the θ 60
+  guide ear (A4).
 * **Coax** (1.13 mm, 100 mm): from the feed it rises at (−14.6, 19.9), outside the base board (r 23) and inside the FA
   ring (r 26). It crosses over J3 at z ≈ 15, enters the spindle through the θ 120 window/slot together with the
   harness, goes up the bore, out of the θ 270 slot and hub C-gap, and runs flat against the board to the u.FL.
@@ -549,7 +549,8 @@ stops).
 * **θ 60 guide set**, 0.75–9 mm above the antenna's +x end: use PEEK pin, PEEK cross pin and nylon screw from build 1.
   The 302 spring is a 68 mm wire coil, close to λ/2 at 2.44 GHz. If S11 shifts with/without the FA fitted, try a
   polymer spring of the same rate (to verify availability) or move the guide (SPEC change).
-* **Base-board ground** covers the antenna's inner 4 mm, 3.75 mm above it: no pours for y > 17 (B8).
+* **Base board** covers the antenna's inner 4 mm, 3.75 mm above it; SPEC now keeps B.Cu copper out of y > 15.4 and
+  F.Cu pours out of y > 17.
 * **LiPo pouch** (aluminium laminate), 1.75 mm in plan (A1).
 * **Stepper can** (steel), 14–22 mm above the antenna's inner edge.
 * **USB-C shell** is at θ 0, far away.
@@ -646,7 +647,7 @@ of static friction, so the puck slides unless it is held or stuck.
 7. **Battery.** Foam tape on the floor; pack against the θ 0 end stop; leads up past the board edge at θ ≈ 195°.
    **Check polarity before plugging in** (SPEC §6).
 8. **Base board.** Lower it with the tab 1.5 mm short of the wall, slide it out into the USB slot, then fit the brass M2
-   screw at θ 270.
+   screw at θ 270 (r 20).
 9. **FA lower stack (on the bench).**
    1. Press the silicone pad into the spindle bottom with the per-unit Kapton shims (§8; measure the switch travel on
       the base board first).

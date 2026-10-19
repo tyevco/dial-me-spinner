@@ -1,0 +1,68 @@
+* ==========================================================================================================
+* vsys_sense__nrf52840_saadc.lib -- nRF52840 SAADC single-ended input (AIN0 = P0.02 via the MDBT50Q module)
+* ----------------------------------------------------------------------------------------------------------
+* Part      : Nordic Semiconductor nRF52840 (inside Raytac MDBT50Q-U1MV2), SAADC, single-ended mode
+* Datasheet : nRF52840 Product Specification v1.1 (4413_417 v1.1, generated 2019-04-12)
+*             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf
+*
+* Modelled (all values from PS v1.1):
+*   CS    = 2.5 pF   CSAMPLE, sample-and-hold capacitance "at maximum gain" (sect. 6.23.10.1; footnote 27: maximum
+*                    gain is the highest capacitance, so 2.5 pF is the worst case for gain 1/6)
+*   CPAD  = 3 pF     GPIO pad capacitance CPAD (sect. 6.9.3.1)
+*   TACQ             acquisition window = time the switch connects CS to the pin (Fig. 147, Table 95:
+*                    3/5/10/15/20/40 us for source resistance <= 10/40/100/200/400/800 kohm); the window is
+*                    driven from the test bench through pin SAMP, so every Table 95 option can be exercised
+*   TCONV = 2 us     conversion time, "< 2 us" (sect. 6.23.10.1); the bench uses 2 us between acquisitions
+*   GAIN, VREF       input range = VREF / GAIN, internal VREF = 0.6 V, gain 1/6 -> 3.6 V (sect. 6.23.2)
+*   EG               gain error, EG1/6 = -3 ... +3 % (sect. 6.23.10.1, excludes temperature drift)
+*   CEG              gain-error temperature coefficient, 0.02 %/degC TYPICAL (only value given, sect. 6.23.10.1);
+*                    applied as (1 + EG + CEG * (TEMPER - 25)) with ngspice's circuit temperature TEMPER
+*   VOS              offset (calibrated) +/-2 LSB10 typ = +/-8 LSB12 (sect. 6.23.10.1, VOS); parameter in LSB12
+*   code node        V(code) = V(hold) * GAIN / VREF * 4096 * (1 + EG + CEG*(TEMPER-25)) + VOS   [LSB12, continuous]
+*   input limit      AIN0..AIN7 "cannot exceed VDD or be lower than VSS" (sect. 6.23.2); absolute maximum
+*                    VI/O = -0.3 ... VDD + 0.3 V (sect. 9, Table 173) -- checked by the tests, not clamped here
+*
+* Assumptions (NOT published by Nordic, chosen and verified):
+*   RSW   = 5 kohm   on-resistance of the sampling switch. Not in the PS. 5 kohm is a typical CMOS T-gate; the
+*                    bench test test_saadc_model_reproduces_ps_table95 checks that with this value every
+*                    Table 95 row (max source R at each TACQ, no external capacitor) settles to < 0.5 LSB12,
+*                    and that 10x the allowed source resistance does not, so the model agrees with the PS.
+*   VPRE             voltage CS holds before each acquisition (pin RST connects CS to VPRE through 1 kohm).
+*                    The PS does not say what CS holds between samples; benches use the worst cases 0 V and VDD.
+*   ILEAK            DC leakage current out of the pin (A). The nRF52840 PS v1.1 gives NO leakage figure for
+*                    GPIO/analog pins (only INFC_LEAK for the NFC pads), so the default is 0 and the tests sweep it
+*                    to report the sensitivity (2.2 mV of VSYS per nA through the 687 kohm divider).
+*
+* NOT modelled:
+*   INL (4.7 LSB12 typ) and DNL (1.3 LSB12 typ): no shape is published; quantisation (code is continuous);
+*   noise / ENOB / SNDR; switch charge injection and clock feed-through; the RESP/RESN resistor ladder
+*   (RLADDER 160 kohm typ, must stay BYPASS in firmware); VDD/4 reference; differential mode; oversampling
+*   arithmetic (the bench averages the per-sample codes); input clamp diodes (the bench checks the pin voltage
+*   against VDD instead); the RINPUT ">1 Mohm" figure is not added as a resistor, because it is the
+*   switched-capacitor equivalent 1/(fSAMPLE * CSAMPLE) of this very model (2 Mohm at 200 ksps, 2.5 pF;
+*   Nordic DevZone blog "Measuring Lithium battery voltage with nRF52": Rinput = 1/(fsample * Csample)).
+* ==========================================================================================================
+
+* Transient sampler.  Pins: AIN (pad), SAMP (acquisition switch, 0 V = open, 1 V = closed), RST (CS pre-charged to
+* VPRE through 1 kohm, 0 / 1 V), HOLD (voltage on CS), CODE (LSB12 as a voltage).  The switches are continuous
+* conductances G = clip(V(ctrl), 0, 1) / RON (+1e-14 S off-state), driven by PWL edges of a few ns: electrically an
+* ideal switch, without the discontinuity that makes ngspice's SW element fail with "timestep too small".
+.subckt NRF52840_SAADC_SE ain samp rst hold code
++ params: CS=2.5p CPAD=3p RSW=5k VPRE=0 ILEAK=0 GAIN=0.1666666667 VREF=0.6 EG=0 CEG=0.0002 VOS=0
+Cpad ain 0 {CPAD}
+Ileak ain 0 DC {ILEAK}
+Bacq ain hold I = (v(ain) - v(hold)) * (max(min(v(samp), 1), 0) / {RSW} + 1e-14)
+Cs hold 0 {CS}
+Brst hold pre I = (v(hold) - v(pre)) * (max(min(v(rst), 1), 0) / 1k + 1e-14)
+Vpre pre 0 DC {VPRE}
+Bcode code 0 V = v(hold) * {GAIN} / {VREF} * 4096 * (1 + {EG} + {CEG} * (temper - 25)) + {VOS}
+.ends NRF52840_SAADC_SE
+
+* Static (DC / .op) view of the same input: pad leakage plus the transfer function applied to the pin voltage
+* (the sampling error is evaluated separately with NRF52840_SAADC_SE).  Pins: AIN, CODE.
+.subckt NRF52840_SAADC_DC ain code
++ params: CPAD=3p ILEAK=0 GAIN=0.1666666667 VREF=0.6 EG=0 CEG=0.0002 VOS=0
+Cpad ain 0 {CPAD}
+Ileak ain 0 DC {ILEAK}
+Bcode code 0 V = v(ain) * {GAIN} / {VREF} * 4096 * (1 + {EG} + {CEG} * (temper - 25)) + {VOS}
+.ends NRF52840_SAADC_DC

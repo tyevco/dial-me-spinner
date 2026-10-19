@@ -1,0 +1,29 @@
+* =====================================================================================================
+* power_integrity__ws2812c.lib -- WS2812C-2020-V6 ring as a supply load on VLED (all N LEDs lumped)
+* -----------------------------------------------------------------------------------------------------
+* Part      : Worldsemi WS2812C-2020-V6 addressable RGB LED (48 on VLED, D101-D148)
+* Datasheet : https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf
+*             (Worldsemi WS2812C-2020-V6, Chinese edition, 9 pages; no revision letter printed)
+*
+* MODELLED:
+*   ICH      5 mA constant current per channel while the channel's PWM is on (p.1 'each channel 5 mA',
+*            p.3 LED table test current 5 mA); 3 channels per LED
+*   FPWM     2 kHz PWM ('port scan frequency 2 kHz', p.1). The worst case of the brief, ALL channels of ALL
+*            LEDs switching together, is one lumped PWM waveform: start of every period = all on, off after
+*            DUTY/FPWM. IDC is a steady (non-PWM) part, IPK the PWM amplitude, both per channel.
+*   TEDGE    current edge time: not in the DS (tTHZ 120 us max is the OUTx fall at 300 pF) -> 50 ns used as
+*            a deliberately fast (pessimistic for di/dt) assumption
+*   IIC      per-LED IC operating current while lit: NOT in the DS (it only gives static < 1 uA, p.1);
+*            0.2 mA per LED is the firmware.md 6.3 planning value (from the WS2812B PCN, 'to verify')
+*   The current does not fall when VDD sags (constant-current sink), which is the pessimistic direction
+*   for supply droop; below VCCMIN = 2.0 V it scales to zero only to give a clean DC operating point.
+* NOT MODELLED: the VF / constant-current headroom curve (p.5 is a picture only), so colour shift or a
+*   current drop below VDD = 3.3 V (DS p.2 rating 3.3-5.3 V) is not represented; data interface, POR,
+*   per-LED PCB inductance (the 48 local 100 nF caps are lumped on one VLED node by the test).
+* =====================================================================================================
+
+.subckt WS2812C_RING VDD VSS params: N=48 NCH=3 IDC=5m IPK=0 DUTY=0.5 FPWM=2k TEDGE=50n TD=0
++ IIC=0.2m VCCMIN=2.0
+Vpwm pwm VSS PULSE(0 1 {TD} {TEDGE} {TEDGE} {max(DUTY/FPWM - TEDGE, TEDGE)} {1/FPWM})
+Bled VDD VSS I = { N*(IIC + NCH*(IDC + IPK*v(pwm,VSS))) * min(1, max(0, v(VDD,VSS))/VCCMIN) }
+.ends WS2812C_RING

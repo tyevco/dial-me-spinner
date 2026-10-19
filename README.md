@@ -33,7 +33,7 @@ The same hardware serves three uses:
 | | |
 |---|---|
 | Size | Ø70 × 36 mm. Stationary centre, spinning 316L stainless ring (≈ 117 g, OD 70 / ID 54 / 10 mm) on a single 608 bearing |
-| Detents | 24 clicks per turn, strength continuously variable from 0 to about 16.5 mN·m, or free spin with no perceptible cogging. Switched by a micro linear stepper with a self-locking lead screw (zero holding power) |
+| Detents | 24 clicks per turn, strength continuously variable from 0 to about 16.5 mN·m, or free spin (the detent magnet's residual cogging is 2.7 µN·m; the stepper's own cogging still has to be bench-tested, [mechanical §7](docs/mechanical.md#7-detent-mechanism)). Switched by a micro linear stepper with a self-locking lead screw (zero holding power) |
 | Rotation sensing | TI TMAG5273 3D Hall sensor reading the same 48-magnet track. Interpolated angle, about 0.05–0.1° after self-calibration, plus µA-level wake on rotation |
 | Display | 1.5 in 128×128 RGB PMOLED (SSD1351) behind a Ø30 mm round window |
 | Lights | 48 × WS2812C-2020-V6 RGB LEDs under an opal diffuser ring, 2 per detent |
@@ -68,8 +68,9 @@ hardware/
                          netlist from the sheet modules, and runs ERC
     layout.py            generates the boards (.kicad_pcb) from the netlists:
                          SPEC §8 placement of the constrained parts, clustering
-                         of the rest, outline, keep-outs, zones, optional
-                         Freerouting autoroute, then DRC
+                         of the rest, outline, keep-outs, zones, fiducials,
+                         optional Freerouting autoroute with clean-up (GND
+                         stitching vias, silkscreen references), then DRC
     release.py           fab and review outputs into hardware/fab/<board>/:
                          gerbers, JLCPCB BOM + CPL, ORDER-NOTES.md, schematic and
                          board PDFs, 3D renders; refuses to write them unless DRC
@@ -94,6 +95,9 @@ hardware/
   mechanical/            enclosure and rotor CAD (OpenSCAD), calculations, renders
                          and STLs; board parts imported from the generated PCBs
                          (extract_board_parts.py) for the clash check
+  sim/                   SPICE test harness (ngspice + pytest) that builds its
+                         decks from the generated netlists; results in
+                         sim/results/ (suite in progress)
 firmware/                (planned) nRF Connect SDK / Zephyr application
 ```
 
@@ -174,19 +178,21 @@ footprint.
   per LCSC part), ORDER-NOTES.md, PDFs and renders. Assembly, bring-up,
   mechanical and firmware-plan documents.
 * **In progress:** the PCB placement items that the mechanical model's clash
-  check reports (module u.FL against the rotor hub, battery-connector height,
-  R42 under the cover skirt; mechanical §3B) and the SPEC items in mechanical
-  §3A.
+  check reports (module u.FL against the rotor hub, the link plug's clearance
+  to the hub, battery-connector height, R42 under the cover skirt; mechanical
+  §3B) and the SPEC items in mechanical §3A. The SPICE test suite in
+  `hardware/sim/`.
 * **Not done:** no prototype has been built or tested, and no firmware code has
   been written. Every item marked "to verify on prototype" in the docs is
   still open.
 * **Next:**
   * close the pre-order checks in [assembly §2.4](docs/assembly.md#24-pre-order-checks-do-them-in-the-gerber-viewer-not-only-in-kicad)
     and [§13](docs/assembly.md#13-open-items-and-tvp-list-assembly) (module
-    u.FL clearance to the rotor hub, LED-cavity silk, boost-inductor spacing),
-    then order both boards from `hardware/fab/`: two-sided assembly for the
-    main board, top side only for the base board, the MDBT50Q through JLC
-    Global Sourcing or consignment, the DNP list from ORDER-NOTES.md;
+    u.FL clearance to the rotor hub, the other clash items, LED-cavity silk,
+    boost-inductor spacing), then order both boards from `hardware/fab/`:
+    two-sided assembly for the main board, top side only for the base board,
+    the MDBT50Q through JLC Global Sourcing or consignment, the DNP list from
+    ORDER-NOTES.md;
   * a printed mechanical mock-up to check the antenna shelf, the harness and
     coax path and the ring's ESD bleed path, and to measure the RF antenna
     (VNA/RSSI), spin-down and detent feel, plus a bench test of the stepper's

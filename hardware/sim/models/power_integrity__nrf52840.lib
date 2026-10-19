@@ -1,0 +1,33 @@
+* =====================================================================================================
+* power_integrity__nrf52840.lib -- nRF52840 (MDBT50Q-U1MV2) as a +3V3 load, and its GPIO output-low
+* -----------------------------------------------------------------------------------------------------
+* Part      : Nordic nRF52840 in the Raytac MDBT50Q-U1MV2 module (U10), normal-voltage mode, REG1 DC/DC on
+* Datasheet : nRF52840 Product Specification v1.1 (4413_417 v1.1, 2019-02-28)
+*             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf
+*
+* MODELLED:
+*   NRF52840_3V3LOAD: the whole +3V3 rail as one load, IBASE steady plus ITX during radio bursts.
+*     The test sets IBASE / ITX from datasheet maxima:
+*       radio TX at +8 dBm 14.8 mA (ITX,PLUS8dBM,DCDC, PS 6.20.15.2; at 3 V, so slightly high at 3.3 V)
+*       CPU from flash 3.3 mA (ICPU0, PS 5.2.1.3)
+*       W25Q128JV erase/program 25 mA max (W25Q128JV DS Rev F 9.4 ICC4..ICC7)
+*       TMAG5273 2.3 mA active (TMAG5273 DS SLYS045C), LIS2DW12 + OLED VCI + misc ~0.5 mA (planning values)
+*     -> about 50 mA peak, matching docs/architecture.md 7 (+3V3 'about 50 mA peak (TX + CPU + QSPI erase)').
+*     TX bursts: TWIDTH every TPER with TEDGE ramps (connection events; radio ramp-up is ~40 us, 1 us edges
+*     are used as the pessimistic choice).
+*   NRF52840_OL: GPIO driven low with standard drive (TWIM pins default to S0D1 in Zephyr): IOL,SD >= 1 mA at
+*     VSS + 0.4 V (6.9.3.1) -> the output is modelled as ROL = 0.4 V / 1 mA = 400 Ohm (worst case; a MOSFET in
+*     triode is close to resistive at these small VDS).
+* NOT MODELLED: the module's internal DC/DC switching ripple and decoupling, current versus VDD, POF
+*   comparator, brown-out reset (VDD 1.7 V minimum, PS 8), GPIO input thresholds (checked in the test:
+*   VIL = 0.3 x VDD, VIH = 0.7 x VDD, 6.9.3.1).
+* =====================================================================================================
+
+.subckt NRF52840_3V3LOAD VDD VSS params: IBASE=35m ITX=15m TSTART=50u TWIDTH=300u TPER=1m TEDGE=1u
+Vtx tx VSS PULSE(0 1 {TSTART} {TEDGE} {TEDGE} {TWIDTH} {TPER})
+Bl VDD VSS I = { (IBASE + ITX*v(tx,VSS)) * min(1, max(0, v(VDD,VSS))/1.0) }
+.ends NRF52840_3V3LOAD
+
+.subckt NRF52840_OL PIN VSS params: ROL=400
+Rol PIN VSS {ROL}
+.ends NRF52840_OL

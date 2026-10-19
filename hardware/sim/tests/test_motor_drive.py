@@ -1,0 +1,850 @@
+"""Detent actuator drive: 2x DRV8837 (U40/U41) + micro linear stepper on J40, and the DRV5032 home switch (U42).
+
+Netlist-driven: every passive comes from hardware/kicad/{main,base} (main VSYS: C1 C2 C6 C41 C70 C72 C74,
++3V3: C71 C73 C75 and the rest of the rail, MOT_NSLEEP: R70; base VSYS: C2 C4, VBAT: C3). The DRV8837 /
+U41 pins, J40 coil pairs and the nRF pins come from the netlist too, so a pin or value change in the
+schematic shows up here.
+
+Supply path, end to end:   cell (VBAT_ocv) + pack resistance -> BQ25180 power path (U1, base) -> base VSYS
+caps -> 12-way link (2 VSYS + 3 GND wires, 28 AWG, 80 mm, JST SH contacts) -> main VSYS caps -> DRV8837 VM.
+
+Models (hardware/sim/models): motor_drive__drv8837.lib, motor_drive__stepper.lib, motor_drive__bq25180.lib,
+motor_drive__nrf52840_gpio.lib, motor_drive__drv5032.lib. Each one lists its datasheet and what it leaves out.
+
+Drive patterns:
+  * full step, two phases on (AB -> A'B -> A'B' -> AB'), 100 % duty: 80 / 313 / 446 PPS (firmware.md §5.3 speed
+    plan) plus the stall (rotor blocked, no back-EMF) and hold (DC) cases;
+  * the firmware's real drive (firmware.md §5.3): 8-µstep sine, 25 kHz PWM, slow decay, amplitude
+    d = 160 mA x 20.3 Ohm / VSYS.
+
+Assumptions that are not datasheet values (bounded, and listed in the model_limitations of the run):
+  * cell + PCM resistance 0.20 Ohm at 25 C, 0.40 Ohm at -10 C, 0.15 Ohm at 60 C (architecture.md §8.4 gives
+    "about 0.25 Ohm of pack plus path");
+  * link inductance 80 nH loop for the 80 mm harness; MLCC ESR 10 mOhm; MLCC DC-bias derating as a scale factor;
+  * stepper inductance 2-10 mH (4.3 nominal) and back-EMF constant 0.27-1.37 V per k step/s (stepper.lib).
+"""
+
+from __future__ import annotations
+
+import functools
+import math
+
+import numpy as np
+import pytest
+
+import spicelib
+from spicelib import Deck
+
+# ---------------------------------------------------------------- limits and parameters (with their sources)
+DS_DRV = "DRV8837 DS SLVSBA4F"
+DS_BQ = "BQ25180 DS SLUSE99C"
+DS_HALL = "DRV5032 DS SLVSDC7H"
+DS_NRF = "nRF52840 PS v1.6 §6.9.3.1"
+
+RDS_TYP, RDS_MAX = 0.280, 0.330          # DRV8837 Table 6.5 rDS(on) HS+LS, 25 C, IO = 800 mA
+IOUT_MAX = 1.8                           # DRV8837 Table 6.3 motor peak current
+IOCP_MIN = 1.9                           # DRV8837 Table 6.5 / 7-4 IOCP min
+TWAKE_MAX = 30e-6                        # DRV8837 Table 6.6 twake
+VIH_K_MAX = 0.5                          # DRV8837 Table 6.5 VIH = 0.5 x VCC max
+VIL_K_MIN = 0.25                         # DRV8837 Table 6.5 VIL = 0.25 x VCC min
+VM_ROC_MAX = 11.0                        # DRV8837 Table 6.3 VM
+RTHJA_DRV = 60.9                         # DRV8837 Table 6.4 RthetaJA (DSG)
+TSD_MIN = 150.0                          # DRV8837 Table 6.5 TTSD min
+
+SYS_ABS_MAX = 5.5                        # BQ25180 Table 7.1 "all other pins" (SYS, BAT) abs max
+SYS_I_DC = 1.5                           # BQ25180 Table 7.1 SYS discharge current DC
+BATOCP = 1.5                             # BQ25180 Table 7.5 IBAT_OCP setting 10 (CHARGECTRL1 0x92, architecture.md)
+VBUVLO = 3.0                             # BQ25180 Table 7.5 BUVLO setting b000 (deglitch 60 us, Table 7.6)
+RON_BAT_TYP, RON_BAT_MAX = 0.055, 0.090  # BQ25180 Table 7.5 RON_BAT
+RON_IN_TYP, RON_IN_MAX = 0.27, 0.47      # BQ25180 Table 7.5 RON_IN
+ILIM_MIN, ILIM_TYP = 0.450, 0.475        # BQ25180 Table 7.5 ILIM at the 500 mA setting
+SYS_REG, SYS_REG_ACC = 4.5, 0.02         # BQ25180 SYS_REG 010 = 4.5 V, Table 7.5 accuracy +-2 %
+
+JST_I_CONTACT = 1.0                      # JST SH catalogue: 1 A per contact with AWG 28 (SPEC §2)
+RC_INIT, RC_AGED = 0.020, 0.040          # JST SH catalogue contact resistance, initial / after env. tests
+WIRE_R = 0.21 * 0.080                    # 28 AWG 0.21 Ohm/m x 80 mm harness (architecture.md §4.2)
+L_LINK = 80e-9                           # harness loop inductance (assumption, ~1 nH/mm)
+SHARE_WORST = (WIRE_R + 2 * RC_AGED) / (2 * WIRE_R + 2 * RC_AGED + 2 * RC_INIT)  # worst VSYS contact share
+
+R_COIL = 20.0                            # VSM08102: 20 Ohm/phase (detent research)
+V_RATED = 3.3                            # VSM08102 rated 3.3-5 V; thrust quoted at the 3.3 V end
+V_RATED_MAX = 5.0
+I_RATED = V_RATED / R_COIL               # 165 mA/phase at 25 C: the research's "about 165 mA/phase at 3.3 V"
+F_RATED = 0.78                           # >= 80 gf pull-out at 500 PPS (vendor, detent research)
+F_NEED = 0.50                            # detent research design rule: total actuator load <= 0.5 N (8 mm motor)
+F_WORST = 1.15                           # detent verifier: realistic worst-case load 0.8-1.15 N (risk R4)
+L_NOM, L_MIN, L_MAX = 4.3e-3, 2e-3, 10e-3
+KE_MIN, KE_MAX = 0.27, 1.37              # V per k step/s (stepper.lib header)
+SRC_RES = "detent research (VSM08102 3.3 V / 20 Ohm, >= 80 gf at 500 PPS)"
+
+FW = "firmware.md"
+FW_VSYS_MOVE = 3.40                      # firmware.md §5.8 minimum VSYS for non-park moves (measured idle)
+FW_VSYS_PARK = 3.30                      # firmware.md §5.8 minimum VSYS for a park move
+FW_LED_CAP = 0.100                       # firmware.md §5.8 LED cap while moving
+I_SYS = 0.050                            # nRF + QSPI peak, architecture.md §8.4
+FW_WAKE_WAIT = 1e-3                      # firmware.md §5.2: nSLEEP high, wait 1 ms
+FW_PRE_ENERGISE = 10e-3                  # firmware.md §5.2: energise the stored phase for 10 ms
+FW_I_TARGET, FW_R_COIL = 0.160, 20.3     # firmware.md §5.3 run current and assumed coil resistance
+FW_HOME_LAG = 0.075                      # firmware.md §5.4 edge-window lag allowance (0.075 s x v)
+
+NRF_VIH_K, NRF_VIL_K = 0.7, 0.3          # nRF52840 PS VIH min / VIL max
+NRF_ROUT = 800.0                         # VOH,SD >= VDD - 0.4 V at 0.5 mA (standard drive)
+
+HALL = {  # DRV5032 Table 6.5: tS (min, typ, max) by variant; BOP/BRP Table 6.6 (FA/FB: 1.5/3/4.8, 0.5/1.5/3 mT)
+    "FA": dict(ts=(27e-3, 50e-3, 75e-3)),
+    "FB": dict(ts=(117e-3, 200e-3, 286e-3)),
+}
+HALL_TON_MAX = 100e-6
+HALL_TACT = 40e-6
+HALL_IOUT_MAX = 5e-3                     # DRV5032 Table 6.1 / 6.3 output current
+HALL_ROH, HALL_ROL = 350.0, 300.0        # VOH >= VCC - 0.35 V at -1 mA, VOL <= 0.3 V at 1 mA
+B_PARK = 32.9                            # mT at the home sensor with the carriage parked (detent research sim)
+
+R_PACK = {-10: 0.40, 25: 0.20, 60: 0.15}  # cell + PCM resistance (assumption, see module docstring)
+TEMPS = (-10, 25, 60)
+
+LIBS = ("motor_drive__drv8837.lib", "motor_drive__stepper.lib", "motor_drive__bq25180.lib",
+        "motor_drive__nrf52840_gpio.lib", "motor_drive__drv5032.lib")
+
+
+class Supply:
+    def __init__(self, name, vbat, usb=False, vbus=5.0, vsysreg=SYS_REG, ichg=0.0):
+        self.name, self.vbat, self.usb, self.vbus, self.vsysreg, self.ichg = name, vbat, usb, vbus, vsysreg, ichg
+
+    @property
+    def vsys_idle(self):
+        return min(self.vsysreg, self.vbus) if self.usb else self.vbat
+
+    def __repr__(self):
+        return self.name
+
+
+SUP = {s.name: s for s in (
+    Supply("VBAT3.0", 3.0), Supply("VBAT3.3", 3.3), Supply("VBAT3.4", 3.4), Supply("VBAT3.7", 3.7),
+    Supply("VBAT4.2", 4.2),
+    # USB: SYS regulated to 4.5 V +-2 %; VBUS 4.5 V cannot reach it through RON_IN; battery at 3.7 V supplements
+    Supply("VBUS4.5", 3.7, usb=True, vbus=4.5, vsysreg=SYS_REG),
+    Supply("VBUS5.0", 3.7, usb=True, vbus=5.0, vsysreg=SYS_REG),
+    Supply("VBUS5.5", 3.7, usb=True, vbus=5.5, vsysreg=SYS_REG * (1 + SYS_REG_ACC)),   # 4.59 V
+)}
+
+
+# ---------------------------------------------------------------- deck building blocks
+def _base_lines(lines):
+    """Base-board passives on their own nodes (nb_*), with the base GND (nb_gnd) behind the link GND wires."""
+    out = []
+    for ln in lines:
+        t = ln.split()
+        t[0] = t[0][0] + "B" + t[0][1:]
+        for i in (1, 2):
+            t[i] = "nb_gnd" if t[i] == "0" else ("nb_" + t[i][2:] if t[i].startswith("n_") else t[i])
+        out.append(" ".join(t))
+    return out
+
+
+def vsys_caps(d):
+    return [r for r in d.on_net("VSYS", "C") if set(d.pins[r].values()) <= {"VSYS", "GND"}]
+
+
+def new_deck(title):
+    deck = Deck(title)
+    for lib in LIBS:
+        deck.include(lib)
+    return deck
+
+
+def power(deck, main, base, sup, temp, *, other=FW_LED_CAP + I_SYS, aged=True, ron_bat=RON_BAT_MAX,
+          ron_in=RON_IN_MAX, ilim=ILIM_MIN, cscale=None, esr=0.01, v3=3.3, rpack=None):
+    """Cell -> BQ25180 -> base caps -> link -> main VSYS caps, plus the other VSYS loads and the +3V3 rail."""
+    rpack = R_PACK[temp] if rpack is None else rpack
+    cscale = cscale or {}
+    deck += f"Vcell nb_cell nb_gnd DC {sup.vbat}"
+    deck += f"Rpack nb_cell nb_vbat {rpack}"
+    deck += _base_lines(base.passives(nets={"VSYS", "GND"}, esr={"C": esr},
+                                      scale={r: cscale.get("base:" + r, cscale.get("*", 1.0)) for r in vsys_caps(base)}))
+    deck += _base_lines(base.passives(nets={"VBAT", "GND"}, esr={"C": esr}))
+    deck += (f"XBQ nb_vsys nb_vbat nb_gnd BQ25180_PATH params: usb={int(sup.usb)} vbus={sup.vbus} "
+             f"vsysreg={sup.vsysreg:.4f} ilim={ilim} ron_in={ron_in} ron_bat={ron_bat} ichg={sup.ichg}")
+    rw = WIRE_R + 2 * (RC_AGED if aged else RC_INIT)
+    vs = main.node("VSYS")
+    deck += ["Vlink nb_vsys lk1 0", f"Rlink lk1 lk2 {rw / 2:.6g}", f"Llink lk2 {vs} {L_LINK / 2:.6g}",
+             f"Rlgnd 0 lg1 {rw / 3:.6g}", f"Llgnd lg1 nb_gnd {L_LINK / 2:.6g}"]
+    deck += main.passives(nets={"VSYS", "GND"}, esr={"C": esr},
+                          scale={r: cscale.get(r, cscale.get("*", 1.0)) for r in vsys_caps(main)})
+    deck += f"Iother {vs} 0 DC {other}"
+    p3 = main.node("+3V3")
+    deck += [f"V3v3 n3v3src 0 DC {v3}", f"R3v3 n3v3src {p3} 0.05"]
+    deck += main.passives(nets={"+3V3", "GND"}, esr={"C": esr})
+    return deck
+
+
+def drivers(deck, d, temp, *, rds=RDS_TYP, twake=TWAKE_MAX, iocp=IOCP_MIN, tol=0.0, lph=L_NOM, ke=0.0, pps=0.0,
+            t0=0.0, tg=0.0, tstop=1e3, delta=math.pi / 2):
+    for ref in ("U40", "U41"):
+        p = functools.partial(d.pin, ref)
+        deck += (f"X{ref} {p('VM')} {p('VCC')} {p('IN1')} {p('IN2')} {p('nSLEEP')} {p('OUT1')} {p('OUT2')} {p('GND')} "
+                 f"DRV8837 params: rds={rds} temp_c={temp} twake={twake} iocp={iocp}")
+    for name, (a, b), phb in (("A", ("1", "2"), 0), ("B", ("3", "4"), 1)):
+        deck += (f"XCOIL{name} {d.pin('J40', a)} coil{name.lower()}_m PMSTEP_PHASE params: r25={R_COIL} tol={tol} "
+                 f"temp_c={temp} lph={lph} ke={ke} pps={pps} t0={t0} tg={tg} tstop={tstop} delta={delta} phb={phb}")
+        deck += f"VI{name} coil{name.lower()}_m {d.pin('J40', b)} 0"
+    return deck
+
+
+def gpio_out(deck, d, net, ctrl):
+    """nRF pin (standard drive) on `net`; ctrl is a DC level (0/1) or a list of (t, level) points."""
+    tag = net.lower()
+    if isinstance(ctrl, (int, float)):
+        deck += f"Vc_{tag} c_{tag} 0 DC {ctrl}"
+    else:
+        deck += f"Vc_{tag} c_{tag} 0 PWL({' '.join(f'{t:.9g} {v:g}' for t, v in ctrl)})"
+    deck += f"XG_{tag} {d.node(net)} {d.node('+3V3')} 0 c_{tag} NRF_GPIO_OUT params: rout={NRF_ROUT}"
+    return deck
+
+
+def _pwl(transitions, edge=10e-9):
+    """[(t, level)] sorted, starting level 0 -> PWL points."""
+    pts, cur = [(0.0, 0)], 0
+    for t, lv in transitions:
+        if lv != cur:
+            pts += [(t, cur), (t + edge, lv)]
+            cur = lv
+    return pts
+
+
+def fullstep_plan(pps, nsteps, *, t_on=50e-6, t_wait=FW_WAKE_WAIT, t_pre=2e-3, t_hold=2e-3, end="hold",
+                  t_brake=3e-3, t_tail=1e-3):
+    """Two-phase-on full-step schedule. State k has field angle 45 + 90k degrees: A = sign(cos), B = sign(sin).
+
+    Returns (ctrl dict net -> transitions, timing dict)."""
+    ts = 1.0 / pps if pps else 0.0
+    t_e = t_on + t_wait
+    t0 = t_e + t_pre
+    tr = {n: [] for n in ("MOT_A_IN1", "MOT_A_IN2", "MOT_B_IN1", "MOT_B_IN2", "MOT_NSLEEP")}
+    tr["MOT_NSLEEP"].append((t_on, 1))
+
+    def state(t, k):
+        a = math.cos(math.radians(45 + 90 * k)) > 0
+        b = math.sin(math.radians(45 + 90 * k)) > 0
+        tr["MOT_A_IN1"].append((t, int(a)))
+        tr["MOT_A_IN2"].append((t, int(not a)))
+        tr["MOT_B_IN1"].append((t, int(b)))
+        tr["MOT_B_IN2"].append((t, int(not b)))
+
+    state(t_e, 0)
+    for k in range(1, nsteps + 1):
+        state(t0 + (k - 1) * ts, k)
+    t_last = t0 + nsteps * ts if nsteps else t0
+    t_x = t_last + t_hold
+    if end == "hold":
+        t_stop = t_x
+    elif end == "coast":
+        for n in tr:
+            tr[n].append((t_x, 0))
+        t_stop = t_x + t_tail
+    elif end == "brake":
+        for n in ("MOT_A_IN1", "MOT_A_IN2", "MOT_B_IN1", "MOT_B_IN2"):
+            tr[n].append((t_x, 1))
+        for n in tr:
+            tr[n].append((t_x + t_brake, 0))
+        t_stop = t_x + t_brake + t_tail
+    else:
+        raise ValueError(end)
+    timing = dict(t_on=t_on, t_e=t_e, t0=t0, ts=ts, t_last=t_last, t_x=t_x, t_stop=t_stop)
+    return {n: _pwl(v) for n, v in tr.items()}, timing
+
+
+def check_ran(res):
+    assert not res["_errors"], res["_errors"][:5]
+    assert not res.get("_missing"), (res.get("_missing"), res["_log"][-3000:])
+
+
+def window(w, key, t1, t2):
+    t = w["time"]
+    m = (t >= t1) & (t <= t2)
+    return t[m], w[key][m]
+
+
+def tavg(t, y):
+    return float(np.trapz(y, t) / (t[-1] - t[0]))
+
+
+# ---------------------------------------------------------------- hold / stall operating point
+def hold_op(main, base, sup, temp, *, tol=0.0, rds=RDS_MAX, other=FW_LED_CAP + I_SYS, aged=True, ilim=ILIM_MIN,
+            ron_bat=RON_BAT_MAX, ron_in=RON_IN_MAX, lph=L_NOM):
+    """Both coils energised at 100 % (full-step hold, i.e. also the stalled rotor). Run as a short transient from
+    the sleeping state (a robust start for the behavioural models) to steady state (> 10 L/R)."""
+    deck = new_deck(f"motor hold {sup} {temp}C")
+    power(deck, main, base, sup, temp, other=other, aged=aged, ilim=ilim, ron_bat=ron_bat, ron_in=ron_in)
+    drivers(deck, main, temp, rds=rds, tol=tol, lph=lph)
+    t_on, t_e = 10e-6, 60e-6
+    for net, t in (("MOT_NSLEEP", t_on), ("MOT_A_IN1", t_e), ("MOT_B_IN1", t_e)):
+        gpio_out(deck, main, net, _pwl([(t, 1)]))
+    for net in ("MOT_A_IN2", "MOT_B_IN2"):
+        gpio_out(deck, main, net, 0)
+    t_end = t_e + 12 * lph / (R_COIL * 0.8)
+    vs = main.node("VSYS")
+    a1, a2 = main.pin("U40", "OUT1"), main.pin("U40", "OUT2")
+    deck.tran("2u", f"{t_end:.6g}", 0, "5u")
+    for name, expr in (("ia", "i(via)"), ("ib", "i(vib)"), ("vsys", f"v({vs})"), ("vbat", "v(nb_vbat)"),
+                       ("ilink", "i(vlink)"), ("va1", f"v({a1})"), ("va2", f"v({a2})"), ("vsys_base", "v(nb_vsys)"),
+                       ("vnsleep", f"v({main.node('MOT_NSLEEP')})")):
+        deck.meas(f"tran {name} FIND {expr} AT={t_end:.6g}")
+    res = deck.run(timeout=120)
+    check_ran(res)
+    out = {k: res[k] for k in ("ia", "ib", "vsys", "vbat", "ilink", "vsys_base", "vnsleep")}
+    out["vcoil"] = res["va1"] - res["va2"]
+    return out
+
+
+# ================================================================ tests
+def test_drv8837_model_matches_datasheet(check):
+    """Model sanity against SLVSBA4F: rDS(on) at 800 mA, Table 7-1 truth table, sleep = Hi-Z, wake = twake."""
+    out = {}
+    for name, (n, i1, i2) in {"fwd": (1, 1, 0), "rev": (1, 0, 1), "coast": (1, 0, 0), "brake": (1, 1, 1),
+                              "sleep": (0, 1, 0)}.items():
+        deck = new_deck(f"truth {name}")
+        deck += ["VVM vm 0 5", "VCC vcc 0 3", f"VN ns 0 {3 * n}", f"V1 in1 0 {3 * i1}", f"V2 in2 0 {3 * i2}",
+                 "X1 vm vcc in1 in2 ns o1 o2 0 DRV8837 params: rds=0.28",
+                 "Ro1 o1 vh 1k", "Ro2 o2 vh 1k", "Vh vh 0 2.5",       # weak midpoint bias shows Z as 2.5 V
+                 "X2 vm vcc in1b 0 ns p1 p2 0 DRV8837 params: rds=0.28", "V3 in1b 0 3",
+                 "Rl p1 pm 5.97", "Vil pm p2 0"]                       # 5 V / (5.97 + 0.28) = 0.8 A test load
+        deck.op()
+        deck.print_op("v(o1)", "v(o2)", "i(vil)", "v(p1,p2)")
+        r = deck.run()
+        check_ran(r)
+        out[name] = (r["op_0"], r["op_1"], r["op_2"], r["op_3"])
+    o = out["fwd"]
+    rds = (5.0 - o[3]) / o[2]
+    check("rDS(on) HS+LS at 0.8 A, 25 C", rds, RDS_TYP * 0.97, RDS_TYP * 1.03, "Ohm", f"{DS_DRV} Table 6.5 rDS(on)")
+    lvl = {"H": (4.9, 5.01), "L": (-0.01, 0.1), "Z": (2.4, 2.6)}
+    want = {"fwd": "HL", "rev": "LH", "coast": "ZZ", "brake": "LL", "sleep": "ZZ"}
+    for name, (s1, s2) in want.items():
+        for k, s in ((0, s1), (1, s2)):
+            check(f"{name}: OUT{k + 1} = {s}", out[name][k], *lvl[s], "V", f"{DS_DRV} Table 7-1")
+
+
+# ------------------------------------------------ coil current vs ratings (hold = stall, max current corner)
+@pytest.mark.parametrize("supname", ["VBAT4.2", "VBUS5.5"])
+def test_hold_current_vs_ratings(main, base, check, supname):
+    """Highest coil current: hold/stall at the highest VSYS, coldest coil, coil -10 %, typical rDS(on).
+
+    Checks the stepper terminal voltage against its 5 V rating, the DRV8837 output current against IOUT and
+    the lowest OCP trip, the DRV8837 junction temperature, and the link / BQ25180 currents this draws."""
+    sup = SUP[supname]
+    temp = -10
+    # ILIM at the 1050 mA setting's max (1.1 A) so that SYS really stays at 4.59 V on USB (max coil voltage)
+    r = hold_op(main, base, sup, temp, tol=-0.10, rds=RDS_TYP, other=I_SYS, aged=False, ilim=1.1,
+                ron_bat=RON_BAT_TYP, ron_in=RON_IN_TYP)
+    imax = max(abs(r["ia"]), abs(r["ib"]))
+    check("coil terminal voltage (hold)", abs(r["vcoil"]), None, V_RATED_MAX, "V", f"{SRC_RES}: rated 3.3-5 V")
+    check("DRV8837 OUT current (hold)", imax, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT")
+    check("DRV8837 OUT current vs OCP trip", imax, None, IOCP_MIN, "A", f"{DS_DRV} Table 6.5 IOCP min")
+    tj = 60.0 + imax ** 2 * RDS_MAX * 1.2 * RTHJA_DRV
+    check("DRV8837 TJ at 60 C ambient (hold)", tj, None, TSD_MIN, "°C", f"{DS_DRV} Table 6.4 RθJA, 6.5 TTSD")
+    ilink = r["ilink"]
+    check("link current per VSYS contact", ilink * SHARE_WORST, None, JST_I_CONTACT, "A",
+          "JST SH 1 A/contact (SPEC §2)")
+    check("BQ25180 SYS current", ilink, None, SYS_I_DC, "A", f"{DS_BQ} Table 7.1 SYS DC")
+
+
+# ------------------------------------------------ needed force vs VSYS and temperature (hold current)
+MOVE_SUPPLIES = ["VBAT3.3", "VBAT3.4", "VBAT3.7", "VBAT4.2", "VBUS4.5", "VBUS5.0", "VBUS5.5"]
+
+
+@pytest.mark.parametrize("temp", TEMPS)
+@pytest.mark.parametrize("supname", MOVE_SUPPLIES)
+def test_hold_force_and_brownout(main, base, check, supname, temp):
+    """Coil current with the whole stroke load on VSYS (2 coils + LED cap 100 mA + nRF 50 mA), worst source
+    resistance (RON max, aged contacts, cold pack), rDS(on) max. Force ~ current: F = 0.78 N x I / 165 mA.
+
+    Every supply here is one where firmware.md §5.8 allows a move (park >= 3.30 V, others >= 3.40 V)."""
+    sup = SUP[supname]
+    r = hold_op(main, base, sup, temp)
+    i = min(abs(r["ia"]), abs(r["ib"]))
+    ratio = i / I_RATED
+    check(f"I_coil / I_rated ({sup}, {temp} C)", ratio, None, None, "",
+          f"info: I_rated = 3.3 V / 20 Ohm = 165 mA ({SRC_RES})")
+    check(f"thrust estimate ({sup}, {temp} C)", F_RATED * ratio, F_NEED, None, "N",
+          "detent research: load <= 0.5 N for the 8 mm motor; F = 0.78 N x I/I_rated")
+    if not sup.usb:
+        check(f"BAT pin under stroke load ({sup}, {temp} C)", r["vbat"], VBUVLO, None, "V",
+              f"{DS_BQ} Table 7.5 VBUVLO (b000) - no brown-out")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE: firmware.md §5.8 'minimum VSYS for non-park moves 3.40 V (measured idle)' ignores the "
+    "stroke-load sag (pack + BATFET + link) and rDS(on): at 3.40 V idle the coil gets < 165 mA (< 3.3 V)"))
+def test_required_current_at_firmware_move_threshold(main, base, check):
+    """The research asks for the rated 3.3 V at the motor under load ("move only when VBAT >= 3.3 V under load",
+    165 mA/phase at 25 C). firmware.md §5.8 lets non-park moves start at VSYS = 3.40 V measured *idle*. With the
+    stroke load (2 coils + LED cap + nRF) the coil current there is below the rated 165 mA."""
+    lo = hold_op(main, base, SUP["VBAT3.4"], 25)
+    hi = hold_op(main, base, SUP["VBAT3.7"], 25)
+    i_lo, i_hi = (min(abs(r["ia"]), abs(r["ib"])) for r in (lo, hi))
+    need = 3.4 + (I_RATED - i_lo) * (3.7 - 3.4) / (i_hi - i_lo)       # idle VSYS that gives 165 mA (linear)
+    check("idle VSYS needed for I_rated under stroke load, 25 C", need, None, None, "V",
+          "info: interpolated from the simulated 3.4 / 3.7 V operating points")
+    check("BAT pin under stroke load at VSYS idle 3.40 V", lo["vbat"], None, None, "V",
+          "info: research asks >= 3.3 V under load")
+    check("I_coil at the firmware non-park threshold (VSYS idle 3.40 V, 25 C)", i_lo, I_RATED, None, "A",
+          f"{SRC_RES} rated 165 mA (research: >= 3.3 V at the motor under load) vs {FW} §5.8 3.40 V idle")
+
+
+@pytest.mark.parametrize("temp", TEMPS)
+def test_ratio_vsys_3v0_vs_4v6(main, base, check, temp):
+    """The explicit comparison: coil current / required (rated) current at VBAT 3.0 V (empty cell) and at VSYS
+    4.59 V (USB, SYS_REG 4.5 V + 2 %), and whether the needed force is still there.
+
+    On USB the BQ25180 input limit (500 mA setting: 450 mA min) is below a two-phase full-step stroke plus the
+    other loads, so SYS falls into supplement mode (VBAT - 40 mV) during the stroke: the '4.6 V' case only exists
+    when ILIM is set higher (1050 mA setting) or the load is lighter. Both are simulated."""
+    lo = hold_op(main, base, SUP["VBAT3.0"], temp)
+    reg = hold_op(main, base, SUP["VBUS5.5"], temp, other=I_SYS, ilim=0.995)      # SYS held at 4.59 V
+    real = hold_op(main, base, SUP["VBUS5.5"], temp, ilim=ILIM_MIN)               # firmware ILIM, LED cap on
+    rlo, rreg, rreal = (min(abs(r["ia"]), abs(r["ib"])) / I_RATED for r in (lo, reg, real))
+    check(f"I/I_rated at VBAT 3.0 V, {temp} C", rlo, None, None, "", "info (research: torque about -20 % at 3.0 V)")
+    check(f"thrust at VBAT 3.0 V, {temp} C", F_RATED * rlo, F_NEED, None, "N", "detent research load budget 0.5 N")
+    check(f"BAT pin under stroke at VBAT 3.0 V, {temp} C", lo["vbat"], None, None, "V",
+          f"info: below {VBUVLO} V BUVLO -> moves must stay locked out ({FW} §5.8 forbids < 3.30 V)")
+    check(f"VSYS at the DRV with SYS regulated (ILIM 1050 mA), {temp} C", reg["vsys"], 4.4, None, "V",
+          f"info/consistency: {DS_BQ} SYS_REG 4.5 V +-2 % minus link drop")
+    check(f"I/I_rated at VSYS 4.59 V, {temp} C", rreg, 1.0, None, "", f"{SRC_RES}: rated current reached")
+    check(f"VSYS on USB during a stroke, ILIM 500 mA setting, {temp} C", real["vsys"], None, None, "V",
+          f"info: supplement mode ({DS_BQ} 8.3.3) when the load exceeds ILIM 450 mA min")
+    check(f"I/I_rated on USB with ILIM 500 mA (supplement), {temp} C", rreal, None, None, "", "info")
+    check(f"thrust on USB with ILIM 500 mA (supplement), {temp} C", F_RATED * rreal, F_NEED, None, "N",
+          "detent research load budget 0.5 N")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE (risk R4, pre-existing): the verified worst-case actuator load 0.8-1.15 N exceeds what the "
+    "8 mm VSM08102 delivers at any battery VSYS; needs the 10 mm motor or lower preloads"))
+def test_force_vs_verified_worst_load(main, base, check):
+    """Best battery corner (VBAT 4.2 V, 25 C): thrust estimate vs the detent verifier's worst-case load."""
+    r = hold_op(main, base, SUP["VBAT4.2"], 25)
+    f = F_RATED * min(abs(r["ia"]), abs(r["ib"])) / I_RATED
+    check("thrust at VBAT 4.2 V vs verified worst-case load", f, F_WORST, None, "N",
+          "detent verifier: worst-case load 0.8-1.15 N (architecture.md R4)")
+
+
+# ------------------------------------------------ full-step stepping transients
+@functools.lru_cache(maxsize=None)
+def rated_reference(pps, ke, lph, stall):
+    """Average |i| of the same coil model driven at the vendor rating condition (ideal 3.3 V full step, 25 C,
+    no driver drop) over the same window as the stepping tests: the 'required current' at this PPS."""
+    deck = new_deck(f"rated reference {pps}")
+    ts = 1.0 / pps
+    nsteps, t0 = 8, 2e-3
+    pts = [(0, 1)]
+    for k in range(1, nsteps + 1):
+        pts.append((t0 + (k - 1) * ts, 1 if math.cos(math.radians(45 + 90 * k)) > 0 else -1))
+    pwl, cur = [(0.0, V_RATED)], 1
+    for t, s in pts[1:]:
+        if s != cur:
+            pwl += [(t, V_RATED * cur), (t + 10e-9, V_RATED * s)]
+            cur = s
+    deck += f"Vdrv d 0 PWL({' '.join(f'{t:.9g} {v:g}' for t, v in pwl)})"
+    kk = 0.0 if stall else ke
+    deck += (f"XC d m PMSTEP_PHASE params: r25={R_COIL} temp_c=25 lph={lph} ke={kk} pps={pps} t0={t0 - ts} "
+             f"tg={t0} tstop={t0 + nsteps * ts} phb=0")
+    deck += "VI m 0 0"
+    t1, t2 = t0 + (nsteps - 4) * ts, t0 + nsteps * ts
+    deck.tran(f"{ts / 400:.3g}", f"{t2:.6g}", 0, f"{ts / 400:.3g}")
+    deck.meas(f"tran iavg AVG abs(i(vi)) from={t1:.9g} to={t2:.9g}")
+    r = deck.run()
+    check_ran(r)
+    return r["iavg"]
+
+
+def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, rds=RDS_MAX, lph=L_NOM, ke=KE_MAX,
+                 other=FW_LED_CAP + I_SYS, end="hold", cscale=None, aged=True, t_pre=2e-3, t_hold=1e-3, extra=(),
+                 ilim=ILIM_MIN):
+    ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end)
+    deck = new_deck(f"full step {pps} PPS {sup} {temp}C")
+    power(deck, main, base, sup, temp, other=other, cscale=cscale, aged=aged, ilim=ilim)
+    ts = tm["ts"]
+    drivers(deck, main, temp, rds=rds, tol=tol, lph=lph, ke=0.0 if stall else ke, pps=pps, t0=tm["t0"] - ts,
+            tg=tm["t0"], tstop=tm["t_last"])
+    for net, pts in ctrl.items():
+        gpio_out(deck, main, net, pts)
+    deck += list(extra)
+    step = min(ts / 400, 2e-6)
+    deck.tran(f"{step:.3g}", f"{tm['t_stop']:.6g}", 0, f"{step:.3g}")
+    vs = main.node("VSYS")
+    a1, a2 = main.pin("U40", "OUT1"), main.pin("U40", "OUT2")
+    deck.wave("i(via)", "i(vib)", f"v({vs})", "v(nb_vbat)", "i(vlink)", f"v({a1})", f"v({a2})", "v(nb_vsys)")
+    res = deck.run()
+    check_ran(res)
+    w = res["waves"]
+    w["ia"], w["ib"], w["vsys"], w["vbat"], w["ilink"] = (w["i(via)"], w["i(vib)"], w[f"v({vs})"], w["v(nb_vbat)"],
+                                                          w["i(vlink)"])
+    w["oa1"], w["oa2"], w["vsys_base"] = w[f"v({a1})"], w[f"v({a2})"], w["v(nb_vsys)"]
+    return w, tm
+
+
+STEP_CASES = [  # (id, supply, temp, pps, stall)
+    ("446pps-VBAT3.7-25C", "VBAT3.7", 25, 446, False),
+    ("313pps-VBAT3.7-25C", "VBAT3.7", 25, 313, False),
+    ("80pps-VBAT3.7-25C", "VBAT3.7", 25, 80, False),
+    ("80pps-stall-VBAT3.7-25C", "VBAT3.7", 25, 80, True),
+    ("446pps-VBAT3.4-60C", "VBAT3.4", 60, 446, False),
+    ("446pps-VBAT3.3--10C", "VBAT3.3", -10, 446, False),
+    ("446pps-VBAT4.2--10C", "VBAT4.2", -10, 446, False),
+    ("446pps-VBUS5.5-25C", "VBUS5.5", 25, 446, False),
+]
+
+
+@pytest.mark.parametrize("cid,supname,temp,pps,stall", STEP_CASES, ids=[c[0] for c in STEP_CASES])
+def test_fullstep_stepping(main, base, check, cid, supname, temp, pps, stall):
+    """Full-step, two phases on, 8 steps: coil current (incl. back-EMF at the pull-out angle, upper ke bound),
+    VM ripple at the DRV8837 VM pins (= main VSYS node with C70/C72/C74 and the rest of the netlist caps),
+    the VSYS current pulses through the link (incl. the regenerated current at each phase reversal) and the
+    BAT pin against BUVLO."""
+    sup = SUP[supname]
+    w, tm = run_stepping(main, base, sup, temp, pps, stall=stall)
+    ts = tm["ts"]
+    t1, t2 = tm["t0"] + 4 * ts, tm["t_last"]          # last electrical cycle (4 full steps)
+    t, ia = window(w, "ia", t1, t2)
+    _, ib = window(w, "ib", t1, t2)
+    iavg = 0.5 * (tavg(t, np.abs(ia)) + tavg(t, np.abs(ib)))
+    iref = rated_reference(pps, KE_MAX, L_NOM, stall)
+    ratio = iavg / iref
+    check(f"avg |I_coil| / rated-drive current at {pps} PPS", ratio, None, None, "",
+          "info: rated drive = ideal 3.3 V full step, same PPS/back-EMF, 25 C")
+    check(f"thrust estimate at {pps} PPS", F_RATED * ratio, F_NEED, None, "N",
+          "detent research: load <= 0.5 N; F = 0.78 N x I/I_rated-drive")
+    ipk = float(max(np.max(np.abs(w["ia"])), np.max(np.abs(w["ib"]))))
+    check("peak coil / OUT current", ipk, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT 1.8 A")
+    tw, vs = window(w, "vsys", tm["t_e"], tm["t_last"])
+    check("VM (VSYS) max while stepping", float(vs.max()), None, SYS_ABS_MAX, "V",
+          f"{DS_BQ} Table 7.1 SYS abs max (lowest abs max on VSYS)")
+    check("VM ripple pk-pk while stepping", float(vs.max() - vs.min()), None, None, "V", "info")
+    _, il = window(w, "ilink", tm["t_e"], tm["t_last"])
+    check("link current per VSYS contact (peak)", float(il.max()) * SHARE_WORST, None, JST_I_CONTACT, "A",
+          "JST SH 1 A/contact (SPEC §2)")
+    check("link current, most negative (regen back to base)", float(il.min()), None, None, "A", "info")
+    if not sup.usb:
+        _, vb = window(w, "vbat", tm["t_e"], tm["t_last"])
+        check("BAT pin min while stepping", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V")
+
+
+# ------------------------------------------------ turn-off kick through the body diodes
+KICK_CASES = [  # id, supply, temp, tol, lph, cap scale (DC bias), end, xfail reason
+    ("battery-4.2V-cold-coast", "VBAT4.2", -10, -0.10, L_MAX, 0.5, "coast", None),
+    ("usb-charging-coast", "VBUS5.5", -10, -0.10, L_MAX, 0.5, "coast", None),
+    ("usb-chargedone-nominal-coast", "VBUS5.5", 25, 0.0, L_NOM, 1.0, "coast", None),
+    ("usb-chargedone-worst-coast", "VBUS5.5", -10, -0.10, L_MAX, 0.5, "coast",
+     "DESIGN ISSUE: coasting both coils from a full-current full-step hold on USB after charge termination "
+     "(BATFET off, nothing sinks) dumps 1/2 L I^2 into VSYS above the BQ25180 5.5 V abs max"),
+    ("usb-chargedone-worst-brake-then-sleep", "VBUS5.5", -10, -0.10, L_MAX, 0.5, "brake", None),
+]
+
+
+@pytest.mark.parametrize("cid,supname,temp,tol,lph,cs,end,xf",
+                         [pytest.param(*c, marks=[pytest.mark.xfail(strict=True, reason=c[-1])] if c[-1] else [],
+                                       id=c[0]) for c in KICK_CASES])
+def test_turnoff_kick(main, base, check, cid, supname, temp, tol, lph, cs, end, xf):
+    """Hold both coils at full current, then the firmware's IDLE entry (all IN low + nSLEEP low -> coast): the coil
+    current freewheels through the DRV8837 body diodes into VM. 'brake' = IN1 = IN2 = 1 for 3 ms first (current
+    decays in the low-side FETs), the proposed fix. Minimal other load (3 mA), worst DC-bias derating."""
+    sup = SUP[supname]
+    if "charging" in cid:
+        sup = Supply("VBUS5.5-charging", 3.7, usb=True, vbus=5.5, vsysreg=SYS_REG * 1.02, ichg=0.4)
+    w, tm = run_stepping(main, base, sup, temp, 446, nsteps=0, stall=True, tol=tol, rds=RDS_TYP, lph=lph, other=3e-3,
+                         end=end, cscale={"*": cs, **{"base:" + r: cs for r in vsys_caps(base)}}, aged=False,
+                         t_pre=6 * lph / 15, t_hold=0.5e-3)
+    t_x = tm["t_x"]
+    i0 = float(max(abs(np.interp(t_x - 1e-6, w["time"], w["ia"])), abs(np.interp(t_x - 1e-6, w["time"], w["ib"]))))
+    check("coil current before turn-off", i0, None, IOUT_MAX, "A", f"{DS_DRV} Table 6.3 IOUT")
+    _, vs = window(w, "vsys", t_x - 1e-4, tm["t_stop"])
+    _, vsb = window(w, "vsys_base", t_x - 1e-4, tm["t_stop"])
+    vmax = float(max(vs.max(), vsb.max()))
+    check("VSYS peak after turn-off", vmax, None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max 5.5 V")
+    check("VM peak after turn-off", vmax, None, VM_ROC_MAX, "V", f"{DS_DRV} Table 6.3 VM max")
+    _, o2 = window(w, "oa2", t_x, tm["t_stop"])
+    check("OUT swing below GND during freewheel", float(o2.min()), None, None, "V", "info (body diode)")
+    ta, ia = window(w, "ia", t_x, tm["t_stop"])
+    below = np.nonzero(np.abs(ia) < 1e-3)[0]
+    t_dec = float(ta[below[0]] - t_x) if len(below) else float("inf")
+    check("coil current decay to < 1 mA", t_dec, None, None, "s", "info")
+
+
+@pytest.mark.slow
+def test_turnoff_kick_monte_carlo(main, base, check):
+    """USB, charge done, nominal coil (25 C, 4.3 mH), coast from full-step hold: VSYS-cap tolerance (+-10 % each,
+    9 parts on both boards) times a DC-bias derating drawn from 0.5-1.0, 200 draws."""
+    sup = SUP["VBUS5.5"]
+    refs = vsys_caps(main) + ["base:" + r for r in vsys_caps(base)]
+    tol_of = {r: (base.tol(r[5:]) if r.startswith("base:") else main.tol(r)) for r in refs}
+    rng = np.random.default_rng(7)
+    vmax = []
+    for _ in range(200):
+        der = float(rng.uniform(0.5, 1.0))
+        cs = {r: der * (1 + float(rng.uniform(-tol_of[r], tol_of[r]))) for r in refs}
+        w, tm = run_stepping(main, base, sup, 25, 446, nsteps=0, stall=True, rds=RDS_TYP, lph=L_NOM, other=3e-3,
+                             end="coast", cscale=cs, aged=False, t_pre=2e-3, t_hold=0.3e-3)
+        _, vs = window(w, "vsys", tm["t_x"] - 1e-4, tm["t_stop"])
+        vmax.append(float(vs.max()))
+    vmax = np.array(vmax)
+    check("VSYS peak after coast, MC max (200 draws)", float(vmax.max()), None, None, "V",
+          "info: distribution, see the share below")
+    check("share of MC draws above 5.5 V", float(np.mean(vmax > SYS_ABS_MAX)), None, None, "",
+          f"info: {DS_BQ} Table 7.1 SYS abs max")
+
+
+# ------------------------------------------------ firmware drive: 25 kHz slow-decay 8-µstep sine
+def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=25e3):
+    """PWM command lists for the four IN pins (firmware.md §5.3). Positive current: IN1 = 1, IN2 PWM with duty
+    1 - |d| (IN2 high = brake/slow decay). Edge-aligned 'up' counter: the drive part comes first."""
+    d_pk = min(1.0, i_target * FW_R_COIL / vsys_meas)
+    tpwm = 1.0 / fpwm
+    t_ustep = 1.0 / (pps * 8)
+    n_pwm = int(round(t_ustep / tpwm)) or 1
+    tr = {n: [] for n in ("MOT_A_IN1", "MOT_A_IN2", "MOT_B_IN1", "MOT_B_IN2")}
+    t = t_start
+    for u in range(n_full * 8 + 1):
+        th = math.radians(11.25 * u)
+        for coil, val in (("A", d_pk * math.cos(th)), ("B", d_pk * math.sin(th))):
+            hi, pw = (f"MOT_{coil}_IN1", f"MOT_{coil}_IN2") if val >= 0 else (f"MOT_{coil}_IN2", f"MOT_{coil}_IN1")
+            on = abs(val)
+            for p in range(n_pwm):
+                tp = t + p * tpwm
+                tr[hi].append((tp, 1))
+                if on >= 0.999:
+                    tr[pw].append((tp, 0))
+                elif on <= 0.001:
+                    tr[pw].append((tp, 1))
+                else:
+                    tr[pw].append((tp, 0))
+                    tr[pw].append((tp + on * tpwm, 1))
+        t += n_pwm * tpwm
+    return {n: _pwl(v, edge=20e-9) for n, v in tr.items()}, t, d_pk
+
+
+MICRO_CASES = [("VBAT3.7-25C", "VBAT3.7", 25, None), ("VBUS5.0-25C", "VBUS5.0", 25, None),
+               ("VBAT3.7-60C", "VBAT3.7", 60,
+                "DESIGN ISSUE: the firmware's sine microstepping uses a fixed 20.3 Ohm coil in d = I x R / VSYS and a "
+                "160 mA peak, so the hot coil (60 C, 22.8 Ohm) gets < 160 mA and the torque vector (1/sqrt2 of full "
+                "step) falls below the 0.5 N load budget")]
+
+
+@pytest.mark.parametrize("cid,supname,temp,xf", [pytest.param(*c, marks=[pytest.mark.xfail(strict=True, reason=c[-1])]
+                                                              if c[-1] else [], id=c[0]) for c in MICRO_CASES])
+def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
+    """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS. Checks the VM ripple
+    from the 25 kHz current pulses, VSYS peak, BAT pin, link current and the torque-vector magnitude."""
+    sup = SUP[supname]
+    pps, n_full = 446, 2
+    t_on, t_e = 50e-6, 50e-6 + FW_WAKE_WAIT
+    ctrl, t_end, d_pk = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)
+    ctrl["MOT_NSLEEP"] = _pwl([(t_on, 1)])
+    deck = new_deck(f"microstep {cid}")
+    power(deck, main, base, sup, temp)
+    drivers(deck, main, temp, rds=RDS_MAX, ke=KE_MAX, pps=pps, t0=t_e - 0.5 / pps, tg=t_e, tstop=t_end)
+    for net, pts in ctrl.items():
+        gpio_out(deck, main, net, pts)
+    deck.tran("0.1u", f"{t_end:.6g}", 0, "0.2u")
+    vs = main.node("VSYS")
+    deck.wave("i(via)", "i(vib)", f"v({vs})", "v(nb_vbat)", "i(vlink)")
+    res = deck.run()
+    check_ran(res)
+    w = res["waves"]
+    t1 = t_e + 1.0 / pps                                # after the first full step
+    t, ia = window(w, "i(via)", t1, t_end)
+    _, ib = window(w, "i(vib)", t1, t_end)
+    _, v = window(w, f"v({vs})", t1, t_end)
+    _, il = window(w, "i(vlink)", t1, t_end)
+    ivec = tavg(t, np.sqrt(ia ** 2 + ib ** 2))
+    check("PWM duty amplitude d_peak", d_pk, None, 1.0, "", f"{FW} §5.3 d = 160 mA x 20.3 Ohm / VSYS")
+    check("µstep current-vector magnitude", ivec, None, None, "A", "info")
+    f_micro = F_RATED * ivec / (math.sqrt(2) * I_RATED)
+    check("µstep thrust estimate (vs 2-phase-on rating)", f_micro, F_NEED, None, "N",
+          "detent research load <= 0.5 N; rating assumed 2-2 phase full step (sqrt2 x I_rated vector)")
+    check("VM ripple pk-pk, 25 kHz PWM", float(v.max() - v.min()), None, None, "V", "info")
+    check("VM (VSYS) max, 25 kHz PWM", float(v.max()), None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max")
+    check("link current per VSYS contact, 25 kHz PWM", float(il.max()) * SHARE_WORST, None, JST_I_CONTACT, "A",
+          "JST SH 1 A/contact (SPEC §2)")
+    if not sup.usb:
+        _, vb = window(w, "v(nb_vbat)", t1, t_end)
+        check("BAT pin min, 25 kHz PWM", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V")
+
+
+# ------------------------------------------------ nSLEEP wake timing
+def wake_run(main, base, v3, scale=None, vih_k=0.46):
+    deck = new_deck("nSLEEP wake")
+    power(deck, main, base, SUP["VBAT3.7"], 25, v3=v3)
+    deck += main.passives(nets={"MOT_NSLEEP", "GND"}, scale=scale)
+    drivers(deck, main, 25, twake=TWAKE_MAX)
+    # vih_k: the DRV8837 model's own threshold param is fixed per instance; the level check below uses the max
+    t_on = 20e-6
+    t_e = t_on + FW_WAKE_WAIT
+    ctrl = {"MOT_NSLEEP": _pwl([(t_on, 1)]), "MOT_A_IN1": _pwl([(t_e, 1)]), "MOT_A_IN2": 0, "MOT_B_IN1": 0,
+            "MOT_B_IN2": 0}
+    for net, c in ctrl.items():
+        gpio_out(deck, main, net, c)
+    t_stop = t_e + FW_PRE_ENERGISE
+    deck.tran("1u", f"{t_stop:.6g}", 0, "2u")
+    ns = main.node("MOT_NSLEEP")
+    deck.meas(f"tran vns FIND v({ns}) AT={t_on + 200e-6:.6g}")
+    deck.meas(f"tran t_act WHEN v(xu40.en)=0.5 RISE=1")
+    deck.meas(f"tran i_end FIND i(via) AT={t_stop:.6g}")
+    deck.wave("i(via)")
+    res = deck.run()
+    assert not res["_errors"], res["_errors"][:5]
+    w = res["waves"]
+    i_end = res.get("i_end", 0.0)
+    above = np.nonzero(w["i(via)"] >= 0.9 * i_end)[0] if i_end > 1e-3 else []
+    res["t90"] = float(w["time"][above[0]]) if len(above) else float("inf")
+    return res, t_on, t_e, t_stop
+
+
+@pytest.mark.parametrize("v3", [2.9, 3.3])
+def test_nsleep_wake(main, base, check, v3):
+    """MOT_NSLEEP driven by P1.15 (standard drive, VOH spec as 800 Ohm) into R70 || 2x RPD (100 kOhm each, inside
+    U40/U41). R70 tolerance corners (extremes). The firmware waits 1 ms after nSLEEP and pre-energises 10 ms."""
+    for sc in main.extremes(["R70"]):
+        res, t_on, t_e, t_stop = wake_run(main, base, v3, scale=sc)
+        tag = f"R70 x{sc['R70']:.2f}, +3V3 {v3} V"
+        check(f"nSLEEP high level ({tag})", res.get("vns"), VIH_K_MAX * v3, None, "V", f"{DS_DRV} Table 6.5 VIH max")
+        t_act = res.get("t_act", float("inf")) - t_on
+        check(f"bridge active after nSLEEP edge ({tag})", t_act, None, FW_WAKE_WAIT, "s",
+              f"{FW} §5.2 1 ms wait (>= {DS_DRV} Table 6.6 twake 30 us)")
+        t90 = res.get("t90", float("inf")) - t_e
+        check(f"coil current settles (90 %) within the pre-energise ({tag})", t90, None, FW_PRE_ENERGISE, "s",
+              f"{FW} §5.2 energise 10 ms")
+        check(f"coil A current reaches the run level ({tag})", res.get("i_end"), 0.5 * I_RATED, None, "A",
+              f"{SRC_RES}: drive must actually energise")
+
+
+@pytest.mark.fault
+def test_fault_r70_wrong_value_is_detected(main, base, check):
+    """Fault: R70 fitted as 100 Ohm instead of 100 kOhm (value typo). P1.15 cannot pull nSLEEP above VIH: the
+    drivers never wake. The nSLEEP-level check must catch it."""
+    main.override("R70", "100")
+    res, t_on, t_e, t_stop = wake_run(main, base, 3.3)
+    v = res.get("vns")
+    assert v is not None and v < VIH_K_MAX * 3.3, f"fault not detected: nSLEEP = {v} V"
+    i_end = res.get("i_end", 0.0)
+    assert abs(i_end) < 0.5 * I_RATED, f"fault not detected: coil current {i_end} A"
+    check("FAULT R70=100: nSLEEP high level (must violate VIH)", v, None, VIH_K_MAX * 3.3, "V",
+          f"{DS_DRV} Table 6.5 VIH max (fault detected when below)")
+
+
+@pytest.mark.fault
+def test_fault_c70_solder_short_is_detected(main, base, check):
+    """Fault: a solder bridge across C70 (VM bypass, 0402) shorts VSYS to GND. The link / SYS current checks used
+    by the hold test must flag it."""
+    main.short("C70")
+    deck = new_deck("C70 short")
+    power(deck, main, base, SUP["VBAT3.7"], 25)
+    deck.op()
+    deck.print_op("i(vlink)")
+    res = deck.run()
+    check_ran(res)
+    ilink = res["op_0"]
+    assert ilink * SHARE_WORST > JST_I_CONTACT and ilink > SYS_I_DC, f"fault not detected: {ilink} A"
+    check("FAULT C70 short: SYS current (must exceed 1.5 A)", ilink, SYS_I_DC, None, "A",
+          f"{DS_BQ} Table 7.1 SYS DC 1.5 A (fault detected when above)")
+
+
+@pytest.mark.fault
+def test_fault_motor_connector_bridge_trips_ocp(main, base, check):
+    """Fault: J40 pins 1-2 (A+/A-, 1.0 mm pitch) solder-bridged. OUT1-OUT2 short: current must exceed IOUT, OCP must
+    shut the bridge off within tDEG and retry after tRETRY (DS 7.3.5.2)."""
+    deck = new_deck("J40 1-2 bridge")
+    power(deck, main, base, SUP["VBAT4.2"], 25)
+    drivers(deck, main, 25)
+    deck += f"Rbridge {main.pin('J40', '1')} {main.pin('J40', '2')} 0.02"
+    t_on = 20e-6
+    for net, c in {"MOT_NSLEEP": _pwl([(t_on, 1)]), "MOT_A_IN1": _pwl([(100e-6, 1)]), "MOT_A_IN2": 0,
+                   "MOT_B_IN1": 0, "MOT_B_IN2": 0}.items():
+        gpio_out(deck, main, net, c)
+    a1 = main.pin("U40", "OUT1")
+    deck += f"Vsh {a1} {a1}_s 0"
+    deck.tran("20n", "1.5m", 0, "50n")
+    deck.meas("tran ipk MAX v(xu40.ih1)")
+    deck.meas("tran t_off WHEN v(xu40.ok)=0.5 FALL=1")
+    deck.meas("tran t_retry WHEN v(xu40.ok)=0.5 RISE=1")
+    res = deck.run()
+    assert not res["_errors"], res["_errors"][:5]
+    ipk = res["ipk"]
+    assert ipk > IOUT_MAX, f"fault not detected: {ipk} A"
+    check("FAULT J40 bridge: peak OUT current (must exceed IOUT)", ipk, IOUT_MAX, None, "A",
+          f"{DS_DRV} Table 6.3 IOUT 1.8 A (fault detected when above)")
+    check("OCP retry interval", res["t_retry"] - res["t_off"], 0.8e-3, 1.3e-3, "s", f"{DS_DRV} Table 6.5 tRETRY 1 ms")
+
+
+# ------------------------------------------------ DRV5032 HOME_N
+def hall_variant(d):
+    v = d._override.get("U42", d.comps["U42"]["value"]).upper()
+    for k in HALL:
+        if f"DRV5032{k}" in v:
+            return k
+    raise KeyError(v)
+
+
+def hall_run(d, *, ts, rpull=None, pullup=1, v3=3.3, bop=4.8, brp=0.5):
+    """Field steps: 0 -> B_PARK just after a sample (worst-case latency), then back to 0 just after a sample."""
+    deck = new_deck("DRV5032 HOME_N")
+    p3 = d.node("+3V3")
+    deck += [f"V3v3 n3v3src 0 DC {v3}", f"R3v3 n3v3src {p3} 0.05"]
+    deck += d.passives(nets={"+3V3", "GND"}, esr={"C": 0.01})
+    ton = 55e-6
+    t_on_field = ton + 1e-6
+    t_off_field = ton + 2 * ts + 1e-6
+    t_stop = ton + 3.2 * ts
+    deck += f"Vb bmt 0 PWL(0 0 {t_on_field:.9g} 0 {t_on_field + 1e-6:.9g} {B_PARK} {t_off_field:.9g} {B_PARK} " \
+            f"{t_off_field + 1e-6:.9g} 0)"
+    deck += (f"XU42 {d.pin('U42', 'VCC')} {d.pin('U42', 'OUT')} {d.pin('U42', 'GND')} bmt DRV5032 params: ts={ts} "
+             f"ton={ton} bop={bop} brp={brp} roh={HALL_ROH} rol={HALL_ROL}")
+    hn = d.node("HOME_N")
+    rp = f" rpull={rpull} pullup={pullup}" if rpull else ""
+    deck += f"XIN {hn} {p3} 0 NRF_GPIO_IN params: cpad=3p{rp}"
+    deck.tran("10u", f"{t_stop:.6g}", 0, "20u")
+    deck.meas(f"tran t_low WHEN v({hn})={NRF_VIL_K * v3} FALL=1 from={t_on_field:.9g}")
+    deck.meas(f"tran t_high WHEN v({hn})={NRF_VIH_K * v3} RISE=1 from={t_off_field:.9g}")
+    deck.meas(f"tran voh FIND v({hn}) AT={t_on_field - 2e-6:.9g}")
+    deck.meas(f"tran vol FIND v({hn}) AT={t_off_field - 1e-3:.9g}")
+    deck.meas(f"tran vcc_min MIN v({d.pin('U42', 'VCC')})")
+    res = deck.run()
+    check_ran(res)
+    return res, t_on_field, t_off_field
+
+
+@pytest.mark.parametrize("load", ["netlist", "nrf-pullup-13k", "nrf-pulldown-13k"])
+def test_home_n_levels_and_latency(main, check, load):
+    """HOME_N: DRV5032FA push-pull into P1.14 (netlist: no external pull; firmware: input, no pull). Also with the
+    nRF internal pull (13 kOhm typ) enabled by mistake. Levels against the nRF VIH/VIL, output current against the
+    DRV5032 limit, and the worst-case latency (field change just after a sample, tS max) against the firmware's
+    HOME edge-window lag allowance."""
+    var = hall_variant(main)
+    ts_max = HALL[var]["ts"][2]
+    rp = {"netlist": None, "nrf-pullup-13k": (13e3, 1), "nrf-pulldown-13k": (13e3, 0)}[load]
+    res, t_on, t_off = hall_run(main, ts=ts_max, rpull=rp[0] if rp else None, pullup=rp[1] if rp else 1)
+    v3 = 3.3
+    check("HOME_N high (no magnet)", res["voh"], NRF_VIH_K * v3, None, "V", f"{DS_NRF} VIH 0.7 VDD; {DS_HALL} VOH")
+    check("HOME_N low (magnet parked)", res["vol"], None, NRF_VIL_K * v3, "V", f"{DS_NRF} VIL 0.3 VDD; {DS_HALL} VOL")
+    iout = max(v3 - res["voh"], res["vol"]) / min(HALL_ROH, HALL_ROL)
+    check("DRV5032 output current", iout, None, HALL_IOUT_MAX, "A", f"{DS_HALL} Table 6.3 IO")
+    lat_on = res["t_low"] - t_on
+    lat_off = res["t_high"] - t_off
+    check("HOME_N assert latency (worst phase, tS max)", lat_on, None, FW_HOME_LAG, "s",
+          f"{FW} §5.4 lag allowance 0.075 s ({DS_HALL} tS max {ts_max * 1e3:.0f} ms)")
+    check("HOME_N release latency (worst phase, tS max)", lat_off, None, FW_HOME_LAG, "s", f"{FW} §5.4 lag allowance")
+    check("DRV5032 VCC min during the 2.7 mA sample pulse", res["vcc_min"], 1.65, None, "V",
+          f"{DS_HALL} Table 6.3 VCC min")
+
+
+@pytest.mark.fault
+def test_fault_wrong_hall_variant_is_detected(main, check):
+    """Fault: U42 populated as DRV5032FB (5 Hz, tS up to 286 ms) instead of FA. The latency check must catch it."""
+    main.override("U42", "DRV5032FBDBZR")
+    var = hall_variant(main)
+    assert var == "FB"
+    ts_max = HALL[var]["ts"][2]
+    res, t_on, t_off = hall_run(main, ts=ts_max)
+    lat = res["t_low"] - t_on
+    assert lat > FW_HOME_LAG, f"fault not detected: latency {lat} s"
+    check("FAULT FB variant: HOME_N latency (must exceed 75 ms)", lat, FW_HOME_LAG, None, "s",
+          f"{FW} §5.4 lag allowance (fault detected when above)")

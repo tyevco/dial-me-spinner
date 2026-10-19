@@ -1,0 +1,56 @@
+* =====================================================================================================
+* power_integrity__bq25180.lib -- BQ25180 power path (IN -> SYS, BAT <-> SYS) and open-drain outputs
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments BQ25180YBGR, I2C 1-cell 1 A linear charger with power path and ship mode
+* Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf   SLUSE99C (Sept 2021, revised Jan 2023)
+*
+* MODELLED (defaults are the datasheet typicals; the tests pass min/max corner values as params):
+*   VSYSREG  4.5 V    SYS regulation target, SYS_REG = 0x40 (Table 8-3, Table 8-19); accuracy +/-2 %
+*                     (7.5 VSYS_REG_ACCURACY) -> tests use 4.41 / 4.59 V corners
+*   ILIM     0.475 A  input current limit, TMR_ILIM 500 mA code: 450 / 475 / 498 mA (7.5 ILIM);
+*                     100 mA code: 80 / 90 / 98 mA
+*   RON_IN   0.27 Ohm input FET IN->SYS, 270 typ / 470 max mOhm at 1 A (7.5 RON_IN)
+*   RON_BAT  0.055 Ohm battery FET BAT<->SYS, 55 typ / 90 max mOhm (7.5 RON_BAT)
+*   VBSUP1   40 mV    supplement mode: BAT feeds SYS when VSYS < VBAT - 40 mV (7.5 VBSUP1, 8.3.3);
+*                     the supplement current is unregulated (only RON_BAT limits it)
+*   VDPPM    0.1 V    charge current is reduced when VSYS < VBAT + 100 mV (7.5 VDPPM, 8.3.2)
+*   VINDPM   4.2 V    CHARGECTRL0 = 0x20 (7.5 VINDPM, +/-3 %): input current is cut when VIN < VINDPM
+*   VIN valid         VIN > VIN_UVLOZ (3.0 V) and VIN > VBAT + VSLEEPZ (135 mV typ) (7.5, 8.3.4 SYS_MODE = 00);
+*                     otherwise SYS runs from BAT with the BATFET fully on (8.1)
+*   ICHG     0.4 A    charge current, ICHG_CTRL = 0x43 (firmware); CV at VBATREG 4.20 V (VBAT_CTRL = 0x46)
+*   /INT, SDA open-drain low: VOL <= 0.4 V at 5 mA sink (7.5 I2C INTERFACE / LOGIC PINS) -> RON_OD = 80 Ohm
+*
+* NOT MODELLED (on purpose, so that a violation is MEASURED by the tests instead of being hidden by a
+* model-internal shutdown):
+*   - BUVLO cut-off (VBUVLO 3.0 V for BUVLO = 010, 7.5; deglitch tBUVLO 60 us, 7.6): the tests measure V(BAT)
+*   - BATOCP hiccup (IBAT_OCP 1.5 A typ for IBAT_OCP = 10, 7.5 and 8.3.7.5): the tests measure I(BAT)
+*   - SYS discharge absolute maximum 1.5 A DC / 2.5 A < 20 ms (7.1): the tests measure I(SYS)
+* Also not modelled: VIN OVP, SYS OVP (105 % of target), SYS short protection, thermal regulation (TREG),
+*   TS/NTC, ship mode, the I2C state machine, quiescent currents (uA), the 25 Ohm SYS pull-down, and the
+*   regulation-loop dynamics (the DS gives no loop bandwidth: the SYS/ILIM/DPPM loops act instantly here,
+*   so SYS transients come only from the capacitors and the wiring).
+* =====================================================================================================
+
+.subckt BQ25180_PP IN SYS BAT VSS params: VSYSREG=4.5 ILIM=0.475 RON_IN=0.27 RON_BAT=0.055
++ VBSUP1=0.04 VDPPM=0.1 VINDPM=4.2 VSLEEPZ=0.135 VUVLOZ=3.0 ICHG=0.4 VBATREG=4.2
++ GREG=50 GDO=1000 GCHG=20 GCV=20
+* VIN-valid flag (0..1, 10 mV smoothing)
+Bok ok VSS V = { min(1, max(0, min(v(IN,VSS) - VUVLOZ, v(IN,VSS) - v(BAT,VSS) - VSLEEPZ)/0.01 + 0.5)) }
+Rok ok VSS 1meg
+* VINDPM: input current folds back when VIN falls to the VINDPM target (20 mV window)
+Bdpm dpm VSS V = { min(1, max(0, (v(IN,VSS) - VINDPM)/0.02)) }
+Rdpm dpm VSS 1meg
+* input path: RON_IN, then a current source limited by ILIM, by the SYS regulation loop and by dropout
+Rin IN nin {RON_IN}
+Bin nin SYS I = { v(ok,VSS) * min(ILIM*v(dpm,VSS), min(GREG*max(0, VSYSREG - v(SYS,VSS)), GDO*max(0, v(nin,SYS)))) }
+* charge current (only with a valid input): DPPM-limited at VBAT + VDPPM, CV at VBATREG
+Bichg ichg VSS V = { min(ICHG, min(GCHG*max(0, v(SYS,VSS) - v(BAT,VSS) - VDPPM), GCV*max(0, VBATREG - v(BAT,VSS)))) }
+Richg ichg VSS 1meg
+* battery FET: fully on (bidirectional RON_BAT) on battery only; supplement diode + charger with VIN valid
+Bbat BAT SYS I = { (1 - v(ok,VSS)) * v(BAT,SYS)/RON_BAT + v(ok,VSS) * (max(0, v(BAT,SYS) - VBSUP1)/RON_BAT - v(ichg,VSS)) }
+.ends BQ25180_PP
+
+* open-drain output held low (/INT or SDA): VOL <= 0.4 V at 5 mA -> 80 Ohm worst case
+.subckt BQ25180_OD_LOW PIN VSS params: RON_OD=80
+Rod PIN VSS {RON_OD}
+.ends BQ25180_OD_LOW

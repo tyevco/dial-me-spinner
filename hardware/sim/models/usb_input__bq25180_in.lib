@@ -1,0 +1,26 @@
+* =====================================================================================================
+* usb_input__bq25180_in.lib  -  BQ25180 IN pin (input port only), base board U1 ball A2
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments BQ25180YBGR
+* Datasheet : SLUSE99C (September 2021, revised January 2023), https://www.ti.com/lit/ds/symlink/bq25180.pdf
+* Vendor model: TI publishes no SPICE/PSpice model for the BQ25180 (the product page offers none), so
+*             this is a behavioural model of what the USB input network sees at IN.
+*
+* Modelled:
+*   IQ_IN    input quiescent current 0.75 mA typ / 1 mA max at VIN = 5 V (Table 7.5)   -> param iq
+*            drawn only above VIN_UVLOZ (exit UVLO, 3.0 V max, Table 7.5)
+*   IIN      current through the input FET to SYS/BAT once the power path is up       -> param iin
+*            (a constant-current sink = the ILIM loop; ILIM 500 mA setting 450..498 mA,
+*            1050 mA setting 995..1100 mA, IIN max 1.1 A: Tables 7.1 / 7.4 / 7.5).  The tests use
+*            iin = 0 for plug-in transients: the input FET is still off while the device qualifies
+*            the source, and no load is the least-damped (worst) case for ringing.
+* NOT modelled: VIN_OVP (5.5/5.7/5.9 V, Table 7.5) and VINDPM loops, input-FET soft start, SYS/BAT
+*   side, the IN pin's internal ESD structure (not specified; the tests compare the IN node voltage
+*   with the -0.3 / 25 V absolute maximum of Table 7.1), pin capacitance (negligible next to C1).
+* Pins: IN, GND
+* =====================================================================================================
+.subckt USBIN_BQ25180_IN IN GND params: iq=0.75m iin=0
+* smooth enable above UVLO (3.0 V), ~50 mV wide, so DC sweeps stay continuous
+Bin IN GND I=(iq+iin)*0.5*(1+tanh((v(IN,GND)-3.0)/0.05))
+Rleak IN GND 10Meg
+.ends USBIN_BQ25180_IN

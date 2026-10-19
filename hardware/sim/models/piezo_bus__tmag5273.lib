@@ -1,0 +1,35 @@
+* =====================================================================================================
+* piezo_bus__tmag5273.lib : TI TMAG5273 digital I/O (SDA, SCL input, open-drain INT), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : TI TMAG5273A2QDBVR (U30), SOT-23-6
+* Datasheet : TI SLYS045C (June 2021, revised April 2026), https://www.ti.com/lit/ds/symlink/tmag5273.pdf
+* Modelled:
+*   * Open-drain pull-down (SDA, INT): level-1 NMOS calibrated to VOL = 0.4 V at IOUT = 2 mA
+*     (Table 5.5 "VOL Output LOW voltage, SDA, INT pin, IOUT = 2 mA, max 0.4 V"), i.e. the weakest
+*     part that still meets the spec. Gate drive = vg (the TMAG VCC = +3V3).
+*   * Off-state leakage IOZ = +/-100 nA max (Table 5.5, VOZ = 5.5 V): DC current source ioz from the pin
+*     to gnd (positive = pulls the line down, the worst case for a pull-up's high level).
+*   * Pin capacitance ci = 10 pF: the TMAG5273 datasheet gives none, so the I2C-bus limit for any device
+*     pin is used (NXP UM10204 Rev 7.0 Table 10, Ci max 10 pF).
+*   * SCL is input-only on this part: use TMAG5273_IN (capacitance + leakage).
+*   * The pins are 5.5 V tolerant (abs max VOUT/VIN 7 V, Table 5.1): no clamp to VCC; only the NMOS body
+*     diode to GND.
+* Limits the tests apply (not in the model): VIH 0.7*VCC / VIL 0.3*VCC (Table 5.3), IOUT <= 2 mA
+*   (Table 5.3 recommended), tINT = 10 us INT pulse (Table 5.5), fI2C 400 kHz / 1 MHz Fm+ with input rise
+*   ticr 300 ns / ticr_fmp 120 ns (Table 5.10), tmeasure 50 us min conversion (Table 5.11, CONV_AVG=000b).
+* NOT modelled: the I2C state machine, output fall-time control (tFALL_INT 6 ns typ), temperature drift.
+* =====================================================================================================
+.subckt TMAG5273_OD pin gnd on params: iol=2m vol=0.4 vg=3.3 ci=10p ioz=100n vt=0.5
+.param kpr=1m
+.param wn={iol/kpr/((vg-vt)*vol-vol*vol/2)*1u}
+MN pin gn gnd gnd NTMAG W={wn} L=1u
+.model NTMAG NMOS level=1 vto={vt} kp={kpr} lambda=0 gamma=0
+BGN gn gnd V = {vg}*min(max(V(on,gnd),0),1)
+CI pin gnd {ci}
+ILK pin gnd DC {ioz}
+.ends TMAG5273_OD
+
+.subckt TMAG5273_IN pin gnd params: ci=10p ioz=100n
+CI pin gnd {ci}
+ILK pin gnd DC {ioz}
+.ends TMAG5273_IN

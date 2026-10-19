@@ -1,0 +1,32 @@
+* =====================================================================================================
+* charger_ts__ncp15xh103.lib -- Murata NCP15XH103F03RC 10 kOhm NTC thermistor (base board RT1, on TS/MR)
+* -----------------------------------------------------------------------------------------------------
+* Part:       Murata NCP15XH103F03RC, 0402, XH material (LCSC C77131)
+* Datasheet:  Murata "Product Search Data Sheet" NCP15XH103F03RC, last updated 08/29/2021
+*             (https://www.murata.com/en-us/products/productdetail?partno=NCP15XH103F03RC)
+*             R-T table: Murata NCP15XH103 specification as reproduced in the Linux kernel
+*             drivers/hwmon/ntc_thermistor.c table ncpXXxh103[] ("from the specification of Murata").
+*             The table reproduces the datasheet B constants: B25/50 = 3379 K (DS 3380 K),
+*             B25/80 = 3428 K (DS 3428 K ref), B25/100 = 3455 K (DS 3455 K ref).
+* Modelled:
+*   R25        = r25 (taken from the netlist value of RT1, "10k B3435" -> 10 kOhm)
+*   R(T)/R25   = Murata table, -40..125 C in 5 C steps, log-linear interpolation in temper
+*                (temper = ngspice circuit temperature, so ".dc temp" / ".temp" move the NTC)
+*   dr         = R25 tolerance (fraction), DS +-1 % (F suffix)
+*   db         = B-constant tolerance (fraction), DS B25/50 +-1 %; applied as ln(R/R25) * (1 + db)
+*   bnet       = B value written in the schematic (netlist "B3435" = Murata XH B25/85 nominal).
+*                The table is for B25/85 = 3435 K; a different schematic B scales ln(R/R25) by bnet/3435,
+*                so a schematic change of RT1 (e.g. to a B3950 part) moves every simulated threshold.
+* NOT modelled: self-heating (DS dissipation constant 1 mW/C: 60 uA into 10 kOhm heats it by < 0.04 C),
+*   thermal lag to the cell (RT1 reads board/pack-air temperature, SPEC 8), ageing drift, the part's
+*   ~0.1 pF parasitic capacitance, DS max operating current 0.1 mA / max voltage 5 V (checked by the test).
+* =====================================================================================================
+.subckt CTS_NCP15XH103 a b params: r25=10k bnet=3435 dr=0 db=0
+B1 a b I = V(a,b) / (r25*(1+dr)*exp((bnet/3435)*(1+db)*pwl(temper,
++ -40,2.973752, -35,2.695782, -30,2.427869, -25,2.169728, -20,1.920402, -15,1.679896,
++ -10,1.447060, -5,1.220594, 0,1.001330, 5,0.789411, 10,0.583667, 15,0.383492,
++ 20,0.189049, 25,0.000000, 30,-0.184524, 35,-0.364131, 40,-0.538882, 45,-0.709887,
++ 50,-0.876830, 55,-1.039872, 60,-1.199317, 65,-1.352473, 70,-1.501481, 75,-1.647659,
++ 80,-1.790360, 85,-1.929643, 90,-2.065144, 95,-2.198225, 100,-2.328929, 105,-2.455736,
++ 110,-2.579657, 115,-2.700082, 120,-2.820100, 125,-2.935578)))
+.ends CTS_NCP15XH103

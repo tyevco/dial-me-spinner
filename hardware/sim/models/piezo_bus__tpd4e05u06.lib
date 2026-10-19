@@ -1,0 +1,22 @@
+* =====================================================================================================
+* piezo_bus__tpd4e05u06.lib : TI TPD4E05U06 ESD protection, one I/O channel, behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : TI TPD4E05U06DQAR (U32, USON-10), clamps TMAG_SCL / TMAG_SDA / TMAG_INT_N at the TMAG5273
+* Datasheet : TI SLVSBO7O (December 2012, revised August 2024), https://www.ti.com/lit/ds/symlink/tpd4e05u06.pdf
+* Modelled (section 5.4 Electrical Characteristics):
+*   * Line capacitance CL = 0.5 pF typ (DQA package, VIO = 2.5 V, f = 1 MHz, I/O to GND); the tests may
+*     raise it by the 0.07 pF max channel variation (delta CIO-TO-GND). No max CL is published.
+*   * Leakage ILEAK = 10 nA max at VIO = 2.5 V, 25 C: DC current source pin -> gnd (param ileak). Figure 5-5
+*     (typical) rises from ~5 pA at 25 C to ~20 pA at 60 C; the tests scale the 10 nA max by 4x at 60 C.
+*   * Clamp: one diode, cathode on the I/O and anode on GND: reverse breakdown BV = 6.5 V (VBR min at
+*     1 mA) for positive strikes, forward conduction below about -0.6 V for negative ones
+*     (Figure 5-1 shows conduction below about -0.8 V). VRWM 5.5 V, so it never conducts on a 3.3 V bus.
+* NOT modelled: TLP/IEC dynamic resistance (RDYN 0.8 ohm), channel-to-channel capacitance (0.01 pF typ),
+*   bias dependence of CL.
+* =====================================================================================================
+.subckt TPD4E05U06_CH io gnd params: cl=0.5p ileak=10n
+CL io gnd {cl}
+ILK io gnd DC {ileak}
+DCLP gnd io DTPDZ
+.model DTPDZ D(IS=1e-15 N=1.0 BV=6.5 IBV=1m RS=1)
+.ends TPD4E05U06_CH

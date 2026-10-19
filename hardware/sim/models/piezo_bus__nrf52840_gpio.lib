@@ -1,0 +1,46 @@
+* =====================================================================================================
+* piezo_bus__nrf52840_gpio.lib : nRF52840 GPIO pad (output driver + pad), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : Nordic nRF52840 (inside Raytac MDBT50Q-U1MV2, U10)
+* Datasheet : nRF52840 Product Specification 4413_417 v1.1 (2019-02-28),
+*             https://docs.nordicsemi.com/bundle/ps_nrf52840/ (local copy of v1.1 used; later revisions
+*             could not be downloaded: Cloudflare challenge)
+* Modelled (all values from PS v1.1 section 6.9.3.1 "GPIO Electrical Specification" unless noted):
+*   * Output driver = level-1 PMOS (pull-up) + NMOS (pull-down). W is calibrated so that the transistor
+*     carries exactly the specified current at |VDS| = 0.4 V with |VGS| = vddc (the simulated VDD):
+*       standard drive  IOH,SD / IOL,SD   min 1 / typ 2 / max 4 mA   (VDD >= 1.7 V)
+*       high drive      IOH,HDH           min 6 / typ 9 / max 14 mA  (VDD >= 2.7 V)
+*                       IOL,HDH           min 6 / typ 10 / max 15 mA (VDD >= 2.7 V)
+*     The caller passes ioh/iol for the corner it wants (weakest = min, strongest = max).
+*   * Pad capacitance CPAD = 3 pF typ (CPAD_NFC = 4 pF typ on the NFC pads P0.09/P0.10).
+*   * Drive modes: onp/onn are logic controls (0..1 V relative to gnd). Push-pull S0S1/H0H1: onp = in,
+*     onn = 1 - in. Open-drain S0D1/H0D1 (TWIM uses S0D1, PS Table 121): onp = 0, onn = 1 - in.
+*     Disconnected / high-Z: onp = onn = 0.
+*   * ESD clamp diodes pad->vdd and gnd->pad (generic IS = 1e-15, RS = 10 ohm). The PS gives only the
+*     absolute-maximum pin voltage (-0.3 V .. VDD + 0.3 V, Table 173), not the clamp I-V.
+* NOT modelled:
+*   * input thresholds (VIH 0.7*VDD, VIL 0.3*VDD) and Schmitt hysteresis: the tests compare node voltages
+*     against these limits;
+*   * input leakage (not specified in PS v1.1), internal pull-up/down (RPU/RPD 11-16 kohm, unused here);
+*   * real saturation behaviour: level-1 with VT = 0.5 V saturates at ~3.8x the 0.4 V current, which is
+*     conservative (high) for peak-current checks; edge-rate control (tRF/tHRF) is set by the ramp of the
+*     onp/onn control sources (5 ns ~ tHRF,25pF, 13 ns ~ tRF,25pF);
+*   * temperature: the PS min/max drive figures already cover the operating range, so the corners are
+*     applied directly (TEMP = TNOM in all decks).
+* =====================================================================================================
+.subckt NRF52840_GPIO pad vdd gnd onp onn params: ioh=9m iol=10m vddc=3.3 cpad=3p vt=0.5
+.param kpr=1m
+.param den={(vddc-vt)*0.4-0.08}
+.param wp={ioh/kpr/den*1u}
+.param wn={iol/kpr/den*1u}
+MP pad gp vdd vdd PNRF W={wp} L=1u
+MN pad gn gnd gnd NNRF W={wn} L=1u
+.model PNRF PMOS level=1 vto={-vt} kp={kpr} lambda=0 gamma=0
+.model NNRF NMOS level=1 vto={vt} kp={kpr} lambda=0 gamma=0
+BGN gn gnd V = V(vdd,gnd)*min(max(V(onn,gnd),0),1)
+BGP gp gnd V = V(vdd,gnd)*(1-min(max(V(onp,gnd),0),1))
+CPAD pad gnd {cpad}
+DESDH pad vdd DNRFESD
+DESDL gnd pad DNRFESD
+.model DNRFESD D(IS=1e-15 N=1.0 RS=10)
+.ends NRF52840_GPIO

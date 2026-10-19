@@ -1,0 +1,133 @@
+* =====================================================================================================
+* motor_drive__drv8837.lib -- behavioural model of the TI DRV8837 low-voltage H-bridge (IN/IN interface)
+*
+* Part      : DRV8837DSGR (U40, U41 on the main board)
+* Datasheet : https://www.ti.com/lit/ds/symlink/drv8837.pdf  SLVSBA4F (June 2012, revised April 2021)
+* No vendor SPICE model is public for the DRV8837 (TI offers none on the product page), so this file is
+* written from the datasheet tables.
+*
+* Modelled (value, datasheet reference):
+*   - Truth table, Table 7-1: nSLEEP=0 -> Z/Z; 00 coast Z/Z; 10 H/L; 01 L/H; 11 brake L/L.
+*   - HS+LS on-resistance rDS(on) = 280 mOhm typ / 330 mOhm max at 25 C, IO = 800 mA (Table 6.5),
+*     split equally between the high- and low-side FET. Temperature drift from Figure 6-7
+*     (VM = 5 V, VCC = 3 V curve: about 280 mOhm at -40 C, 290 at 25 C, 345 at 85 C):
+*     +0.32 %/K above 25 C, +0.05 %/K below 25 C (params tc_hot, tc_cold, temp_c).
+*   - Input thresholds as fractions of VCC (Table 6.5): VIH rising 0.46*VCC typ (0.5 max), VIL falling
+*     0.38*VCC typ (0.25 min); hysteresis = VIH - VIL. Params vih_k, vil_k.
+*   - Input pulldowns RPD = 100 kOhm typ on IN1, IN2 and nSLEEP (Table 6.5, section 7.3.4).
+*   - Wake: the bridge becomes active twake after nSLEEP rises (6.6 Timing: twake <= 30 us max).
+*     The model uses param twake (default 30 us = the datasheet maximum, i.e. the slow corner).
+*   - Output rise/fall about 100 ns (6.6: t11/t12 30-188 ns, t9/t10 <= 160 ns delay), as a 60 ns RC on
+*     the internal gate signals.
+*   - VCC UVLO (Table 6.5 / 7-4): bridge disabled below 1.7 V falling, enabled above 1.8 V rising.
+*   - OCP (7.3.5.2, Table 6.5): analog current limit per FET (modelled at 1.1 x iocp with a soft clamp
+*     I = (V/R) / (1 + (|V/R|/ilim)^4)^(1/4), < 0.5 % error below 0.8 A), deglitch tDEG = 1 us, then all
+*     FETs off for tRETRY = 1 ms. IOCP = 1.9 A min / 3.5 A max;
+*     param iocp (default 1.9 A = the lowest trip level, the corner that trips first).
+*   - Supply currents (Table 6.5): IVM 0.8 mA typ with 50 kHz PWM (1.5 max), IVMQ 30 nA typ asleep;
+*     IVCC 0.7 mA typ with PWM, IVCCQ 5 nA typ asleep.
+*
+* NOT modelled (and why it does not matter for the motor_drive tests, or what it would change):
+*   - Body diodes: the datasheet gives no forward-voltage figure. A generic power-MOSFET body diode is
+*     used (IS = 1e-12, N = 1.2, RS = 50 mOhm: Vf about 0.8 V at 0.2 A, CJO 50 pF, TT 10 ns). This only
+*     sets how far the OUT pins swing beyond the rails during coast and how fast the coil current decays.
+*   - Dead time / shoot-through, gate charge, the charge pump ramp, the analog current-limit loop
+*     dynamics, thermal shutdown (TSD 150 C min is checked by calculation in the tests, not modelled),
+*     rDS(on) dependence on VM / VCC below the VM = 5 V, VCC = 3 V test condition (Figure 6-7 shows it
+*     roughly doubles at VM = VCC = 2 V; the tests use the max column to cover it).
+* =====================================================================================================
+
+.model d_drv8837_body D(IS=1e-12 N=1.2 RS=0.05 CJO=50p TT=10n BV=20)
+
+.subckt DRV8837 VM VCC IN1 IN2 NSLEEP OUT1 OUT2 GND
++ params: rds=0.28 temp_c=25 tc_hot=0.0032 tc_cold=0.0005 vih_k=0.46 vil_k=0.38 rpd=100k
++ twake=30u iocp=1.9 tdeg=1u tretry=1m ivm_on=0.8m ivcc_on=0.7m
+
+.param rdst = {rds*(1 + (temp_c > 25 ? tc_hot : tc_cold)*(temp_c - 25))}
+.param rhalf = {rdst/2}
+.param ilim = {1.1*iocp}
+
+* ---- input pulldowns (RPD, Table 6.5) and a 1 pF pin capacitance
+RPD1 IN1 GND {rpd}
+RPD2 IN2 GND {rpd}
+RPD3 NSLEEP GND {rpd}
+CIN1 IN1 GND 1p
+CIN2 IN2 GND 1p
+CIN3 NSLEEP GND 1p
+
+* ---- Schmitt inputs: threshold = VIH while the state is low, VIL while it is high (smooth tanh edge)
+Bl1 l1x GND V = 0.5*(1 + tanh((V(IN1,GND) - V(VCC,GND)*(vih_k - (vih_k - vil_k)*V(l1)))/0.01))
+Rl1 l1x l1 1k
+Cl1 l1 GND 10p
+Bl2 l2x GND V = 0.5*(1 + tanh((V(IN2,GND) - V(VCC,GND)*(vih_k - (vih_k - vil_k)*V(l2)))/0.01))
+Rl2 l2x l2 1k
+Cl2 l2 GND 10p
+Bls lsx GND V = 0.5*(1 + tanh((V(NSLEEP,GND) - V(VCC,GND)*(vih_k - (vih_k - vil_k)*V(ls)))/0.01))
+Rls lsx ls 1k
+Cls ls GND 10p
+
+* ---- VCC UVLO: off below 1.7 V (falling), on above 1.8 V (rising)
+Buv uvx GND V = 0.5*(1 + tanh((V(VCC,GND) - (1.8 - 0.1*V(uv)))/0.01))
+Ruv uvx uv 1k
+Cuv uv GND 10p
+
+* ---- wake timer: 'act' charges with tau = twake/ln2 while nSLEEP is high (crosses 0.5 at twake),
+*      discharges in about 1 us when nSLEEP goes low or VCC drops below UVLO
+Bwk GND act I = 1n*( V(ls)*V(uv)*(1 - V(act))*0.6931/twake - (1 - V(ls)*V(uv))*V(act)/1u )
+Cwk act GND 1n
+Rwk act GND 1G
+Ben en GND V = 0.5*(1 + tanh((V(act) - 0.5)/0.02))
+
+* ---- overcurrent: FET currents (same expressions as the switches below)
+Bih1 ih1 GND V = V(ghs1)*(V(VM,OUT1)/rhalf)/pow(1 + pow(min(abs(V(VM,OUT1)/rhalf)/ilim, 1e3), 4), 0.25)
+Bil1 il1 GND V = V(gls1)*(V(OUT1,GND)/rhalf)/pow(1 + pow(min(abs(V(OUT1,GND)/rhalf)/ilim, 1e3), 4), 0.25)
+Bih2 ih2 GND V = V(ghs2)*(V(VM,OUT2)/rhalf)/pow(1 + pow(min(abs(V(VM,OUT2)/rhalf)/ilim, 1e3), 4), 0.25)
+Bil2 il2 GND V = V(gls2)*(V(OUT2,GND)/rhalf)/pow(1 + pow(min(abs(V(OUT2,GND)/rhalf)/ilim, 1e3), 4), 0.25)
+Bimx imx GND V = max(max(abs(V(ih1)), abs(V(il1))), max(abs(V(ih2)), abs(V(il2))))
+Boc oc GND V = 0.5*(1 + tanh((V(imx) - iocp)/0.02))
+* deglitch: 'dg' crosses 0.5 after tdeg of continuous overcurrent
+Bdg GND dg I = 1n*( V(oc)*(1 - V(dg))*0.6931/tdeg - (1 - V(oc))*V(dg)/200n )
+Cdg dg GND 1n
+Rdg dg GND 1G
+* retry timer: 'flt' jumps to 1 when dg > 0.5, then ramps down linearly and re-enables after tretry
+Bdgs dgsx GND V = 0.5*(1 + tanh((V(dg) - (0.5 - 0.4*V(dgs)))/0.02))
+Rdgs dgsx dgs 1k
+Cdgs dgs GND 1p
+Bflt GND flt I = 1n*( V(dgs)*(1.05 - V(flt))/5n - (1 - V(dgs))*(0.5/tretry)*tanh(V(flt)/0.01) )
+Cflt flt GND 1n
+Rflt flt GND 1G
+Bok ok GND V = 0.5*(1 - tanh((V(flt) - 0.5)/0.02))
+
+* ---- gate commands (Table 7-1), filtered to give the ~100 ns output edges
+Bc1 chs1 GND V = V(en)*V(ok)*V(l1)*(1 - V(l2))
+Bc2 cls1 GND V = V(en)*V(ok)*V(l2)
+Bc3 chs2 GND V = V(en)*V(ok)*V(l2)*(1 - V(l1))
+Bc4 cls2 GND V = V(en)*V(ok)*V(l1)
+Rg1 chs1 ghs1 1k
+Cg1 ghs1 GND 60p
+Rg2 cls1 gls1 1k
+Cg2 gls1 GND 60p
+Rg3 chs2 ghs2 1k
+Cg3 ghs2 GND 60p
+Rg4 cls2 gls2 1k
+Cg4 gls2 GND 60p
+
+* ---- power switches: rhalf each, bidirectional, soft-limited at ilim
+Bhs1 VM OUT1 I = V(ih1)
+Bls1 OUT1 GND I = V(il1)
+Bhs2 VM OUT2 I = V(ih2)
+Bls2 OUT2 GND I = V(il2)
+* off-state leakage (IOFF <= 200 nA) as 100 MOhm
+Rof1 OUT1 GND 100Meg
+Rof2 OUT2 GND 100Meg
+
+* ---- body diodes (drain-source of each FET)
+Dh1 OUT1 VM d_drv8837_body
+Dl1 GND OUT1 d_drv8837_body
+Dh2 OUT2 VM d_drv8837_body
+Dl2 GND OUT2 d_drv8837_body
+
+* ---- supply currents
+Bivm VM GND I = ivm_on*V(en) + 30n*(1 - V(en))
+Bivc VCC GND I = ivcc_on*V(en) + 5n*(1 - V(en))
+.ends DRV8837

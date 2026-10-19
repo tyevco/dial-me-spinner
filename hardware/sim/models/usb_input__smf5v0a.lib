@@ -1,0 +1,50 @@
+* =====================================================================================================
+* usb_input__smf5v0a.lib  -  SMF5.0A 200 W unidirectional TVS (SOD-123FL), base board D1 (VBUS -> GND)
+* -----------------------------------------------------------------------------------------------------
+* Part      : Littelfuse SMF5.0A (MPN on the base netlist; LCSC C151296)
+* Datasheet : Littelfuse "TVS Diodes Surface Mount - 200W > SMF Series", Revised 06/07/17
+*             https://www.littelfuse.com/assetdocs/tvs-diodes-smf-datasheet  (LCSC mirror C151296)
+* Cross-ref : Vishay SMF5V0A..SMF58A datasheet Rev. 2.4, 04-Jul-2023, doc 85881
+*             https://www.vishay.com/doc?85881  (same SOD-123FL / DO-219AB die family)
+* Vendor model: Littelfuse publishes no SPICE model for the SMF series. Vishay's family library
+*             https://www.vishay.com/docs/86542/spice_vishay_smf5v0a-to-smf58a.zip (rev 24.09.2024)
+*             contains NO SMF5V0A entry (first entry is SMF6V0A), so this is a datasheet fit that
+*             reuses the Vishay family structure (forward diode with BV + soft-leakage reverse diode,
+*             CJ shape M = 0.39 / VJ = 0.92 from their SMF6V0A, "RS without heating").
+*
+* Modelled (Littelfuse table "Electrical Characteristics", TA = 25 C, unless noted):
+*   VBR      6.40 V min / 7.00 V max at IT = 10 mA          -> param vbr (default 6.70 = mid)
+*   VC       9.2 V max at IPP = 21.7 A (10/1000 us)          -> param rd: rd = (9.2 - 7.0)/21.7 = 0.101 ohm
+*            makes the vbr = 7.00 corner meet VC exactly (heating included = worst case for a clamp).
+*            Fast (ns..us) pulses see the unheated die: Vishay family model RS = 0.02 ohm -> rd = 0.02.
+*   IR       400 uA max at VR = 5.0 V (Littelfuse; Vishay: 5 uA max) -> param ilk = leakage at 5.0 V,
+*            nlk = its emission coefficient (Vishay family: 13). For ilk = 400u, nlk = 22 keeps the
+*            leakage at 6.40 V below 5 mA so the VBR min (6.40 V at 10 mA) entry still holds.
+*   VF       forward: Littelfuse Fig. 7 (IF 0.01 A @ 0.72 V, 10 A @ ~1.5 V, 25 A @ ~2.65 V)
+*            -> IS = 9.7e-12, N = 1.34, RS = 0.066 ohm
+*   CJ       Littelfuse Fig. 6: ~800 pF at VR = 0 V for VBR = 6.4 V (Vishay table 1120 pF typ);
+*            the lower Littelfuse value is used (less charge absorbed = conservative for ESD).
+*   IPP 21.7 A (10/1000 us), PPPM 200 W, IEC 61000-4-2 30 kV contact: ratings, checked in the tests.
+*
+* NOT modelled:
+*   - VBR temperature coefficient (not given in either datasheet; Vishay's family models carry no TBV1),
+*     so VBR is temperature-independent; leakage and VF follow the SPICE default IS(T) law (Littelfuse
+*     Fig. 5 shows VF falling ~1.5 mV/C, which the default EG/XTI reproduces to first order).
+*   - self-heating during long pulses (rd corner 0.101 ohm bounds it), package/lead inductance (the
+*     tests add layout inductance explicitly), turn-on delay (DS: < 1 ns from 0 V to VBR min).
+*
+* Pins: K = cathode (pin 1, VBUS on the base board), A = anode (pin 2, GND).
+* Corners used by the tests: typ (vbr 6.70, rd 0.02), clamp-max (vbr 7.00, rd 0.101),
+*                            clamp-min/leak-max (vbr 6.40, rd 0.02, ilk 400u, nlk 22).
+* =====================================================================================================
+.subckt USBIN_SMF5V0A K A params: vbr=6.70 rd=0.02 ilk=5u nlk=13 cj0=800p
+* forward conduction (anode -> cathode), Littelfuse Fig. 7 fit, junction capacitance Fig. 6
+Dfwd  A K USBIN_SMF5V0A_DF
+* reverse breakdown: IS tiny and N = 3 so this diode does not take part in forward conduction
+Dbrk  A K USBIN_SMF5V0A_DZ
+* soft reverse leakage (Vishay family topology: reverse-oriented high-N diode), scaled to ilk at 5.0 V
+Dlk   K A USBIN_SMF5V0A_DL
+.model USBIN_SMF5V0A_DF D(IS=9.7e-12 N=1.34 RS=0.066 CJO={cj0} M=0.39 VJ=0.92 TT=0)
+.model USBIN_SMF5V0A_DZ D(IS=1e-20 N=3 RS={rd} BV={vbr} IBV=10m NBV=0.5 CJO=0)
+.model USBIN_SMF5V0A_DL D(IS={ilk/exp(5.0/(nlk*0.025865))} N={nlk} RS=0 CJO=0)
+.ends USBIN_SMF5V0A
