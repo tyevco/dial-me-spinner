@@ -239,6 +239,8 @@ class BoardBuilder:
                         fld.SetVisible(False)
             if c["props"].get("dnp") is not None or c["fields"].get("DNP"):
                 fp.SetDNP(True)
+            if "exclude_from_bom" in c["props"]:
+                fp.SetAttributes(fp.GetAttributes() | pcbnew.FP_EXCLUDE_FROM_BOM | pcbnew.FP_EXCLUDE_FROM_POS_FILES)
             self.board.Add(fp)
             x, y, rot, side = placement.get(ref, default)
             if side == "B":
@@ -258,6 +260,12 @@ class BoardBuilder:
         fp.SetPosition(vec(x, y))
         self.board.Add(fp)
         return fp
+
+    def set_origin(self, x, y):
+        """Drill/place (aux) origin, used for gerber and pick-and-place coordinates."""
+        ds = self.board.GetDesignSettings()
+        ds.SetAuxOrigin(vec(x, y))
+        ds.SetGridOrigin(vec(x, y))
 
     def save(self, path, fill=True):
         """Save; zone filling only works on a board loaded from disk, so reload first."""

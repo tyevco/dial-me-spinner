@@ -286,6 +286,7 @@ def generate(board):
     comps, nets = pcbgen.load_netlist(netpath)
     bb = pcbgen.BoardBuilder(cfg["layers"], {LIB: os.path.join(pdir, "lib", LIB + ".pretty")})
     bb.rules(track=0.15, clearance=0.15, via=0.45, via_drill=0.25, edge=0.3)
+    bb.set_origin(CX, CY)
     power = [n for n in nets if n in ("VSYS", "VLED", "VBUS", "VBAT", "+3V3", "GND", "+13V_OLED", "OLED_VIN")
              or n.endswith("/VSYS")]
     bb.netclass("Power", [n for n in power if n != "GND"], track=0.4, clearance=0.15, via=0.6, via_drill=0.3)
