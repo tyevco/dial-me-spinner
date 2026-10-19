@@ -322,6 +322,11 @@ def add_fiducials(bb, placer, spots):
         fp = bb.board_only("Fiducial:Fiducial_1mm_Mask2mm", f"FID{i}", x, y, side)
         if not placer.place_near(fp, x, y, side, max_r=6, rotations=(0,)):
             print("WARN: no room for fiducial", fp.GetReference())
+        # the router does not see the fiducial's 0.6 mm pad clearance or its 2 mm mask opening: keep tracks and vias
+        # out of r 1.35 mm on its side (pad r 0.5 + 0.6 clearance + track margin; the mask opening is r 1.0)
+        px, py = pcbnew.ToMM(fp.GetPosition().x), pcbnew.ToMM(fp.GetPosition().y)
+        bb.keepout([pcbnew.B_Cu if side == "B" else pcbnew.F_Cu], bb.circle_pts(px, py, 1.35, 24), pads=False,
+                   pours=False, name=f"FID{i}_KEEPCLEAR")
 
 
 def pours_main(bb):
@@ -927,6 +932,16 @@ def dsn_plane_as_layer_rule(dsn, net="GND", layer="In1.Cu"):
         f.write("".join(out))
 
 
+def dsn_clearance_margin(dsn, margin_um=10):
+    """Freerouting approximates rotated pads (the 48 ring LEDs sit at 7.5° steps) with octagons and lands a few µm
+    inside KiCad's clearance; route with the plain clearances raised by margin_um so the result passes KiCad's DRC."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    s = re.sub(r"\(clearance ([0-9.]+)\)", lambda m: f"(clearance {float(m.group(1)) + margin_um:g})", s)
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write(s)
+
+
 def route(path, minutes=30, threads=1, optimizer_passes=20):
     """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
     Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
@@ -941,6 +956,7 @@ def route(path, minutes=30, threads=1, optimizer_passes=20):
         os.remove(ses)
     pcbgen.export_dsn(path, dsn)
     dsn_plane_as_layer_rule(dsn)
+    dsn_clearance_margin(dsn)
     with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
         subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mt", str(threads),
                         f"--router.job_timeout={minutes // 60:02d}:{minutes % 60:02d}:00",
