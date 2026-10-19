@@ -1514,6 +1514,12 @@ re-home, lost-step recovery, FAULT retry):
 | H4 final stall | Decelerate to **80 PPS, 50 % current**; step the remaining maximum + 20 steps of overdrive (100 learned, 114 default) | The carriage reaches the stop after 20–94 steps and slips for at least 20 more | |
 | H5 confirm | Read HOME | HOME asserted → back off 4 steps at run current, x = x_park = stop − 4 steps (7.42 mm nominal, T1 ≈ 3 µN·m), → SETTLE | HOME not asserted → failed attempt |
 
+* **x_park and SPEC.** SPEC §1 defines FREE as x ≥ 7.5 mm. With the park stop
+  exactly at 7.5 mm, the 4-step back-off leaves x = 7.42 mm and
+  T1 ≈ 3 µN·m, which is the residual the 7.5 mm stroke was sized for. Ask
+  the mechanical design for the park stop at x ≥ 7.58 mm (r ≤ 21.42 mm) so
+  that x_park itself is ≥ 7.5 mm; `stroke-steps` in [§3.1](#31-board-dts-draft)
+  then becomes the measured stop-to-stop count (TVP).
 * A failed attempt retries from H0 with every travel phase at 313 PPS, where
   the PM stepper has more thrust; after 3 failures go to FAULT (E_DET_HOME).
 * **Duration**: about 2 s from the click end (H2 ≤ 0.5 s, H3 about 0.3 s,
