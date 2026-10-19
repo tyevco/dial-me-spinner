@@ -53,6 +53,8 @@ SW_TR_K = {3.6: 1.6e-6, 5.0: 1.8e-6}    # s per pF of CT, Table 7.6 tR
 SW_SR_K = {3.6: 1900.0, 5.0: 2300.0}    # (mV/us)*pF, Table 7.6 SRON
 SW_QOD = 150.0          # Ohm typ, Table 7.5
 BQ_BATOCP = 1.5         # A, IBAT_OCP setting 10 (CHARGECTRL1 0x92, docs/architecture.md 6.5), Table 7.5
+BQ_BUVLO = 3.0          # V, VBUVLO setting 3.0 V (CHARGECTRL1 0x92), SLUSE99C Table 7.5; tBUVLO 60 us, Table 7.6
+FW_VBAT_FLOOR = 3.48    # V rested, docs/firmware.md 12.4: SHIP below 3.48 V (LEDs off except the red cue below 3.53 V)
 WS_VDD_MIN, WS_VDD_MAX = 3.3, 5.3      # V, WS2812C-2020-V6 DS p.2 supply range
 WS_VI_OVER_VDD = 0.7    # V, WS2812C-2020-V6 DS p.2 abs max VI <= VDD + 0.7 V
 W25_VCC_MIN = 2.7       # V, W25Q128JV DS VCC min (lowest +3V3 consumer, docs/architecture.md section 7 table)
@@ -190,8 +192,11 @@ def dcbias_caps(main, refs, scale=None, temp=25):
     """Charge-based voltage-dependent capacitors (one per node and MPN): Q(V) = C0 * integral(1 + dC(v)/100) dv with
     the Samsung DC-bias curve, C0 = sum of netlist values x tolerance multiplier x (1 + TCC(temp)/100).  ngspice:
     a linear part C0*kmin (kmin = smallest 1 + dC/100 up to 6 V) stays a real capacitor on the node (ngspice stalls at
-    the turn-off edge when a node has no linear capacitance); the rest, C0*(k(V) - kmin) >= 0, is an E source = its
-    normalised charge, a C0 capacitor across it, and that capacitor's current mirrored onto the node by F."""
+    the turn-off edge when a node has no linear capacitance); the rest, C0*(k(V) - kmin), is an E source = its
+    normalised charge, a C0 capacitor across it, and that capacitor's current mirrored onto the node by F.
+    k(V) - kmin is a degree-6 least-squares polynomial of the curve over 0..6 V (fit error asserted < 0.01 of C0);
+    a pwl() charge table makes the capacitance step at every breakpoint and Newton then chatters on a breakpoint."""
+    import numpy as np
     groups = {}
     for ref in refs:
         pins = main.pins[ref]
@@ -204,20 +209,23 @@ def dcbias_caps(main, refs, scale=None, temp=25):
         groups[key][2].append(ref)
     out = []
     for i, ((a, b, _), (data, c0, members)) in enumerate(groups.items()):
-        step = 0.05
-        grid = [j * step for j in range(int(round(6.0 / step)) + 1)]
-        kmin = min(1 + _interp(v, data["dcb"]) / 100 for v in grid)
-        q, pts = 0.0, [(-1.0, 0.0), (0.0, 0.0)]
-        for v in grid[1:]:
-            k0 = 1 + _interp(v - step, data["dcb"]) / 100 - kmin
-            k1 = 1 + _interp(v, data["dcb"]) / 100 - kmin
-            q += 0.5 * (k0 + k1) * step
-            pts.append((v, q))
-        tab = ", ".join(f"{x:.3g},{y:.6g}" for x, y in pts)
-        out += [f"* DC-bias capacitor group {i}: {' '.join(members)} (C0 {c0:.6g} F at {temp} C, kmin {kmin:.4f})",
+        grid = np.linspace(0.0, 6.0, 121)
+        k = np.array([1 + _interp(v, data["dcb"]) / 100 for v in grid])
+        kmin = float(k.min())
+        p = np.polyfit(grid, k - kmin, 6)
+        err = float(np.max(np.abs(np.polyval(p, grid) - (k - kmin))))
+        assert err < 0.01, f"DC-bias polynomial fit error {err:.4f} for {members}"
+        qpoly = np.polyint(p)                      # normalised charge, Q(0) = 0
+        horner = "0"
+        for c in qpoly:
+            horner = f"({horner})*x + ({c:.9g})"
+        out += [f"* DC-bias capacitor group {i}: {' '.join(members)} (C0 {c0:.6g} F at {temp} C, kmin {kmin:.4f}, "
+                f"fit error {err:.4f})",
+                f".func fdcb{i}(x) = '{horner}'",
                 f"CDCBL{i} {a} {b} {c0 * kmin:.6g}",
-                f"EDCB{i} n_dcb{i}_q 0 vol = 'pwl(V({a},{b}), {tab})'",
-                f"VDCB{i} n_dcb{i}_q n_dcb{i}_c 0",
+                f"EDCB{i} n_dcb{i}_q 0 vol = 'fdcb{i}(min(max(V({a},{b}), 0), 6))'",
+                f"VDCB{i} n_dcb{i}_q n_dcb{i}_m 0",
+                f"RDCB{i} n_dcb{i}_m n_dcb{i}_c {1e-6 / c0:.6g}",      # 1 us lag: an ideal source across C is stiff
                 f"CDCB{i} n_dcb{i}_c 0 {c0:.6g}",
                 f"FDCB{i} {a} {b} VDCB{i} 1"]
     return out
@@ -399,15 +407,25 @@ def u2_turn_on(main, base, corner, temp=25, t_on=0.5e-3, stop=8e-3):
     d.meas(f"tran vsysmin MIN v(n_vsys) FROM={t_on} TO={stop}")
     d.meas(f"tran iinrush MAX v(n_iu2) FROM={t_on} TO={stop}")
     d.meas(f"tran ibat MAX v(n_ibat) FROM={t_on} TO={stop}")
+    d.meas(f"tran vbatmin MIN v(xbq.bat) FROM={t_on} TO={stop}")
     d.meas(f"tran vledend FIND v(n_vled) AT={stop}")
     d.wave("v(n_vled)")
-    r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vledend"))
+    r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vbatmin", "vledend"))
     sane_vsys(r["vsys0"], corner)
     t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
-    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on)
-    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
+    # a rail that never reaches 10 % / 90 % inside the window counts as infinitely slow, so the tON / tR checks
+    # report it (a None here used to end the test in a TypeError instead of a check failure)
+    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on) or float("inf")
+    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on) or float("inf")
     r["t_on"] = t_on
     return r
+
+
+def _rise(r):
+    """(tON, tR) from a turn-on result; tR is inf when the 90 % point was never reached."""
+    ton = r["t90"] - r["t_on"]
+    tr = r["t90"] - r["t10"] if r["t90"] != float("inf") else float("inf")
+    return ton, tr
 
 
 def sane_vsys(v, corner):
@@ -419,7 +437,7 @@ def sane_vsys(v, corner):
 
 
 def check_u2_turn_on(check, main, r, tag, usb, vbat):
-    ton, tr = r["t90"] - r["t_on"], r["t90"] - r["t10"]
+    ton, tr = _rise(r)
     c7 = main.value("C7")
     check(f"U2 tON (ON -> VLED 90 %) {tag}", ton, None, FW_LED_WAIT, "s",
           "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN (SPEC 5.1 '~4 ms')")
@@ -523,20 +541,35 @@ def mpn_tol(main, ref):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: with C8/C9 at the "
-                   "+20 % of their MPN (CL21A226MAQNNNE) the QOD discharge through R4 + 150 R takes ~33 ms to 10 % "
-                   "(30.0 ms already at +10 %) (fix: R4 68 R, or a 35 ms firmware wait)")
+                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: from the 3.48 V "
+                   "firmware floor, with C8/C9 at the +20 % of their MPN (CL21A226MAQNNNE), the 48 x 100 nF at +10 % "
+                   "and R4 at +1 %, the QOD discharge through R4 + ~150 R still takes ~30.6 ms to 10 % WITH the Samsung "
+                   "DC-bias derating included (fix: R4 68 R, or a 35 ms firmware wait)")
 def test_u2_qod_discharge_tolerance_extremes(main, base, check):
-    """C8, C9, R4 at their tolerance corners (MPN tolerance; the 48 x 100 nF at nominal): slowest VLED discharge."""
-    refs = ["C8", "C9", "R4"]
+    """C8, C9, R4 at their tolerance corners (MPN tolerance) with the 48 x 100 nF (one reel) at +10 %, and every VLED
+    capacitor at its Samsung DC-bias / TCC capacitance at 25 C (the slowest temperature: TCC < 0 at -10 and 60 C).
+    Discharge from the lowest VSYS at which firmware still runs VLED (3.48 V rested, docs/firmware.md 12.4), where the
+    DC-bias derating helps least; the 4.2 V start (most derating) is recorded for the all-plus corner.  The discharge
+    time is monotonic in every R and C, so the 4.2 V run needs only that corner."""
+    small = [r for r in main.on_net("VLED", "C") if main.fitted(r) and r not in ("C8", "C9")]
+    src = ("docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'; C8/C9 CL21A226MAQNNNE +-20 %, "
+           "C101..C148 CL05B104KO5NNNC +-10 %; Samsung DC-bias/TCC curves")
     worst = 0.0
-    for sc in main.extremes(refs):
+    for sc in main.extremes(["C8", "C9", "R4"]):
         # extremes() uses the value-string tolerance; stretch each corner to the MPN tolerance
-        scaled(main, {r: 1 + (k - 1) * mpn_tol(main, r) / main.tol(r) for r, k in sc.items()})
-        worst = max(worst, u2_turn_off(main, base, "bat4.2", stop=45e-3, ideal_vsys=4.2)["t_off10"])
+        sc = {r: 1 + (k - 1) * mpn_tol(main, r) / main.tol(r) for r, k in sc.items()}
+        sc.update({r: 1 + mpn_tol(main, r) for r in small})
+        scaled(main, sc)
+        worst = max(worst, u2_turn_off(main, base, stop=45e-3, t_off=8e-3, ideal_vsys=FW_VBAT_FLOOR,
+                                       dcbias=True)["t_off10"])
         main.reset()
-    check("VLED to 10 % worst C8/C9/R4 corner (MPN tolerances)", worst, None, FW_LED_OFF, "s",
-          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'; C8/C9 CL21A226MAQNNNE +-20 %")
+    plus = {r: 1 + mpn_tol(main, r) for r in ["C8", "C9", "R4"] + small}
+    scaled(main, plus)
+    t42 = u2_turn_off(main, base, stop=45e-3, t_off=8e-3, ideal_vsys=4.2, dcbias=True)["t_off10"]
+    main.reset()
+    check("VLED to 10 %, all-plus corner incl. DC bias, from 4.2 V (record)", t42, None, None, "s", src)
+    check(f"VLED to 10 %, worst corner incl. DC bias, from the {FW_VBAT_FLOOR} V firmware floor", worst, None,
+          FW_LED_OFF, "s", src)
 
 
 @pytest.mark.slow
@@ -714,15 +747,16 @@ def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
     d.meas(f"tran vsysmin MIN v(n_vsys) FROM={t_on} TO={stop}")
     d.meas(f"tran iinrush MAX v(n_iu21) FROM={t_on} TO={stop}")
     d.meas(f"tran ibat MAX v(n_ibat) FROM={t_on} TO={stop}")
+    d.meas(f"tran vbatmin MIN v(xbq.bat) FROM={t_on} TO={stop}")
     d.meas(f"tran v13end FIND v({main.node('+13V_OLED')}) AT={stop}")
     d.meas(f"tran vinend FIND v({main.node('OLED_VIN')}) AT={stop}")
     d.wave(f"v({main.node('OLED_VIN')})", "v(n_iu21)", "v(n_u21_vin)")
-    r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "v13end", "vinend"))
+    r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vbatmin", "v13end", "vinend"))
     sane_vsys(r["vsys0"], corner)
     w = r["waves"]
     t, v = w["time"], w[f"v({main.node('OLED_VIN')})"]
-    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
-    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on)
+    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on) or float("inf")    # never reached -> inf (see u2)
+    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on) or float("inf")
     r["t_on"] = t_on
     # energy dissipated in U21 during the ramp: (VIN - VOUT) * I
     e = 0.0
@@ -741,11 +775,12 @@ def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
     r = u21_turn_on(main, base, corner, temp)
     tag = f"{corner} {temp}C"
     c = CORNERS[corner]
-    check(f"U21 tON (ON -> OLED_VIN 90 %) {tag}", r["t90"] - r["t_on"], None, FW_OLED_WAIT, "s",
+    ton, tr = _rise(r)
+    check(f"U21 tON (ON -> OLED_VIN 90 %) {tag}", ton, None, FW_OLED_WAIT, "s",
           "docs/architecture.md 7: 'set OLED_VCC_EN, wait >= 200 ms, then AFh'")
     c37 = main.value("C37")
     vin_k = 3.6 if r["vsys0"] < 4.3 else 5.0
-    check(f"U21 tR vs Table 7.6 x C37 {tag}", r["t90"] - r["t10"], 0.8 * SW_TR_K[vin_k] * c37 / 1e-12,
+    check(f"U21 tR vs Table 7.6 x C37 {tag}", tr, 0.8 * SW_TR_K[vin_k] * c37 / 1e-12,
           1.2 * SW_TR_K[vin_k] * c37 / 1e-12, "s",
           f"{DS_SW} Table 7.6 tR {SW_TR_K[vin_k] * 1e6:.1f} us/pF x C37 (+-20 %, VIN {vin_k} V row)")
     check(f"U21 inrush peak (boost soft start) {tag}", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
@@ -761,6 +796,21 @@ def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
               "docs/firmware.md POFWARN 2.9 V + nRF52840 PS VPOFTOL 5 % (firmware envelope VBAT >= 3.48 V)")
     check(f"OLED_VIN within TPS61040 VIN range after the ramp {tag}", r["vinend"], 1.8, 6.0, "V",
           f"{DS_BST} Table 5.3 VIN 1.8..6 V")
+
+
+@pytest.mark.parametrize("rail,temp", [("U21", -10), ("U21", 25), ("U2", -10)])
+def test_bat_pin_vs_buvlo_at_firmware_floor(main, base, check, rail, temp):
+    """Lowest battery at which firmware still switches the rails (3.48 V rested; below it SHIP, and below 3.53 V the
+    LED rail only carries the red cue): the BQ25180 BAT pin (cell minus pack/PCM/lead resistance) must stay above the
+    BUVLO setting during the turn-on surge, or the BATFET opens after tBUVLO = 60 us and the system browns out.
+    The U21 surge (boost soft start, ~0.4 A for ~1 ms) is far longer than 60 us, so the plain minimum is compared."""
+    CORNERS["_floor"] = dict(usb=0, vbat=FW_VBAT_FLOOR, vbus=0.0)
+    try:
+        r = (u21_turn_on if rail == "U21" else u2_turn_on)(main, base, "_floor", temp)
+    finally:
+        CORNERS.pop("_floor")
+    check(f"BQ25180 BAT pin min, {rail} turn-on at VBAT {FW_VBAT_FLOOR} V rested, {temp} C", r["vbatmin"], BQ_BUVLO,
+          None, "V", f"{DS_BQ} 7.5 VBUVLO 3.0 V (CHARGECTRL1 0x92), 7.6 tBUVLO 60 us; docs/firmware.md 12.4 SHIP < 3.48 V")
 
 
 # ======================================================================================== 7. U21 off: back-powering

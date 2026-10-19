@@ -40,14 +40,24 @@ cold (-10 C, same but copper colder). VBAT 3.0 / 3.7 / 4.2 V plus the firmware p
 4.5 / 5.0 / 5.5 V with SYS_REG -2 % / nominal / +2 %.
 
 What the simulation shows (rev A netlists; xfail tests carry the evidence):
-  * Uncapped (no firmware limit) the system draws ~1.33 A: VLED 3.06 V at VBAT 3.7 V worst corner and V(BAT)
-    below BUVLO at 3.0 V -> the firmware LED limiter is a hardware protection function.
-  * With the firmware AVERAGE caps every steady-state point passes (VLED >= 3.34 V worst corner).
+  * Uncapped (no firmware limit) the system draws ~1.33 A: VLED 3.05 V at VBAT 3.7 V worst corner, and at the
+    end of discharge (3.0 V) +3V3 falls below the flash minimum -> the firmware limiter is a protection function.
+  * With the firmware AVERAGE caps every steady-state point passes (VLED >= 3.33 V worst corner).
   * But the cap limits the average only: with all LEDs lit and their PWM aligned the ring pulls 0.72 A for
-    70-210 us, VLED falls to 3.10-3.25 V at VBAT <= 3.70 V; a peak (lit-channel) budget is derived per VBAT
+    70-210 us, VLED falls to 3.08-3.25 V at VBAT <= 3.70 V; a peak (lit-channel) budget is derived per VBAT
     (test_led_peak_budget_vs_vbat) and verified (test_proposed_peak_cap_fix).
   * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses).
   * Ground offset between the boards <= ~47 mV; the I2C low level seen by the BQ25180 is 0.30 V (VIL 0.4 V).
+  * Decoupling: BQ25180 SYS 20 uF local, 93.6 uF on both boards at +tol (Table 9-2 max 100 uF: little room to
+    add VSYS bulk); a hard VLED short is stopped only by BATOCP / the pack PCM (U2 has no current limit).
+
+Independent verification (verifier pass, see the 'verifier:' comments): TPS22917 hot-corner RON set to the DS
+band maximum; capacitor tolerances from the MPN letter (M = 20 %); per-board scale dicts (refs overlap between
+the boards); explicit tolerance factors replace the corner -tol instead of multiplying onto it; main-ground
+nodeset (the DC op no longer depends on source stepping); the 3.0 V uncapped corner judged on +3V3 instead of
+two physically impossible checks; VLED checked at the low-battery cue point; base caps in the Monte Carlo;
+datasheet decoupling check; fault tests for base SYS caps 10x low, main VSYS bulk left off, a single battery
+contact and a shorted LED.
 """
 
 from __future__ import annotations

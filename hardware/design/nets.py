@@ -29,7 +29,7 @@ MAIN_INTERSHEET = [
 MCU_PINS = {
     "P0.00": "XL1", "P0.01": "XL2",
     "P0.18": "NRESET", "SWDIO": "SWDIO", "SWDCLK": "SWDCLK", "P1.00": "SWO",
-    "D+": "USB_DP", "D-": "USB_DM", "VBUS": "VBUS",
+    "D+": "USB_DP", "D-": "USB_DM", "VBUS": "VBUS_NRF",   # VBUS_NRF: behind R12 (hot-plug overshoot)
     "VDD": "+3V3", "VDDH": "+3V3", "DCCH": None, "GND": "GND",
     "P0.17": "QSPI_CS", "P0.19": "QSPI_SCK", "P0.20": "QSPI_IO0", "P0.21": "QSPI_IO1",
     "P0.22": "QSPI_IO2", "P0.23": "QSPI_IO3",

@@ -152,11 +152,19 @@ def build(d):
     d.add("C11", "Device:C", "100n", C0402, pins={"1": "+3V3", "2": "GND"}, rot=0,
           fields={"MPN": "CL05B104KO5NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C1525"})
 
-    d.group("USB VBUS (module pad 32)", "4.7 uF keeps total VBUS capacitance\n"
-            "(+ BQ25180 IN 2.2 uF) below 10 uF.\n"
-            "D+/D- direct to link, no series R.")
-    d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS", "2": "GND"}, rot=0,
+    d.group("USB VBUS (module pad 32) and second-stage USB ESD",
+            "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\n"
+            "above the 5.8 V VBUS abs max; with 1.5-4.7 R the pin peaks at 5.5 V (hardware/sim test_usb_input).\n"
+            "2.2 R keeps RSOURCE,VBUS <= 2 R + cable (PS 5.3.8.6). C12 on the module side; total sink C < 10 uF.\n"
+            "U12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n"
+            "~145 nH link (HBM 2 kV class = 1.33 A). Place U12 within 3 mm of pads D+/D-, flow-through.")
+    d.add("R12", "Device:R", "2.2", R0402, pins={"1": "VBUS", "2": "VBUS_NRF"},
+          fields={"MPN": "FRC0402F2R20TS", "Manufacturer": "FOJAN", "LCSC": "C2909330"})
+    d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS_NRF", "2": "GND"}, rot=0,
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
+    d.add("U12", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",
+          pins={"1": "USB_DP", "6": "USB_DP", "3": "USB_DM", "4": "USB_DM", "5": "VBUS_NRF", "2": "GND"},
+          fields={"MPN": "USBLC6-2SC6", "Manufacturer": "STMicroelectronics", "LCSC": "C7519"})
 
     d.group("32.768 kHz LFXO", "SC-20S CL 9 pF; Ccap = 2*CL - Cpin - Cpcb ~ 12 pF C0G.\n"
             "R1 <= 90k (nRF RS_LFXO max 100k); DLmax 0.5 uW = nRF PD_LFXO.\n"
