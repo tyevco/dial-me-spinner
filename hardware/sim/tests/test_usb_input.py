@@ -354,7 +354,9 @@ class Net:
             L.append(f"X{p.tvs} {k} {a} USBIN_SMF5V0A {self.tvs_params()}")
         # charger IN
         L.append(f"VIin {branch[p.chg]} vin 0")
-        L.append(f"X{p.chg} vin 0 USBIN_BQ25180_IN iq={self.iq} iin={self.iin} resd={self.resd}")
+        # pin capacitance only when nothing else holds the IN node (see usb_input__bq25180_in.lib, CPIN)
+        cpin = "0" if any(b.fitted(r) for r in caps_on(b, {vb})) else "10p"
+        L.append(f"X{p.chg} vin 0 USBIN_BQ25180_IN iq={self.iq} iin={self.iin} resd={self.resd} cpin={cpin}")
         # caps on VBUS: each joins the branch of the nearest part pin on VBUS
         for ref in caps_on(b, {vb}):
             best = min((p.tvs, p.esd, p.chg, p.link_b),
@@ -407,8 +409,9 @@ class Net:
         L.append("VInrf_dp dpnrf dpnrf_i 0")
         L.append("VInrf_dm dmnrf dmnrf_i 0")
         L.append("VInrf_vb vnrf vnrf_i 0")
+        cvbus = "0" if any(m.fitted(r) for r in caps_on(m, nets_m)) else "3p"   # see usb_input__nrf52840_usb.lib
         L.append(f"X{p.mcu} vnrf_i dpnrf_i dmnrf_i 0 USBIN_NRF52840_USB ivbus={self.ivbus} vusb={self.vusb} "
-                 f"resd={self.resd}")
+                 f"resd={self.resd} cvbus={cvbus}")
         # second-stage USBLC6 on main (the USB-2 fix), if the schematic has one: placed at the nRF pads (no trace
         # inductance between it and the pads, as in the what-if tests), its VBUS pin on whichever VBUS net it uses
         nd = {p.nrf_dp: "dpnrf", p.nrf_dm: "dmnrf", p.dp_m: "dpnrf", p.dm_m: "dmnrf", p.nrf_vbus: "vnrf",

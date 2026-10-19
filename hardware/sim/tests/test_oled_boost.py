@@ -172,7 +172,7 @@ def soft_checks(check, rows):
 
 
 def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=None, derate=True,
-          icc=ICC_LIGHT, en="on", t_en=20e-6, init="steady", vcc0=None):
+          icc=ICC_LIGHT, en="on", t_en=20e-6, init="steady", vcc0=None, vsys_pwl=None):
     """ngspice deck for the whole OLED supply path, parts and connections taken from the main-board netlist.
 
     icc   : panel VCC current in mA (number) or a list of (t, mA) PWL points
@@ -197,7 +197,7 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
     deck.options = [o for o in deck.options if "reltol" not in o] + ["option reltol=1e-3", "option method=gear",
                                                                        f"temp {temp:g}"]
     # supplies: VSYS through the BATFET + harness, +3V3 (VCI) always on
-    deck += f"VSRC n_vsys_src 0 {vsys}"
+    deck += f"VSRC n_vsys_src 0 {pwl(vsys_pwl) if vsys_pwl else vsys}"   # vsys_pwl: line transient (starts at vsys)
     deck += f"RSRC n_vsys_src {n['VSYS']} {R_SRC:.6g}"
     deck += f"V3V3 {n['+3V3']} 0 3.3"
     # OLED_VCC_EN from nRF P1.02 (standard drive, ~100 ohm)
@@ -538,6 +538,34 @@ def test_load_steps(main, check):
     for (vs, i0, i1, _), r in pmap(one, jobs):
         rows += [(f"VCC min after {i0}->{i1} mA step, VSYS {vs} V", r["vmin"], VCC_MIN, None, "V", SRC_VCC),
                  (f"VCC max after {i0}->{i1} mA step, VSYS {vs} V", r["vmax"], None, VCC_MAX, "V", SRC_VCC)]
+    soft_checks(check, rows)
+
+
+SRC_LINE = ("NHD rev 3 VCC 12.5-13.5 V; line steps: USB unplug / plug-in moves VSYS between SYS_REG 4.6 V and "
+            "VBAT (BQ25180 SLUSE99C 8.3.3 supplement), battery sag 0.2 V at 0.8 A (architecture.md 8.4)")
+
+
+def test_line_transients(main, check):
+    """VSYS steps with the panel at full white (42 mA, typical TPS61040) and at light load with the strong corner:
+    USB unplug 4.6 -> 3.7 V and plug-in 3.7 -> 4.6 V (10 us edges), LED-burst sag 3.8 -> 3.6 V (1 us edges)."""
+    t0, t1 = 0.3e-3, 0.6e-3
+
+    def step(a, b, tr):
+        return [(0, a), (t0, a), (t0 + tr, b), (t1, b), (t1 + tr, a)]
+    jobs = [("USB unplug/plug", 4.6, 3.7, 10e-6, ICC_100_MAX, U20_TYP),
+            ("USB unplug/plug, light", 4.6, 3.7, 10e-6, ICC_LIGHT, U20_STRONG),
+            ("battery sag", 3.8, 3.6, 1e-6, ICC_100_MAX, U20_TYP)]
+
+    def one(job):
+        tag, a, b, tr, icc, u20 = job
+        deck = build(main, f"line {tag}", vsys=a, vsys_pwl=step(a, b, tr), icc=icc, derate=True, u20=dict(u20))
+        deck.meas(f"tran vmin MIN v(n_p13v_oled) FROM={t0:.6g} TO={t1 + 0.3e-3:.6g}")
+        deck.meas(f"tran vmax MAX v(n_p13v_oled) FROM={t0:.6g} TO={t1 + 0.3e-3:.6g}")
+        return job, run(deck, t1 + 0.3e-3)
+    rows = []
+    for (tag, a, b, tr, icc, _), r in pmap(one, jobs):
+        rows += [(f"VCC min, VSYS {a} <-> {b} V ({tag}), {icc} mA", r["vmin"], VCC_MIN, None, "V", SRC_LINE),
+                 (f"VCC max, VSYS {a} <-> {b} V ({tag}), {icc} mA", r["vmax"], None, VCC_MAX, "V", SRC_LINE)]
     soft_checks(check, rows)
 
 

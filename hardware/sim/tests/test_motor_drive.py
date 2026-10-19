@@ -91,9 +91,14 @@ FW_HOME_WINDOW = FW_HOME_LAG + FW_HOME_M / FW_HOME_PPS   # 97.4 ms: the edge mus
 NRF_VIH_K, NRF_VIL_K = 0.7, 0.3          # nRF52840 PS VIH min / VIL max
 NRF_ROUT = 800.0                         # VOH,SD >= VDD - 0.4 V at 0.5 mA (standard drive)
 
-HALL = {  # DRV5032 Table 6.5: tS (min, typ, max) by variant; BOP/BRP Table 6.6 (FA/FB: 1.5/3/4.8, 0.5/1.5/3 mT)
-    "FA": dict(ts=(27e-3, 50e-3, 75e-3)),
-    "FB": dict(ts=(117e-3, 200e-3, 286e-3)),
+HALL = {  # DRV5032 SOT-23 omnipolar variants. Table 4-1: output type (od = open-drain); Table 6.5: tS (min, typ,
+    # max); Table 6.6: BOP max / BRP min (the corners that assert last / release last). FC differs from the fitted FA
+    # only in the output type, so it is the plausible substitution error (verifier addition: FC, AJ, ZE).
+    "FA": dict(ts=(27e-3, 50e-3, 75e-3), od=0, bop=4.8, brp=0.5),
+    "FB": dict(ts=(117e-3, 200e-3, 286e-3), od=0, bop=4.8, brp=0.5),
+    "FC": dict(ts=(27e-3, 50e-3, 75e-3), od=1, bop=4.8, brp=0.5),
+    "AJ": dict(ts=(27e-3, 50e-3, 75e-3), od=1, bop=9.5, brp=3.0),
+    "ZE": dict(ts=(27e-3, 50e-3, 75e-3), od=1, bop=63.0, brp=30.0),
 }
 HALL_TACT = 40e-6
 HALL_IOUT_MAX = 5e-3                     # DRV5032 Table 6.1 / 6.3 output current
@@ -107,6 +112,21 @@ TEMPS = (-10, 25, 60)
 
 LIBS = ("motor_drive__drv8837.lib", "motor_drive__stepper.lib", "motor_drive__bq25180.lib",
         "motor_drive__nrf52840_gpio.lib", "motor_drive__drv5032.lib")
+
+# MLCC DC-bias derating (verifier addition; replaces a flat x0.5 that was optimistic for the 0603 10 V parts).
+# Samsung Electro-Mechanics characterization data, 25 C, Delta C in % at 0, 0.5, 1.0, ..., 6.0 V DC, read from the
+# DC-bias graph of each part's product page (weblib.samsungsem.com/mlcc/mlcc-ec.do?partNumber=<MPN>, retrieved
+# 2026-10-19). The MPN comes from the netlist (first 14 characters, without the packaging suffix), so a BOM change to
+# an MPN that is not listed here fails loudly instead of being simulated with a guessed derating.
+MLCC_DCBIAS = {
+    "CL21A226MAQNNN": (0.0, 1.1, -1.1, -6.9, -13.5, -20.7, -28.1, -35.0, -41.0, -46.5, -51.3, -55.5, -59.2),
+    "CL10A106KP8NNN": (0.0, -3.0, -10.9, -22.1, -33.0, -42.5, -51.2, -58.3, -63.5, -68.0, -71.7, -74.8, -77.5),
+    "CL21A106KAYNNN": (0.0, -0.6, -2.7, -7.3, -12.7, -19.3, -26.4, -33.1, -39.5, -45.2, -50.3, -54.8, -58.8),
+    "CL10A106MA8NRN": (0.0, -0.7, -3.6, -9.2, -15.5, -22.6, -29.9, -36.6, -42.6, -48.1, -52.8, -57.0, -60.7),
+    "CL05B104KO5NNN": (0.0, 0.1, 0.2, -0.2, -0.8, -1.8, -3.1, -4.5, -6.1, -7.8, -9.5, -11.3, -13.1),
+}
+V_DCBIAS_KICK = 5.0       # turn-off kick: the middle of the 4.6 -> 5.5 V swing the SYS abs-max check covers
+SRC_DCBIAS = "Samsung SEM DC-bias data (25 C) per netlist MPN; tolerance from the MPN code (K 10 %, M 20 %)"
 
 
 class Supply:
@@ -819,14 +839,15 @@ def test_fault_motor_connector_bridge_trips_ocp(main, base, check):
 
 # ------------------------------------------------ DRV5032 HOME_N
 def hall_variant(d):
+    # Design has no public accessor for an overridden value string (harness request); read it the same way value() does
     v = d._override.get("U42", d.comps["U42"]["value"]).upper()
     for k in HALL:
         if f"DRV5032{k}" in v:
             return k
-    raise KeyError(v)
+    raise KeyError(f"U42 = {v}: DRV5032 variant not in the HALL table (add its Table 4-1 / 6.5 / 6.6 data)")
 
 
-def hall_run(d, *, ts, rpull=None, pullup=1, v3=3.3, bop=4.8, brp=0.5):
+def hall_run(d, *, ts, rpull=None, pullup=1, v3=3.3, bop=4.8, brp=0.5, od=0):
     """Field steps: 0 -> B_PARK just after a sample (worst-case latency), then back to 0 just after a sample."""
     deck = new_deck("DRV5032 HOME_N")
     p3 = d.node("+3V3")
@@ -839,7 +860,7 @@ def hall_run(d, *, ts, rpull=None, pullup=1, v3=3.3, bop=4.8, brp=0.5):
     deck += f"Vb bmt 0 PWL(0 0 {t_on_field:.9g} 0 {t_on_field + 1e-6:.9g} {B_PARK} {t_off_field:.9g} {B_PARK} " \
             f"{t_off_field + 1e-6:.9g} 0)"
     deck += (f"XU42 {d.pin('U42', 'VCC')} {d.pin('U42', 'OUT')} {d.pin('U42', 'GND')} bmt DRV5032 params: ts={ts} "
-             f"ton={ton} bop={bop} brp={brp} roh={HALL_ROH} rol={HALL_ROL}")
+             f"ton={ton} bop={bop} brp={brp} roh={HALL_ROH} rol={HALL_ROL} od={od}")
     hn = d.node("HOME_N")
     deck += d.passives(refs=[r for r in d.on_net("HOME_N") if r[0] in "RC"])   # any pull / filter on HOME_N
     rp = f" rpull={rpull} pullup={pullup}" if rpull else ""
@@ -862,9 +883,11 @@ def test_home_n_levels_and_latency(main, check, load):
     DRV5032 limit, and the worst-case latency (field change just after a sample, tS max) against the firmware's
     HOME edge-window lag allowance."""
     var = hall_variant(main)
-    ts_max = HALL[var]["ts"][2]
+    hv = HALL[var]
+    ts_max = hv["ts"][2]
     rp = {"netlist": None, "nrf-pullup-13k": (13e3, 1), "nrf-pulldown-13k": (13e3, 0)}[load]
-    res, t_on, t_off = hall_run(main, ts=ts_max, rpull=rp[0] if rp else None, pullup=rp[1] if rp else 1)
+    res, t_on, t_off = hall_run(main, ts=ts_max, rpull=rp[0] if rp else None, pullup=rp[1] if rp else 1,
+                                bop=hv["bop"], brp=hv["brp"], od=hv["od"])
     v3 = 3.3
     check("HOME_N high (no magnet)", res["voh"], NRF_VIH_K * v3, None, "V", f"{DS_NRF} VIH 0.7 VDD; {DS_HALL} VOH")
     check("HOME_N low (magnet parked)", res["vol"], None, NRF_VIL_K * v3, "V", f"{DS_NRF} VIL 0.3 VDD; {DS_HALL} VOL")
@@ -894,3 +917,19 @@ def test_fault_wrong_hall_variant_is_detected(main, check):
     assert lat > FW_HOME_WINDOW, f"fault not detected: latency {lat} s"
     check("FAULT FB variant: HOME_N latency (must exceed the 97 ms window)", lat, FW_HOME_WINDOW, None, "s",
           f"{FW} §5.4 edge window (fault detected when above)")
+
+
+@pytest.mark.fault
+def test_fault_open_drain_hall_variant_is_detected(main, check):
+    """Fault (verifier addition): U42 populated as DRV5032FC, which has the same SOT-23 footprint, 4.8 mT omnipolar
+    thresholds and 20 Hz rate as the FA but an OPEN-DRAIN output. HOME_N has no pull-up in the netlist and P1.14 is
+    'input, no pull' (firmware.md §1.3), so with no magnet HOME_N leaks to GND (IOZ) and reads as 'parked'. The
+    HOME_N high-level check of test_home_n_levels_and_latency must catch it."""
+    main.override("U42", "DRV5032FCDBZR")
+    hv = HALL[hall_variant(main)]
+    assert hv["od"] == 1
+    res, t_on, t_off = hall_run(main, ts=hv["ts"][2], bop=hv["bop"], brp=hv["brp"], od=hv["od"])
+    v = res["voh"]
+    assert v < NRF_VIH_K * 3.3, f"fault not detected: HOME_N high level {v} V"
+    check("FAULT FC (open-drain) variant: HOME_N with no magnet (must violate VIH)", v, None, NRF_VIH_K * 3.3, "V",
+          f"{DS_NRF} VIH 0.7 VDD; {DS_HALL} Table 4-1 open-drain, Table 6.5 IOZ (fault detected when below)")

@@ -10,9 +10,10 @@
 *   VBUS load    IUSB,ACTIVE,VBUS 2.4 mA typ (PS 6.35.14.1)                        -> param ivbus
 *                drawn above VBUS,DETECT (4.0 V typ, PS 5.3.8.7)
 *   D+/D- pads   CPAD 3 pF (PS 6.9.3.1 GPIO electrical specification; USB pads assumed alike)
-*   VBUS pad     CPAD 3 pF as well (assumed; the PS gives no VBUS pin capacitance). Verifier addition: without it
-*                the VBUS node is an inductor end with zero capacitance when C12 is left off, and the ESD
-*                transient does not converge (fault 'C12 left off' could not be simulated).
+*   VBUS pad     param cvbus, default 0 (the PS gives no VBUS pin capacitance). Verifier addition (2026-10-19): the
+*                test passes cvbus = CPAD 3 pF (assumed) only when no capacitor is fitted on the nRF VBUS net: the node
+*                is then an inductor end with zero capacitance and the ESD transient does not converge (fault
+*                'C12 left off'). With C12 fitted a lossless lumped pF against its ESL only adds a GHz ring.
 *   VUSB33 rail  the D+/D- PHY supply, 3.3 V typ (PS 5.3.8.6 VUSB33 3.0..3.6 V) -> param vusb
 *                (0 V when VBUS is absent), decoupled by CDECUSB 4.7 uF typ (PS 5.3.8.6)
 *   pad ESD clamps: ASSUMED generic diodes to VUSB33 and from GND (IS 1e-15, N 1, RS = resd), and
@@ -28,12 +29,12 @@
 * Port naming: the ground port is called VSS, not GND: ngspice treats a node named 'gnd' as global ground
 *   even inside a subcircuit, which would tie the pin to 0 whatever the netlist connects it to
 *   (verifier fix 2026-10-19; it hid every wrong-connection fault on this pin).
-* Pins: VBUS, DP, DM, GND
+* Pins: VBUS, DP, DM, VSS (= GND)
 * =====================================================================================================
-.subckt USBIN_NRF52840_USB VBUS DP DM VSS params: ivbus=2.4m vusb=3.3 cpad=3p resd=3
+.subckt USBIN_NRF52840_USB VBUS DP DM VSS params: ivbus=2.4m vusb=3.3 cpad=3p resd=3 cvbus=0
 Bvbus VBUS VSS I=ivbus*0.5*(1+tanh((v(VBUS,VSS)-4.0)/0.05))
 Rvbus VBUS VSS 10Meg
-Cvbus VBUS VSS {cpad}
+Cvbus VBUS VSS {cvbus+1e-18}
 * VUSB33 rail (internal regulator output + CDECUSB)
 Vusb  vreg VSS {vusb}
 Rusb  vreg vusb33 0.1

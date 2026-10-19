@@ -32,7 +32,7 @@
 * Port naming: the ground port is called VSS, not GND: ngspice treats a node named 'gnd' as global ground
 *   even inside a subcircuit, which would tie the pin to 0 whatever the netlist connects it to
 *   (verifier fix 2026-10-19; it hid every wrong-connection fault on this pin).
-* Pins: IO1 (1/6), GND (2), IO2 (3/4), VBUS (5)
+* Pins: IO1 (1/6), VSS (= GND, pin 2), IO2 (3/4), VBUS (5)
 * =====================================================================================================
 .subckt USBIN_USBLC6_2 IO1 VSS IO2 VBUS params: rd=0.5 rdt=0.5 vbr=6.1 cio=1.9p
 Dup1  IO1 VBUS USBIN_USBLC6_DS

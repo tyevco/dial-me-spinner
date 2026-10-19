@@ -763,9 +763,7 @@ def _reverse_run(main, base, case):
                  # BATFET in supplement mode: conducts through RON_BAT once SYS < VBAT - VBSUP1 (smooth ideal diode)
                  f"BSUP 0 n_vsys I=0.5*(({VBUVLO - VBSUP1}-v(n_vsys)) + sqrt(({VBUVLO - VBSUP1}-v(n_vsys))**2 + 1e-8))"
                  f"/{RON_BAT}", f"IVS n_vsys 0 {DIM_VSYS}"]
-        # the peak comes when SYS reaches its supplement floor (~3.7 ms after the event); stop at +5 ms, before +3V3 has
-        # decayed onto VSYS (the dropout re-entry at VIN ~ VOUT with ~0 pass current stalls the solver ~5.4 ms later)
-        tstop = t_ev + 5e-3
+        tstop = t_ev + 8e-3
     elif case == "batocp trip":
         # a VSYS overload at the BATOCP setting (e.g. a shorted motor lead) switched on at t_ev: the BATFET opens
         deck += [f"VBAT nbat 0 {up}", f"RBAT nbat nbf {RON_BAT}", "SBAT nbf n_vsys nopen 0 SWREV",
@@ -786,7 +784,19 @@ def _reverse_run(main, base, case):
     deck.meas(f"tran vpre FIND v({n_out}) AT={t_ev - 2e-6}")
     deck.meas(f"tran vrev MAX v(ndif) FROM={t_ev - 2e-6} TO={tstop:.6g}")
     deck.meas(f"tran irev MIN i(VSENSE) FROM={t_ev - 2e-6} TO={tstop:.6g}")
+    deck.meas("tran tclose WHEN v(ndif)=0 FALL=1")   # +3V3 back below VSYS: the reverse window is over
     r = deck.run()
+    # Once +3V3 has decayed back onto VSYS, U1 re-enters dropout at VIN ~ VOUT with VSYS sitting on the supplement
+    # source, and ngspice can stall there ('timestep too small'). The measures still cover everything up to the stall,
+    # so a stall AFTER tclose does not affect the peak; a stall before it (or any other error) is a real failure.
+    stall = [e for e in r["_errors"] if "timestep too small" in e.lower()]
+    if stall and "tclose" in r:
+        t_stall = float(re.search(r"time = ([-+0-9.eE]+)", stall[0]).group(1))
+        if t_stall > r["tclose"]:
+            r["_errors"] = [e for e in r["_errors"] if e not in stall]
+    if "tclose" not in r:   # the window may legitimately still be open at tstop (or never reopen after a collapse)
+        r["_errors"] = [e for e in r["_errors"] if "tclose" not in e]
+        r["_missing"] = [m for m in r.get("_missing", []) if m != "tclose"]
     check_clean(r, exc=RuntimeError)   # a simulator failure must not pass as an expected (xfail) check failure
     if not r["vpre"] > 3.3:
         raise RuntimeError(f"+3V3 not settled before the event: {r['vpre']}")
