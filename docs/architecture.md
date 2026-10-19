@@ -27,11 +27,14 @@ the risks, the open decisions and a rough cost.
   ([docs/simulation.md](simulation.md), [results page](../hardware/sim/results/report.md));
   ID is the finding or test name there.
 
-Status: rev A. The schematics are captured (ERC clean) and both boards are
-placed by `hardware/design/layout.py`; routing and DRC are being closed.
-`hardware/design/release.py` writes the Gerbers, JLC BOM/CPL and order notes
-only once DRC and schematic parity are clean. Nothing has been fabricated or
-measured yet.
+Status: rev A. The schematics are captured (ERC clean), and both boards are
+placed and routed by `hardware/design/layout.py`: Freerouting first, then the
+grid router `hardware/tools/finish_route.py` completes whatever is still open.
+Both pass KiCad DRC with schematic parity (main: 0 errors, 0 warnings,
+0 unconnected; base: 0 errors, 0 unconnected, 2 silkscreen-to-edge warnings).
+`hardware/design/release.py` wrote the Gerbers, JLC BOM/CPL, order notes,
+PDFs and 3D renders to `hardware/fab/{main,base}/` only after that DRC and
+parity gate passed. Nothing has been fabricated or measured yet.
 
 ---
 
@@ -196,8 +199,8 @@ flowchart TB
   MCU ===|"u.FL coax through the spindle"| ANT
 ```
 
-Not shown: the 32.768 kHz crystal, the TC2030 SWD pads (top side, r 12,
-θ 150°), the DNP SN74LV1T34 LED-data level shifter (U43, [§6.4](#64-led-ring-and-audio)),
+Not shown: the 32.768 kHz crystal, the TC2030 SWD pads (J10, top side,
+r 20.8, θ 238.5°, beside the module's SWD pins), the DNP SN74LV1T34 LED-data level shifter (U43, [§6.4](#64-led-ring-and-audio)),
 and the per-part decoupling, pull-ups and test pads. The +3V3 rail also feeds
 the flash, TMAG, IMU, OLED logic, DRV8837 VCC and DRV5032.
 
@@ -308,7 +311,11 @@ The essentials:
   is open on the axis ([§4.2](#42-the-link)). The spindle flange screws to the
   main board through three plated GND M2 holes (H1–H3 at r = 6.5 mm,
   θ 90°/210°/330°), which gives the touchable ring an ESD bleed path: ring →
-  conductive epoxy → 608 races → spindle → GND.
+  conductive epoxy → 608 races → spindle → GND. The brass hub flange
+  (r ≤ 8.5) is clamped against the board bottom by the M4 nut (about 120 N),
+  so the main board has no tracks or vias on B.Cu at r < 8.8 (only H1–H3 and
+  the GND pour; the hub is GND), none on F.Cu at r < 4.6 under the nut, and
+  none on any layer within 0.35 mm of the Ø5 centre hole (SPEC §8).
 * **Why a 608 and not a large-bore bearing.** In the SKF friction model, drag
   scales roughly with the bearing's mean diameter to the power 1.96. For the
   same rotor, an oiled 61808 (40×52) gives about 1.6 N·mm at 10 rev/s and a
@@ -794,7 +801,9 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
     reading (rule R1'), which puts the SHIP point at a 3.5393 V reading
     ([§7](#7-power-tree)) (hardware/sim, VSENSE-1/4). The VSYS_SENSE node is
     high-impedance: 4.5 nA of surface leakage uses the whole ±10 mV (25 °C)
-    budget, so keep it away from other copper and clean (VSENSE-4).
+    budget, so keep it away from other copper and clean (VSENSE-4). On the
+    main board R1, R2 and C5 sit on the top over the module's AIN0 pin, so
+    the node is 4.8 mm long.
 
 **Why normal-voltage mode, when the power research recommended high-voltage
 mode (VDDH = SYS, REG0 DC/DC → 3.0 V)?** SPEC chose normal mode, and the
@@ -899,7 +908,7 @@ values from the verified research, with the two SPICE-driven changes
   outward (u.FL at r ≈ 23, over the bowl, where nothing rotates above the
   web) (SPEC §8, `layout.py`). The coax runs back under the board beside the
   module to the spindle's top slot at θ 270°. On the way it passes between
-  U12 and the module's inner corner, 0.13 mm from U12 and 0.44 mm above the
+  U12 and the module's inner corner, 0.84 mm from U12 and 0.44 mm above the
   rotating cap ring (r 9–13), so it MUST be tacked up with Kapton tape at
   assembly. The CAD clash check passes with only the intended contacts
   (risk R25, closed;
@@ -1366,7 +1375,7 @@ blocking and Wi-Fi coexistence are what is at stake.
    specifies the 146153-0100 (100 mm; the 50 mm -0050 is too short), which
    leaves about 21 mm to store as one gentle loop in the base at θ 100–150°,
    away from the antenna. Between U12 and the module's inner corner the coax
-   passes 0.13 mm from U12 and 0.44 mm above the rotating cap ring, so it is
+   passes 0.84 mm from U12 and 0.44 mm above the rotating cap ring, so it is
    tacked up with Kapton tape at assembly. The coax
    also crosses the floating boundary: it flexes by 0.3–0.5 mm on every click,
    so give it a strain-relieved service loop (minimum bend radius about 5 mm).
@@ -1423,7 +1432,7 @@ L = likelihood, I = impact (H / M / L).
 | ID | Risk | L | I | Mitigation / next action |
 |---|---|---|---|---|
 | R1 | Antenna on the base shelf (about 6 mm above the desk) detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before PCB release. Wall-mount fallback. TX is already +8 dBm by default, so there is no power headroom left. |
-| R2 | Antenna coax flexes 0.3–0.5 mm on every click. **Length and route: closed.** It was too short (the -0050 is 50 mm); SPEC §5.2/§8 name the 146153-0100 (100 mm), and the CAD route to the outward-facing u.FL is 79 mm, leaving about 21 mm to stow ([§9](#9-rf-strategy-and-its-risk)). Near U12 it passes 0.13 mm from the part and 0.44 mm above the rotating cap ring | L | M | Service loop and strain relief. Tack the coax up with Kapton tape beside U12 (assembly step). |
+| R2 | Antenna coax flexes 0.3–0.5 mm on every click. **Length and route: closed.** It was too short (the -0050 is 50 mm); SPEC §5.2/§8 name the 146153-0100 (100 mm), and the CAD route to the outward-facing u.FL is 79 mm, leaving about 21 mm to stow ([§9](#9-rf-strategy-and-its-risk)). Near U12 it passes 0.84 mm from the part and 0.44 mm above the rotating cap ring | L | M | Service loop and strain relief. Tack the coax up with Kapton tape beside U12 (assembly step). |
 | R3 | Spin time below expectation (bearing preload ≥ 2.5–3 N, oil migration, shield rub; the model may under-predict friction). The verified acceptance is ≥ 45–60 s from 10 rev/s, and SPEC's preload is predicted to give 20–65 s | M | H | Measure spin-down with 3–5 bearings of each type. Keep **≥ 45 s from 10 rev/s** as the acceptance and treat the preload as the variable (D3): the lowest preload that stops click-mode rocking. Bearing prep step in assembly. |
 | R4 | Detent actuator under-powered: the worst-case load is 0.8–1.15 N, and the SPICE motor model gives the 8 mm VSM08102 at most 0.93 N from any battery VSYS (rated ≥ 0.78 N at 500 PPS) (hardware/sim, MD-4). Fit: a radial lead screw from r 21.5 inward hits the hub, so the mechanical model uses an inclined-slot chord path sweeping θ ≈ 35–160° ([docs/mechanical.md](mechanical.md) A11) | M | H | **Still open.** Cut the carriage preload and anti-lash spring so the worst-case load stays ≤ 0.5 N; if the thrust gate still fails, fall back to the N20 or a Ø6 planetary gearmotor with a lead screw ([docs/mechanical.md](mechanical.md) §7). The 10 mm sibling is not a remedy: its Ø10 can does not fit the 10.1 mm bowl. No change on the `detent` sheet closes the gap. Slow PPS in the loaded zone. |
 | R5 | Detent ringing: 5–10 s of rocking after capture | M | M | Optional felt/UHMW shoe (about 1.6 mN·m). Firmware predicts the landing detent. |

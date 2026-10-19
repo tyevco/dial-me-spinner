@@ -447,13 +447,18 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
 **Main-board PCB rules that come from the stack**
 * No copper pours on **B.Cu or In2.Cu** for r ≥ 26 (this annulus faces the
   magnet track, so pours there add eddy drag). F.Cu/In1.Cu pours are allowed,
-  since the track is 3.5–5 mm away. Traces and pads are allowed everywhere.
+  since the track is 3.5–5 mm away. Traces and pads are allowed there.
 * Bottom side keep-outs:
   * sector θ = 60°–120°, r 12–32: detent carriage, rails and the middle of the actuator's sweep, no components;
   * the wider actuator corridor θ 30°–160°, r 8.5–27 (rule below): parts at most 1.3 mm tall. The carriage moves
     along the θ = 90° radius, but the chord-mounted actuator sweeps θ ≈ 35–160°; where the two areas overlap, the
     no-component keep-out applies;
   * the spindle flange area r ≤ 8.5.
+* Copper keep-outs (no tracks or vias; rule areas from layout.py `clamp_keepouts`):
+  * B.Cu at r < 8.8: the brass hub flange (r ≤ 8.5) is clamped against the board bottom by the M4 nut (~120 N), so
+    only the GND spindle pads H1–H3 and the GND pour sit there (the hub is GND). In2 tracks may still pass under it;
+  * F.Cu at r < 4.6: under the M4 nut (OD 7);
+  * all layers within 0.35 mm of the Ø5 centre hole (r < 2.85): Freerouting does not see the inner board edge.
 * TMAG5273 on the **bottom** side at (r = 29, θ = 270°). Its long axis is
   radial. Nothing ferromagnetic and no inductor may sit within 10 mm of it.
 * DRV5032 on the **top** side at (r = 21.5, θ = 90°).
@@ -466,29 +471,36 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   hub) and its **u.FL end facing outward** (u.FL at r ≈ 23). A mated u.FL hangs to z ≈ 25.8, so it must not sit over the
   rotating bearing hub (r 9.5–12.5, top z 26.0). The coax runs back under the board beside the module (z ≈ 26 beyond
   r 12.5, ≥ 27 inside it) to the spindle's top slot at θ 270°. It threads between U12 and the module's inner
-  corner (0.13 mm to U12, 0.44 mm above the rotating cap ring at r 9–13), so it is tacked up with Kapton tape at
+  corner (0.84 mm to U12, 0.44 mm above the rotating cap ring at r 9–13), so it is tacked up with Kapton tape at
   assembly.
 * R40 sits within 3 mm of U10 pad 22 (P0.06), and U12 as close to the module's D+/D− pads as the module courtyard
-  allows (layout.py pin anchors).
+  allows (layout.py pin anchors): U12 is on the bottom at r 14.6, θ 254°, its D− pad 3.1 mm (pad centre to pad
+  centre) from the module's D− pad.
 * The link connector J1 (side-entry JST SH) sits on the **bottom** side at r = 19.5 mm, θ = 330°, entry facing the centre,
   so the mated plug's back stays outside the rotating hub. The harness lies flat against the board bottom into the
   spindle's top slot.
 * Rotating hub zone: bottom-side parts over r 9.5–12.5 must keep their bottom at z ≥ 26.3 (hang ≤ 2.8 mm).
 * Actuator corridor: bottom-side parts in θ 30°–160°, r 8.5–27 must be ≤ 1.3 mm tall (chip passives and test pads;
-  J40, U11 and the parts already there were checked in hardware/mechanical/calcs_output.txt §11); inside θ 60°–120°,
-  r 12–27 the no-component keep-out above applies.
+  J40 is the only component there, and every bottom part was checked against the actuator in
+  hardware/mechanical/calcs_output.txt §11); inside θ 60°–120°, r 12–27 the no-component keep-out above applies.
 * Top side: keep r ≤ 4.6 free for the spindle's M4 nut (OD 7); other top parts stay inside the LED-cap ring
   (r ≤ 25.3) — beyond it are the light box (r 27–30) and the top-cover skirt.
 * The piezo BZ1 goes on the **bottom** side at r = 22, θ = 22° (sound vents through the board).
-* The TC2030 pads (J10) go on the top side under the OLED glass at r = 12, θ = 150°, so they are
-  reachable before the OLED is fitted.
+* The TC2030 pads (J10) go on the top side at r = 20.8, θ = 238.5°, beside the module's SWDIO/SWDCLK/NRESET/SWO
+  pins (SWDIO 3.3 mm, SWDCLK 3.9 mm of track). They are still under the OLED glass (at its edge, near the bracket
+  rim), so they are reachable only before the OLED bracket and glass are fitted. J10's three NPTH alignment holes clear
+  the module (on the bottom) and the J20/J11 courtyards.
+* The spare-GPIO test pads TP10–TP13 (TP_SPARE1..4: P0.03, P0.04, P1.11, P1.13) sit on the top side near the
+  module's west pad row (r 12–20, θ 193–205°), also under the OLED glass, so like J10 they are reachable before the
+  display is fitted.
 * The NFC coil pads J11 sit on the top side at r = 21.5, θ = 222°, under the OLED-bracket rim relief; NFC1/NFC2 run
   as a pair, away from the TMAG5273 and the LED data line.
 * Assembly order at the display: solder the NFC coil tail to J11 **before** the OLED bracket goes on (the joint ends
   up under the bracket rim), then fit the bracket, then place the glass on the rim with a corner jig, then the cover
   with the coil (docs/mechanical.md §12 step 14).
 * Assembly: parts on both sides (the module, TMAG5273, piezo, J1 and J40 among the bottom parts); three fiducials per
-  side (FID1–FID6).
+  side (FID1–FID6). The board title "dial-me-spinner main rA" is on the bottom silkscreen (r 11, θ 90°): the top silk
+  inside the LED-cap ring is full of reference designators.
 
 **Base-board placement rules (§8)**
 * The space above the base board is only 1.7 mm, or 1.2 mm when the dial is pressed, wherever an FA spoke or the hub passes over it. Put every part taller than 1.0 mm in the open sectors (θ = 0° ± 40°, 120° ± 40°, 240° ± 40°, r > 6). That means:
