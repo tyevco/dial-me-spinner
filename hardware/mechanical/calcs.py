@@ -262,8 +262,11 @@ def tip_force(r_press, W_dev, edge_dist):
 # ---------------------------------------------------------------------------
 # 11. Geometry helpers for the per-part clearance tables
 # ---------------------------------------------------------------------------
+NFC_ECHO = {}     # NFC coil/tail constants and tail profile echoed by view="prims" (section 13)
+
+
 def load_prims():
-    """run OpenSCAD view="prims" and parse the echoed primitives."""
+    """run OpenSCAD view="prims" and parse the echoed primitives (and the NFC constants into NFC_ECHO)."""
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "p.echo")
         subprocess.run(["openscad", "-o", out, "-D", 'view="prims"', os.path.join(HERE, "dial_spinner.scad")],
@@ -274,7 +277,41 @@ def load_prims():
                 prims.append(json.loads(ln[len("ECHO: PRIM = "):]))
             elif ln.startswith("ECHO: ROTOR_CONST = "):
                 rc = json.loads(ln[len("ECHO: ROTOR_CONST = "):])
+            elif ln.startswith("ECHO: NFC_CONST = "):
+                NFC_ECHO["const"] = json.loads(ln[len("ECHO: NFC_CONST = "):])
+            elif ln.startswith("ECHO: NFC_TAIL_PROF = "):
+                NFC_ECHO["prof"] = json.loads(ln[len("ECHO: NFC_TAIL_PROF = "):])
     return prims, rc
+
+
+def sdf_part(X, p):
+    """signed distance of points X (N,3) to a board-part box (oriented in its footprint frame)."""
+    o, U, V = part_frame(p)
+    d = X[:, :2] - o
+    L = np.c_[d @ U, d @ V, X[:, 2]]
+    u0, u1, v0, v1 = p["box"]
+    c = np.array([(u0 + u1) / 2, (v0 + v1) / 2, p["z0"] + p["h"] / 2])
+    h = np.array([(u1 - u0) / 2, (v1 - v0) / 2, p["h"] / 2])
+    q = np.abs(L - c) - h
+    return np.linalg.norm(np.maximum(q, 0), axis=1) + np.minimum(q.max(axis=1), 0)
+
+
+def agm_KE(k):
+    """complete elliptic integrals K(k), E(k) by the arithmetic-geometric mean."""
+    a, b, c, s, n = 1.0, math.sqrt(1 - k * k), k, 0.5 * k * k, 0
+    while abs(c) > 1e-15:
+        a, b, c = (a + b) / 2, math.sqrt(a * b), (a - b) / 2
+        n += 1
+        s += 2 ** (n - 1) * c * c
+    K = math.pi / (2 * a)
+    return K, K * (1 - s)
+
+
+def loop_mutual(a, d):
+    """mutual inductance (H) of two coaxial circular loops of radius a (m) at axial distance d (m)."""
+    k = math.sqrt(4 * a * a / (4 * a * a + d * d))
+    K, E = agm_KE(k)
+    return 4e-7 * math.pi * a * ((2 / k - k) * K - 2 / k * E)
 
 
 def rotor_polys(rc, dz=0.0):
@@ -1001,9 +1038,138 @@ def main(plots=True):
           f"{0.4 * 20 ** 3 / (3 * 20000 * 0.8 * 3 ** 3 / 12):.3f} mm (PA12 0.5 strip was "
           f"{0.4 * 20 ** 3 / (3 * 1700 * 0.5 * 3 ** 3 / 12):.2f} mm); plate capture <= 0.02 (shimmed rails).")
 
+    nfc_section(bp, P, rc)
     if plots:
         make_plots(curves, ring_curves, press, radii, I_r, W_dev, edge3, edge_arc, floor)
     return 0
+
+
+def nfc_section(bp, P, rc):
+    """13. NFC coil (sheet on the cover ceiling) and its tail to J11: geometry, inductance, tuning, clearances."""
+    hr("13. NFC tag coil and tail to J11 (geometry from the model; L and tuning are estimates)")
+    (n_ri, n_ro, cu0, cu1, nz0, nt, pocket_r, ceil_z, jx, jy, jphi, ju0, ju1, jv0, jv1, jtop,
+     tw, tbr, trv, tv0, tzb, root_r, tongue_l, rel_u, rel_v0, rel_v1, rel_roof,
+     oled_w, oled_l, oled_yc, oled_z0, oled_t, rim_z0, rim_z1, lb_ri, lb_z1, dif_ri) = NFC_ECHO["const"]
+    prof = np.array(NFC_ECHO["prof"], float)
+    MB_Z1 = MB_Z0 + 1.6
+    IN1_Z = MB_Z1 - 0.035 - 0.2104          # In1 GND plane (JLC 4-layer 1.6 mm, 7628 prepreg) [assume stack-up]
+    j_r = math.hypot(jx, jy)
+    print(f"Coil sheet (black-coverlay 2-layer PI flex, TVP): ID {2 * n_ri:.1f} / OD {2 * n_ro:.1f} x {nt:.2f} mm at z "
+          f"{nz0:.2f}-{nz0 + nt:.2f}, bonded (0.05 PSA) to the cover pocket ceiling z {ceil_z:.2f} (pocket r <= {pocket_r:.2f}).")
+    print(f"Copper band r {cu0:.2f}-{cu1:.2f} ({cu1 - cu0:.2f} wide): 4 turns 0.20/0.15 or 3 turns 0.25/0.25 [TVP].")
+    print(f"Tail: tongue cut from the sheet at theta {math.degrees(math.atan2(jy, jx)) % 360:.0f}, {tw:.1f} wide "
+          f"(3.4 over the J11 pads), inner fold radius {tbr:.2f}; root (fold line) at r {root_r:.2f}, vertical run r "
+          f"{trv:.2f}-{trv + nt:.2f}, board run at z {tzb - nt / 2:.2f}-{tzb + nt / 2:.2f} onto J11 (r {j_r:.2f}).")
+    # tail centreline in the J11 frame (v, z): board run from the joint body, then the folded profile to the root
+    path_vz = np.vstack([[tv0, tzb], prof])
+    L_tail = float(np.linalg.norm(np.diff(path_vz, axis=0), axis=1).sum())
+    print(f"Tail path joint -> root {L_tail:.1f} mm; developed tongue (J11 inner end -> root) {tongue_l:.1f} mm, so the "
+          f"tongue slot in the flat sheet runs r {root_r - tongue_l:.1f}-{root_r:.1f}.")
+
+    # ---- inductance (modified Wheeler, circular spiral) and the image in the In1 GND plane
+    mu0 = 4e-7 * math.pi
+    d_out, d_in = 2 * cu1 * 1e-3, 2 * cu0 * 1e-3
+    d_avg, rho = (d_out + d_in) / 2, (d_out - d_in) / (d_out + d_in)
+    h_pl = (nz0 + nt / 2 - IN1_Z) * 1e-3
+    M1 = loop_mutual(d_avg / 2, 2 * h_pl)
+    w0 = 2 * math.pi * 13.56e6
+    C_INT = 4e-12                            # nRF52840 NFC pad capacitance [nRF52840 PS]
+    print(f"\nInductance [estimate]: modified Wheeler (circular, c1 1.00, c2 2.46, c4 0.20), d_avg {d_avg * 1e3:.1f} mm; "
+          f"image in the In1 GND plane {h_pl * 1e3:.2f} mm below (z {IN1_Z:.2f}): -N^2 x {M1 * 1e9:.1f} nH.")
+    rows = []
+    for n in (3, 4):
+        L0 = mu0 * n * n * d_avg / 2 * (math.log(2.46 / rho) + 0.20 * rho * rho)
+        Le = L0 - n * n * M1
+        c0 = 2 / (w0 * w0 * L0) - C_INT
+        ce = 2 / (w0 * w0 * Le) - C_INT
+        rows.append((n, f"{L0 * 1e6:.2f}", f"{Le * 1e6:.2f}", f"{c0 * 1e12:.0f}", f"{ce * 1e12:.0f}"))
+    table(rows, ["turns", "L free uH", "L over GND plane uH", "C16/C17 for free L pF", "C16/C17 over plane pF"])
+    L180 = 2 / (w0 * w0 * (180e-12 + C_INT))
+    print(f"C16/C17 = 180 pF tune {L180 * 1e6:.2f} uH (Ctune = 2/(w^2 L) - Cint, coil self-capacitance ignored).  Start with")
+    print("4 turns; measure L in the closed device (LCR, 13.56 MHz) and retune C16/C17 (section 15 #21).  The plane also")
+    print("shields part of the phone's field: if the read range is short, a 0.1 mm ferrite sheet under the copper band")
+    print("(fits the 0.1 mm gap to the glass) restores it and needs C16/C17 ~ 95-110 pF (display-study.md section 3).")
+
+    # ---- clearance samples
+    th = np.radians(np.arange(0, 360, 0.5))
+    rr = np.linspace(cu0, cu1, 6)
+    R_, T_ = np.meshgrid(rr, th)
+    cu_pts = np.vstack([np.c_[R_.ravel() * np.cos(T_.ravel()), R_.ravel() * np.sin(T_.ravel()), np.full(R_.size, z)]
+                        for z in (nz0, nz0 + nt)])
+    glass = ["box", "glass", [-oled_w / 2, oled_yc - oled_l / 2, oled_z0], [oled_w, oled_l, oled_t]]
+    back = ["box", "back", [-oled_w / 2, oled_yc - oled_l / 2, oled_z0 - 0.01], [oled_w, oled_l, 0.01]]
+    a = math.radians(jphi)
+    U, V = np.array([math.cos(a), math.sin(a)]), np.array([-math.sin(a), math.cos(a)])
+    o = np.array([jx, jy])
+    tail = []
+    for (v0_, z0_), (v1_, z1_) in zip(path_vz[:-1], path_vz[1:]):
+        for t in np.linspace(0, 1, 12):
+            v_, z_ = v0_ + t * (v1_ - v0_), z0_ + t * (z1_ - z0_)
+            half = tw / 2 if v_ >= tv0 + 0.65 else (ju1 - (ju1 - tw / 2) * (v_ - tv0) / 0.65)
+            for u_ in np.linspace(-half, half, 11):
+                xy = o + u_ * U + v_ * V
+                tail.append((xy[0], xy[1], z_))
+    tail = np.array(tail)
+    rim = [["box", "rim_left", [-(oled_w - 0.4) / 2, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
+           ["box", "rim_right", [(oled_w - 0.4) / 2 - 2.0, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
+           ["box", "rim_bottom", [-(oled_w - 0.4) / 2, oled_yc - (oled_l - 0.4) / 2, rim_z0], [oled_w - 0.4, 2.0, rim_z1 - rim_z0]],
+           ["box", "rim_top", [-(oled_w - 0.4) / 2, oled_yc + (oled_l - 0.4) / 2 - 2.0, rim_z0], [oled_w - 0.4, 2.0, rim_z1 - rim_z0]]]
+    lbox = ["annz", "light_box_inner_wall", lb_ri, lb_ri + 0.6, 31.7, lb_z1]
+    leds = [p for p in bp["main"]["parts"] if p["side"] == "T" and "WS2812" in p["value"]]
+    tops = [p for p in bp["main"]["parts"] if p["side"] == "T" and p["ref"] != "J11"]
+
+    def nearest_part(X, parts):
+        best = (np.inf, "")
+        for p_ in parts:
+            d = float(sdf_part(X, p_).min())
+            if d < best[0]:
+                best = (d, p_["ref"])
+        return best
+
+    gpts = np.array([[sx * oled_w / 2, oled_yc + sy * oled_l / 2] for sx in (-1, 1) for sy in (-1, 1)])
+    r_corner = float(np.hypot(gpts[:, 0], gpts[:, 1]).max())
+    mid = {th_: cu0 - (oled_w / 2 if th_ in (0, 180) else (oled_l / 2 + oled_yc if th_ == 90 else oled_l / 2 - oled_yc))
+           for th_ in (0, 90, 180, 270)}
+    ring_poly = rotor_polys(rc)[0]
+    Rz = np.c_[np.repeat(rr, 2), np.tile([nz0, nz0 + nt], len(rr))]
+    c_ring = float(sdf_poly2(Rz, ring_poly).min())
+    led_d, led_ref = nearest_part(cu_pts, leds)
+    nut = P["nut"]
+    rows = [
+        ("copper band - OLED glass top (they overlap in plan at the 2 lower corners)", f"{nz0 - (oled_z0 + oled_t):+.2f}",
+         f"plan overlap {max(0.0, r_corner - cu0):.2f} (glass corner r {r_corner:.2f})"),
+        ("copper band - display back plane z 33.0 (metal back, if the panel has one)",
+         f"{float(sdf_prim(cu_pts, back).min()):+.2f}", "at the corners; elsewhere the copper is outside the glass"),
+        ("copper band inner edge - glass edge, plan, at theta 0/90/180/270", "/".join(f"{mid[k]:.1f}" for k in (0, 90, 180, 270)), ""),
+        ("copper band - main-board top copper (z 30.7)", f"{nz0 - MB_Z1:+.2f}", "F.Cu pours allowed there (SPEC)"),
+        ("copper band - In1 GND plane", f"{nz0 - IN1_Z:+.2f}", "solid plane under the whole coil"),
+        (f"copper band - nearest LED ({led_ref}, WS2812 lead frame)", f"{led_d:+.2f}", "3D"),
+        ("copper band - light-box inner wall (r 27)", f"{float(sdf_prim(cu_pts, lbox).min()):+.2f}", "plastic"),
+        ("copper band - diffuser inner face", f"{dif_ri + 0.02 - cu1:+.2f}", "radial, plastic"),
+        ("copper band - 316L ring / track magnets (behind the board)", f"{c_ring:+.2f}", "3D, (r, z) section"),
+        ("copper band - brass M4 nut", f"{float(sdf_prim(cu_pts, nut).min()):+.2f}", "3D, inside the coil"),
+        ("coil sheet - cover ceiling (PSA layer) / pocket wall", f"{ceil_z - nz0 - nt:+.2f}", f"wall {pocket_r - n_ro:+.2f} radial"),
+    ]
+    table(rows, ["coil pair (mm)", "clearance", "note"])
+    up = tail[:, 2] > tzb + 0.3                      # folds and vertical run (above the board run)
+    t_glass = float(sdf_prim(tail, glass).min()) - nt / 2
+    t_rim = float(min(sdf_prim(tail[up], r_).min() for r_ in rim)) - nt / 2
+    t_lb = float(sdf_prim(tail, lbox).min()) - nt / 2
+    t_part, t_ref = nearest_part(tail, tops)
+    rows = [
+        ("tail - OLED glass edge (near edge of the vertical run)", f"{t_glass:+.2f}", "both on the FA, flex"),
+        ("tail vertical run - bracket rim outer face", f"{t_rim:+.2f}", "lateral"),
+        ("tail board run - rim relief roof (z %.1f)" % rel_roof, f"{rel_roof - (tzb + nt / 2):+.2f}",
+         f"without the relief {rim_z0 - (tzb + nt / 2):+.2f}"),
+        ("J11 joint top (z %.2f) - rim relief roof" % jtop, f"{rel_roof - jtop:+.2f}", f"without the relief {rim_z0 - jtop:+.2f}"),
+        ("tail - light-box inner wall", f"{t_lb:+.2f}", ""),
+        (f"tail - nearest other top part ({t_ref})", f"{t_part - nt / 2:+.2f}", "3D"),
+        ("tail top fold - cover ceiling", f"{ceil_z - (prof[-1][1] + nt / 2):+.2f}", "at the root"),
+    ]
+    table(rows, ["tail pair (mm)", "clearance", "note"])
+    print("Press stroke: the coil, its tail, J11, the bracket, the glass and the cover all ride on the FA, so nothing")
+    print("in this section moves relative to anything else; the rotor is below the main board (rotor check CLEAR).")
+
 
 
 def make_plots(curves, ring_curves, press, radii, I_r, W_dev, edge3, edge_arc, floor):

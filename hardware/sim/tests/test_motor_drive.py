@@ -15,7 +15,13 @@ Drive patterns:
   * full step, two phases on (AB -> A'B -> A'B' -> AB'), 100 % duty: 80 / 313 / 446 PPS (firmware.md §5.3 speed
     plan) plus the stall (rotor blocked, no back-EMF) and hold (DC) cases;
   * the firmware's real drive (firmware.md §5.3): 8-µstep sine, 25 kHz PWM, slow decay, amplitude
-    d = 160 mA x 20.3 Ohm / VSYS.
+    d = 160 mA x (20 Ohm x (1 + 0.00393 x (T - 25 C)) + 0.33 Ohm) / VSYS (MD-3). The pre-MD-3 fixed
+    d = 160 mA x 20.3 Ohm / VSYS stays in the cases that pass with it (it is the higher duty below 25 C, so the
+    conservative one for the coast peak) and in the 60 C strict xfail that is the evidence for MD-3.
+
+Firmware rules guarded here (each strict xfail keeps the old value as evidence, a *_with_fw_rule test or the named
+case applies the rule): MD-2 non-park moves only from >= 3.55 V idle VSYS; MD-3 temperature-compensated duty; MD-1
+brake (IN1 = IN2 = 1 >= 3 ms) before IN = 00 + nSLEEP low (KICK_CASES 'usb-chargedone-worst-brake-then-sleep').
 
 Assumptions that are not datasheet values (bounded, and listed in the model_limitations of the run):
   * cell + PCM resistance 0.20 Ohm at 25 C, 0.40 Ohm at -10 C, 0.15 Ohm at 60 C (architecture.md §8.4 gives
@@ -59,7 +65,10 @@ VBUVLO = 3.0                             # BQ25180 Table 7.5 BUVLO setting b000 
 RON_BAT_TYP, RON_BAT_MAX = 0.055, 0.090  # BQ25180 Table 7.5 RON_BAT
 RON_IN_TYP, RON_IN_MAX = 0.27, 0.47      # BQ25180 Table 7.5 RON_IN
 ILIM_MIN = 0.450                         # BQ25180 Table 7.5 ILIM at the 500 mA setting: 450 / 475 / 498 mA
-SYS_REG, SYS_REG_ACC = 4.5, 0.02         # BQ25180 SYS_REG 010 = 4.5 V, Table 7.5 accuracy +-2 %
+# BQ25180 SYS_REG 010 = 4.5 V, Table 7.5 accuracy +-2 %. firmware.md §13.1 row 8 sets 001 = 4.4 V (0x20); 4.5 V is the
+# POR default (before the init, e.g. in MCUboot) and the only other value firmware.md allows, so it stays the USB VSYS
+# here: the upper bound for the coil-current / coast-peak checks.
+SYS_REG, SYS_REG_ACC = 4.5, 0.02
 
 JST_I_CONTACT = 1.0                      # JST SH catalogue: 1 A per contact with AWG 28 (SPEC §2)
 RC_INIT, RC_AGED = 0.020, 0.040          # JST SH catalogue contact resistance, initial / after env. tests
@@ -79,13 +88,28 @@ KE_MAX = 1.37                            # back-EMF upper bound, V per k step/s 
 SRC_RES = "detent research (VSM08102 3.3 V / 20 Ohm, >= 80 gf at 500 PPS)"
 
 FW = "firmware.md"
-FW_VSYS_MOVE = 3.40                      # firmware.md §5.8 minimum VSYS for non-park moves (measured idle)
+FW_VSYS_MOVE_OLD = 3.40                  # pre-MD-2 firmware.md §5.8 non-park minimum (evidence of the strict xfail)
+FW_VSYS_MOVE = 3.55                      # firmware.md §5.8 minimum VSYS for non-park moves, measured idle (MD-2)
 FW_VSYS_PARK = 3.30                      # firmware.md §5.8 minimum VSYS for a park move
-FW_LED_CAP = 0.100                       # firmware.md §5.8 LED cap while moving
+FW_LED_CAP = 0.100                       # firmware.md §5.8 LED cap while moving (100 mA average)
 I_SYS = 0.050                            # nRF + QSPI peak, architecture.md §8.4
 FW_WAKE_WAIT = 1e-3                      # firmware.md §5.2: nSLEEP high, wait 1 ms
 FW_PRE_ENERGISE = 10e-3                  # firmware.md §5.2: energise the stored phase for 10 ms
-FW_I_TARGET, FW_R_COIL = 0.160, 20.3     # firmware.md §5.3 run current and assumed coil resistance
+FW_BRAKE = 3e-3                          # firmware.md §5.2 / §5.8 (MD-1): brake IN1 = IN2 = 1 >= 3 ms before sleep
+FW_I_TARGET = 0.160                      # firmware.md §5.3 run current
+FW_R_COIL_OLD = 20.3                     # pre-MD-3 firmware.md §5.3 fixed coil resistance in d = I x R / VSYS
+FW_R25, FW_ALPHA, FW_R_DRV = 20.0, 0.00393, 0.33   # firmware.md §5.3 (MD-3): coil 20 Ohm at 25 C, copper tempco,
+                                                   # RDS(on) HS+LS (DRV8837 max at 25 C)
+
+
+def fw_r_eff(temp_c):
+    """firmware.md §5.3 amplitude rule (MD-3): d_peak = I_target x R_eff / VSYS with
+    R_eff = 20 Ohm x (1 + 0.00393 x (T - 25 C)) + 0.33 Ohm (20.33 Ohm at 25 C), T = nRF die temperature (taken equal
+    to the coil / ambient temperature of the corner)."""
+    return FW_R25 * (1 + FW_ALPHA * (temp_c - 25)) + FW_R_DRV
+
+
+SRC_MD3 = f"{FW} §5.3 (MD-3) d = I x (20 Ohm x (1 + 0.00393 x (T - 25 C)) + 0.33 Ohm) / VSYS, clamp d <= 1"
 FW_HOME_LAG = 0.075                      # firmware.md §5.4 edge-window lag allowance (0.075 s x v) ...
 FW_HOME_M = 10                           # ... plus m = max(10 steps, learned spread)
 FW_HOME_PPS = 446                        # fastest speed while crossing a HOME edge (approach/run-in, §5.3)
@@ -147,7 +171,8 @@ class Supply:
 SUP = {s.name: s for s in (
     Supply("VBAT3.0", 3.0), Supply("VBAT3.3", 3.3), Supply("VBAT3.4", 3.4), Supply("VBAT3.7", 3.7),
     Supply("VBAT4.2", 4.2),
-    # USB: SYS regulated to 4.5 V +-2 %; VBUS 4.5 V cannot reach it through RON_IN; battery at 3.7 V supplements
+    # USB: SYS regulated to 4.5 V +-2 % (POR default / allowed alternative, the upper bound; firmware sets 4.4 V, see
+    # SYS_REG); VBUS 4.5 V cannot reach it through RON_IN; battery at 3.7 V supplements
     Supply("VBUS4.5", 3.7, usb=True, vbus=4.5, vsysreg=SYS_REG),
     Supply("VBUS5.0", 3.7, usb=True, vbus=5.0, vsysreg=SYS_REG),
     Supply("VBUS5.5", 3.7, usb=True, vbus=5.5, vsysreg=SYS_REG * (1 + SYS_REG_ACC)),   # 4.59 V
@@ -306,7 +331,7 @@ def _pwl(transitions, edge=10e-9):
 
 
 def fullstep_plan(pps, nsteps, *, t_on=50e-6, t_wait=FW_WAKE_WAIT, t_pre=2e-3, t_hold=2e-3, end="hold",
-                  t_brake=3e-3, t_tail=1e-3):
+                  t_brake=FW_BRAKE, t_tail=1e-3):
     """Two-phase-on full-step schedule. State k has field angle 45 + 90k degrees: A = sign(cos), B = sign(sin).
 
     Returns (ctrl dict net -> transitions, timing dict)."""
@@ -455,7 +480,8 @@ def test_hold_force_and_brownout(main, base, check, supname, temp):
     """Coil current with the whole stroke load on VSYS (2 coils + LED cap 100 mA + nRF 50 mA), worst source
     resistance (RON max, aged contacts, cold pack), rDS(on) max. Force ~ current: F = 0.78 N x I / 165 mA.
 
-    Every supply here is one where firmware.md §5.8 allows a move (park >= 3.30 V, others >= 3.40 V)."""
+    Every supply here is one where firmware.md §5.8 allows a move (park >= 3.30 V, others >= 3.55 V since MD-2;
+    VBAT 3.3 / 3.4 V are park-only)."""
     sup = SUP[supname]
     assert sup.vsys_idle >= FW_VSYS_PARK
     r = hold_op(main, base, sup, temp)
@@ -472,15 +498,16 @@ def test_hold_force_and_brownout(main, base, check, supname, temp):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE (minor, thrust margin): firmware.md §5.8 'minimum VSYS for non-park moves 3.40 V (measured idle)' "
-    "ignores the stroke-load sag (pack + BATFET + link) and rDS(on): at 3.40 V idle the phase voltage is below the "
-    "motor's 3.3 V minimum rating (< 165 mA at 25 C); the 0.5 N load budget is still met"))
+    "DESIGN ISSUE (minor, thrust margin; old-rule evidence for MD-2): the pre-MD-2 firmware.md §5.8 'minimum VSYS for "
+    "non-park moves 3.40 V (measured idle)' ignores the stroke-load sag (pack + BATFET + link) and rDS(on): at 3.40 V "
+    "idle the phase voltage is below the motor's 3.3 V minimum rating (< 165 mA at 25 C); the 0.5 N load budget is "
+    "still met. Rule now 3.55 V: test_required_current_at_firmware_move_threshold_with_fw_rule"))
 def test_required_current_at_firmware_move_threshold(main, base, check):
     """VSM08102 rated phase voltage 3.3-5 V (vendor, via detent research): 165 mA/phase at 25 C is the lowest rated
-    drive, where >= 80 gf is quoted. firmware.md §5.8 lets non-park moves start at VSYS = 3.40 V measured *idle*. With
-    the stroke load (2 coils + LED cap + nRF) the coil current there is below 165 mA. The research's own rule is
-    'move only when VBAT >= 3.3 V under load'; the BAT-pin values under load are recorded (25 C and -10 C)."""
-    assert SUP["VBAT3.4"].vbat == FW_VSYS_MOVE
+    drive, where >= 80 gf is quoted. The pre-MD-2 firmware.md §5.8 let non-park moves start at VSYS = 3.40 V measured
+    *idle*. With the stroke load (2 coils + LED cap + nRF) the coil current there is below 165 mA. The research's own
+    rule is 'move only when VBAT >= 3.3 V under load'; the BAT-pin values under load are recorded (25 C and -10 C)."""
+    assert SUP["VBAT3.4"].vbat == FW_VSYS_MOVE_OLD
     lo = hold_op(main, base, SUP["VBAT3.4"], 25)
     hi = hold_op(main, base, SUP["VBAT3.7"], 25)
     cold = hold_op(main, base, SUP["VBAT3.4"], -10)
@@ -492,9 +519,28 @@ def test_required_current_at_firmware_move_threshold(main, base, check):
           "info: detent research 'move only when VBAT >= 3.3 V under load'")
     check("BAT pin under stroke load at VSYS idle 3.40 V, -10 C (pack 0.4 Ohm)", cold["vbat"], None, None, "V",
           "info: detent research 'move only when VBAT >= 3.3 V under load' (the cold coil still gets > 165 mA)")
-    check("I_coil at the firmware non-park threshold (VSYS idle 3.40 V, 25 C)", i_lo, I_RATED, None, "A",
+    check("I_coil at the old firmware non-park threshold (VSYS idle 3.40 V, 25 C)", i_lo, I_RATED, None, "A",
           f"VSM08102 rated phase voltage 3.3-5 V (vendor page via detent research): 3.3 V / 20 Ohm = 165 mA, "
-          f"vs {FW} §5.8 3.40 V idle")
+          f"vs the pre-MD-2 {FW} §5.8 3.40 V idle")
+
+
+def test_required_current_at_firmware_move_threshold_with_fw_rule(main, base, check):
+    """Guard for MD-2 (firmware.md §5.8 / §12.4: non-park moves only from >= 3.55 V measured idle VSYS). Same deck and
+    corners as test_required_current_at_firmware_move_threshold (stroke load = 2 coils + LED cap + nRF, worst source
+    resistance, rDS(on) max) at the new threshold: the 25 C coil current must reach the rated 165 mA."""
+    sup = Supply(f"VBAT{FW_VSYS_MOVE:.2f}", FW_VSYS_MOVE)
+    r = hold_op(main, base, sup, 25)
+    cold = hold_op(main, base, sup, -10)
+    i = min(abs(r["ia"]), abs(r["ib"]))
+    check(f"BAT pin under stroke load at VSYS idle {FW_VSYS_MOVE:.2f} V, 25 C", r["vbat"], None, None, "V",
+          "info: detent research 'move only when VBAT >= 3.3 V under load'")
+    check(f"BAT pin under stroke load at VSYS idle {FW_VSYS_MOVE:.2f} V, -10 C (pack 0.4 Ohm)", cold["vbat"], None,
+          None, "V", "info: detent research 'move only when VBAT >= 3.3 V under load'")
+    check(f"I_coil at VSYS idle {FW_VSYS_MOVE:.2f} V, -10 C", min(abs(cold["ia"]), abs(cold["ib"])), None, None, "A",
+          "info: the cold coil (17.2 Ohm) gets more than the 25 C rated current")
+    check(f"I_coil at the firmware non-park threshold (VSYS idle {FW_VSYS_MOVE:.2f} V, 25 C)", i, I_RATED, None, "A",
+          f"VSM08102 rated phase voltage 3.3-5 V (vendor page via detent research): 3.3 V / 20 Ohm = 165 mA; "
+          f"firmware rule {FW} §5.8 non-park moves only from >= {FW_VSYS_MOVE:.2f} V idle VSYS (MD-2)")
 
 
 @pytest.mark.parametrize("temp", TEMPS)
@@ -524,8 +570,9 @@ def test_ratio_vsys_3v0_vs_4v6(main, base, check, temp):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE (risk R4, pre-existing): the verified worst-case actuator load 0.8-1.15 N exceeds what the "
-    "8 mm VSM08102 delivers at any battery VSYS; needs the 10 mm motor or lower preloads"))
+    "DESIGN ISSUE (MD-4, risk R4, accepted hardware risk): the verified worst-case actuator load 0.8-1.15 N exceeds "
+    "what the 8 mm VSM08102 delivers at any battery VSYS; remedies are preloads cut to <= 0.5 N or the N20 / Ø6 "
+    "gearmotor fallbacks (the 10 mm sibling's Ø10 can does not fit the 10.1 mm bowl, docs/mechanical.md §7)"))
 def test_force_vs_verified_worst_load(main, base, check):
     """Best battery corner (VBAT 4.2 V, 25 C): thrust estimate vs the detent verifier's worst-case load."""
     r = hold_op(main, base, SUP["VBAT4.2"], 25)
@@ -566,8 +613,8 @@ def rated_reference(pps, ke, lph, stall):
 
 def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, rds=RDS_MAX, lph=L_NOM, ke=KE_MAX,
                  other=FW_LED_CAP + I_SYS, end="hold", cscale=None, aged=True, t_pre=2e-3, t_hold=1e-3, extra=(),
-                 ilim=ILIM_MIN, t_tail=1e-3):
-    ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end, t_tail=t_tail)
+                 ilim=ILIM_MIN, t_tail=1e-3, t_brake=FW_BRAKE):
+    ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end, t_tail=t_tail, t_brake=t_brake)
     deck = new_deck(f"full step {pps} PPS {sup} {temp}C")
     if cscale is None:      # worst-case VSYS capacitance at the operating point (vendor DC bias, minus tolerance)
         cscale = vsys_cscale(main, base, sup.vsys_idle, worst=True)
@@ -648,9 +695,12 @@ KICK_CASES = [  # id, supply, temp, tol, lph, VSYS caps ('worst' = vendor DC bia
     ("usb-charging-coast", "VBUS5.5-charging", -10, -0.10, L_MAX, "worst", "coast", None),
     ("usb-chargedone-nominal-coast", "VBUS5.5-done", 25, 0.0, L_NOM, "typ", "coast", None),
     ("usb-chargedone-worst-coast", "VBUS5.5-done", -10, -0.10, L_MAX, "worst", "coast",
-     "DESIGN ISSUE (conditional on a full-step drive): coasting BOTH coils from a full-current two-phase-on hold on "
-     "USB after charge termination (BATFET off, nothing sinks) dumps the coil energy into VSYS above the BQ25180 "
-     "5.5 V abs max. The documented sine-microstep drive stays below it (test_firmware_drive_coast_kick)"),
+     "DESIGN ISSUE (conditional on a full-step drive; old-rule evidence for MD-1): coasting BOTH coils from a "
+     "full-current two-phase-on hold on USB after charge termination (BATFET off, nothing sinks) dumps the coil energy "
+     "into VSYS above the BQ25180 5.5 V abs max. The documented sine-microstep drive stays below it "
+     "(test_firmware_drive_coast_kick); the MD-1 brake-before-sleep rule is guarded by the "
+     "'usb-chargedone-worst-brake-then-sleep' case"),
+    # MD-1 guard: same corner, firmware.md §5.2 stop path (IN1 = IN2 = 1 for FW_BRAKE = 3 ms, then IN = 00, nSLEEP low)
     ("usb-chargedone-worst-brake-then-sleep", "VBUS5.5-done", -10, -0.10, L_MAX, "worst", "brake", None),
 ]
 
@@ -660,10 +710,14 @@ KICK_CASES = [  # id, supply, temp, tol, lph, VSYS caps ('worst' = vendor DC bia
                                        id=c[0]) for c in KICK_CASES])
 def test_turnoff_kick(main, base, check, cid, supname, temp, tol, lph, cs, end, xf):
     """Hold both coils at full current (two-phase-on full step), then IDLE entry (all IN low + nSLEEP low -> coast):
-    the coil current freewheels through the DRV8837 body diodes into VM. 'brake' = IN1 = IN2 = 1 for 3 ms first
-    (current decays in the low-side FETs), the proposed fix. Minimal other load (3 mA). VSYS MLCCs at the vendor
-    DC-bias derating at 5 V (worst: minus the MPN tolerance)."""
+    the coil current freewheels through the DRV8837 body diodes into VM. 'brake' = the firmware rule of
+    firmware.md §5.2 / §5.8 and SPEC §5.6 (MD-1): IN1 = IN2 = 1 on U40/U41 for FW_BRAKE = 3 ms (the documented minimum;
+    current decays in the low-side FETs), then IN = 00 and nSLEEP low; the 'usb-chargedone-worst-brake-then-sleep'
+    case is the MD-1 guard for the 'usb-chargedone-worst-coast' strict xfail (same corner). Minimal other load (3 mA).
+    VSYS MLCCs at the vendor DC-bias derating at 5 V (worst: minus the MPN tolerance)."""
     sup = SUP[supname]
+    rule = (f"; firmware rule {FW} §5.2 (MD-1): brake IN1 = IN2 = 1 for {FW_BRAKE * 1e3:g} ms, then IN = 00 and "
+            f"nSLEEP low" if end == "brake" else "")
     cscale = vsys_cscale(main, base, V_DCBIAS_KICK, worst=(cs == "worst"))
     check("effective VSYS capacitance at 5 V (both boards)", vsys_ceff(main, base, cscale), None, None, "F",
           f"info: {SRC_DCBIAS}")
@@ -675,8 +729,8 @@ def test_turnoff_kick(main, base, check, cid, supname, temp, tol, lph, cs, end, 
     _, vs = window(w, "vsys", t_x - 1e-4, tm["t_stop"])
     _, vsb = window(w, "vsys_base", t_x - 1e-4, tm["t_stop"])
     vmax = float(max(vs.max(), vsb.max()))
-    check("VSYS peak after turn-off", vmax, None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max 5.5 V")
-    check("VM peak after turn-off", vmax, None, VM_ROC_MAX, "V", f"{DS_DRV} Table 6.3 VM max")
+    check("VSYS peak after turn-off", vmax, None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max 5.5 V{rule}")
+    check("VM peak after turn-off", vmax, None, VM_ROC_MAX, "V", f"{DS_DRV} Table 6.3 VM max{rule}")
     _, il = window(w, "ilink", t_x, tm["t_stop"])
     check("link current after turn-off, most negative (back to base)", float(il.min()), None, None, "A", "info")
     _, o2 = window(w, "oa2", t_x, tm["t_stop"])
@@ -733,10 +787,12 @@ def pwm_hold_ctrl(theta_deg, d_pk, t_start, t_hold, fpwm=25e3):
 
 
 def firmware_coast_peak(main, base, theta, *, sup=None, temp=-10, tol=-0.10, lph=L_MAX):
-    """Firmware drive (firmware.md §5.3: slow-decay PWM, d = 160 mA x 20.3 Ohm / VSYS_idle) held at field angle theta,
-    then all IN low + nSLEEP low (coast). Returns (coil current vector before the coast, VSYS peak on either board)."""
+    """Firmware drive (firmware.md §5.3 slow-decay PWM) held at field angle theta, then all IN low + nSLEEP low (coast).
+    Returns (coil current vector before the coast, VSYS peak on either board). The amplitude is the pre-MD-3
+    d = 160 mA x 20.3 Ohm / VSYS_idle: at the -10 C corner that is 15 % more duty than the MD-3 rule (17.58 Ohm), i.e.
+    a higher coil current and coast peak, so it is kept as the conservative bound (and the MD-5 numbers cite it)."""
     sup = sup or SUP["VBUS5.5-done"]
-    d_pk = min(1.0, FW_I_TARGET * FW_R_COIL / sup.vsys_idle)
+    d_pk = min(1.0, FW_I_TARGET * FW_R_COIL_OLD / sup.vsys_idle)
     t_on, t_e = 50e-6, 100e-6
     tr, t_x = pwm_hold_ctrl(theta, d_pk, t_e, max(3e-3, 6 * lph / 15))
     tr["MOT_NSLEEP"] = [(t_on, 1)]
@@ -763,9 +819,11 @@ def firmware_coast_peak(main, base, theta, *, sup=None, temp=-10, tol=-0.10, lph
 
 @pytest.mark.parametrize("theta", [0, 45], ids=["full-step-position", "mid-step-45deg"])
 def test_firmware_drive_coast_kick(main, base, check, theta):
-    """Verifier addition. The drive firmware.md §5.3 actually uses (8-µstep sine, slow decay, d = 160 mA x 20.3 Ohm /
-    VSYS_idle) held at one field angle, then coast: the IDLE entry after SETTLE (θ = 0, one coil at the full-step
-    position) or an MCU reset / brown-out / HardFault mid-move (θ = 45°, both coils at 0.71 x), where the nRF pins
+    """Verifier addition. The drive firmware.md §5.3 actually uses (8-µstep sine, slow decay; amplitude at the
+    conservative pre-MD-3 d = 160 mA x 20.3 Ohm / VSYS_idle, see firmware_coast_peak) held at one field angle, then
+    coast: a stop at the full-step position that skips the MD-1 brake (θ = 0, one coil at the full-step position; MD-1
+    makes every firmware stop path brake first, so this bounds a reset right after SETTLE) or an MCU reset /
+    brown-out / HardFault mid-move (θ = 45°, both coils at 0.71 x), where the nRF pins
     float, the DRV8837 pulldowns give IN = 00 and nSLEEP = 0, and firmware cannot brake first. Worst corner: USB, charge
     done (BATFET off), -10 C, coil -10 %, L 10 mH, VSYS MLCCs at vendor DC bias minus tolerance, 3 mA other load.
     Guards fix MD-5 (main C2, C6, C41 and base C4 now 25 V CL10A106MA8NRNC): 5.31 V (θ = 0) / 5.36 V (θ = 45°), C_eff

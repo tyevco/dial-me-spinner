@@ -15,6 +15,7 @@ $S -o renders/base_top.png     --imgsize=1200,900 --camera=0,-20,160,0,0,8 -D 'v
 $S -o renders/clash.png        --imgsize=1200,900 --camera=0,-30,-165,0,0,28 -D 'view="clash"' -D 'fn_big=96' dial_spinner.scad
 $S -o renders/section.png      --imgsize=1600,620 --camera=172,0,21,0,0,21 --projection=o -D 'view="section"' -D 'fn_big=96' dial_spinner.scad
 $S -o renders/section_xz.png   --imgsize=1600,620 --camera=0,172,21,0,0,21 --projection=o -D 'view="section_xz"' -D 'fn_big=96' dial_spinner.scad
+$S -o renders/nfc.png          --imgsize=1600,800 --camera=-42.74,15.34,33.2,-15.978,-14.386,33.2 --projection=o -D 'view="nfc"' -D 'fn_big=192' dial_spinner.scad
 ./export_stl.sh
 $S -o renders/parts.png        --imgsize=1400,800 --camera=135,-380,520,135,-50,0 parts_plate.scad
 python3 calcs.py > calcs_output.txt

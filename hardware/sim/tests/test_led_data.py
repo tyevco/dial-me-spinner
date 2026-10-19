@@ -5,7 +5,7 @@ What is simulated (all passives straight from hardware/kicad/main/dial-me-spinne
   * the P0.06 output stage, standard (S0S1) and high (H0H1) drive, at the nRF52840 PS min / typ / max
     IOH / IOL corners (models/led_data__nrf52840_gpio.lib), on +3V3 = RT9080-33 (+/-2 %, dropout at low VSYS);
   * the PCB traces LED_DIN_MCU (U10.22 -> R40, ~1 mm since R40 sits next to pad 22, LED-DATA-1) and LED_DIN
-    (R43/U43 -> D101.DI) as LC ladders, and LED_DIN_R (R40 -> R41/R43/U43, the ~40 mm run) as its lumped capacitance
+    (R43/U43 -> D101.DI) as LC ladders, and LED_DIN_R (R40 -> R41/R43/U43, the 40-50 mm run) as its lumped capacitance
     (an LC ladder in test_trace_and_r40_placement), with lengths taken from the routed board when routed, else from
     the placed pads (rectilinear MST x ROUTE_FACTOR);
   * D101.DI as CI <= 15 pF, II <= 1 uA and ESD clamps (models/led_data__ws2812c_din.lib), VDD = VLED = VSYS;
@@ -385,7 +385,7 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
     deck += ladder("tmcu", pad, mcu, L["LED_DIN_MCU"][0] * trace_scale)
     if not din_r_line:
         # R40 sits next to U10 pad 22 (LED-DATA-1), so LED_DIN_R (R40 -> R41/R43/U43) is the long run; it is lumped
-        # here: ~0.25 ns of line behind R40 = 220 R (>> Z0) next to edges of several ns
+        # here: <= ~0.3 ns of line behind R40 = 220 R (>> Z0 ~83 R) next to edges of several ns
         deck += f"Ctr_r {r_node} 0 {cp * L['LED_DIN_R'][0] * trace_scale:.4g}"
     else:
         # the same run as an LC ladder, with R41/R43/U43 at its far end (cross-check of the lumped model)
@@ -697,7 +697,7 @@ def test_load_extremes(check):
 
 def test_trace_and_r40_placement(check):
     """R40 as placed: next to U10 pad 22 (P0.06), 0.25 mm from it (fix LED-DATA-1, a layout.py pin anchor), so
-    LED_DIN_MCU is ~1 mm and the ~40 mm run is LED_DIN_R (R40 -> R41/R43/U43 at the LED end).  That run is checked
+    LED_DIN_MCU is ~1 mm and the 40-50 mm run is LED_DIN_R (R40 -> R41/R43/U43 at the LED end).  That run is checked
     both lumped (the model of every other test here) and as an LC ladder with its loads at the far end; strongest
     drive, lightest load (most ringing), plus a fast-corner sensitivity beyond the PS fit (pre-driver 2x faster than
     the strong corner, traces x2)."""
@@ -815,9 +815,10 @@ def test_u43_option_pulse_widths(check, u43_sweep):
 BOUND_SD_REASON = (
     "DESIGN ISSUE (firmware-dependent, LED-DATA-V1): with only the drive the nRF52840 PS guarantees (IOH/IOL,SD >= "
     "1 mA at a 0.4 V drop, PS v1.1 6.9.3.1; tRF is typical-only) standard drive (S0S1, the Zephyr/nrfx pinctrl "
-    "default) cannot guarantee the WS2812C-2020-V6 windows: T1H down to 547 ns (< 580 ns), T0L up to 1015 ns "
-    "(> 1 us), T1L down to 558 ns at VSYS 4.59 V, CI 15 pF, traces x1-x2; with U43 fitted T1H 576 ns, T1L 569 ns and "
-    "U43.A dt/dv 21.3 ns/V (> 20 ns/V, SCLS743E 6.3). High drive (H0H1) passes both paths. The rule is now REQUIRED "
+    "default) cannot guarantee the WS2812C-2020-V6 windows: T1H down to ~549 ns (< 580 ns), T0L up to ~1014 ns "
+    "(> 1 us), T1L down to ~560 ns at VSYS 4.59 V, CI 15 pF, traces x1-x2; with U43 fitted T1H ~577 ns, T1L ~569 ns "
+    "and U43.A dt/dv ~21.5 ns/V (> 20 ns/V, SCLS743E 6.3). High drive (H0H1) passes both paths (T1H >= ~606 ns, "
+    "T0L <= ~957 ns, T1L >= ~605 ns, dt/dv <= ~5.7 ns/V). The rule is now REQUIRED "
     "by docs/firmware.md 3.1 (i2s0_default) / 6.1 and SPEC 5.4: nordic,drive-mode = NRF_DRIVE_H0H1 on P0.06 "
     "(I2S0 SDOUT); the [HD] case of this test is its guard.")
 FW_RULE_V1 = ("firmware rule LED-DATA-V1 (docs/firmware.md 3.1 / 6.1, SPEC 5.4): P0.06 nordic,drive-mode = "

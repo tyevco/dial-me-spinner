@@ -256,7 +256,7 @@ NFC_Z0      = OLED_Z0 + OLED_T + 0.1;   // TVP: 34.8, bonded (0.05 PSA) to the c
 NFC_POCKET_R = NFC_RO + 0.1;   // cover underside raised to z 35.0 inside r 26.35 (0.6 wall ring left to the diffuser bore)
 NFC_TAIL_W  = 2.0;      // TVP: tail width at the folds (2 traces 0.4/0.4 + 0.4 margins); 3.4 over the J11 pads
 NFC_TAIL_BR = 0.45;     // TVP: inner fold radius (3x t, one-time install fold, single copper layer in the tongue)
-NFC_TAIL_RV = 24.1;     // inner face of the vertical run, radius along theta 222: 0.34 outside the glass edge (x -16.9)
+NFC_TAIL_RV = 24.1;     // inner face of the vertical run, radius along theta 222: 0.33 outside the glass edge (x -16.9)
 J11P        = [for (p = MAIN_PARTS) if (p[0] == "J11") p][0];   // J11 joint body (pads + solder + tail end, from the PCB)
 J11_R       = norm([J11P[2], J11P[3]]);
 // OLED bracket rim relief over J11 (J11 frame: u along the pad row, v radially out): |u| <= 2.0, v -1.4..3.2, rim
@@ -833,8 +833,8 @@ module exploded() {
     translate([0, 0, 138 * e]) { light_box(); oled_bracket(); }
     translate([0, 0, 146 * e]) oled_glass();
     translate([0, 0, 150 * e]) { nfc_coil(); nfc_tail(); }
-    translate([0, 0, 154 * e]) diffuser();
-    translate([0, 0, 164 * e]) { top_cover(); window_lens(); }
+    translate([0, 0, 156 * e]) diffuser();
+    translate([0, 0, 166 * e]) { top_cover(); window_lens(); }
 }
 EXPL_LABELS = [
     [-13.5, "3x micro-suction arc pads"], [6, "base cup + antenna shelf (PA12)"], [13, "LiPo 503450 (theta 0/180)"],
@@ -844,8 +844,8 @@ EXPL_LABELS = [
     [124, "wave washer + 316 cap ring"], [133.5, "brass hub (M2 tapped)"],
     [143, "detent carriage + stepper"], [158.5, "main board Ø64 + M4 nut"],
     [170, "light box + OLED bracket"], [179.5, "OLED 1.5in SSD1351"], [184.5, "NFC coil flex, tail to J11"],
-    [189.5, "opal diffuser ring"],
-    [199.5, "top cover + 0.7 mm cover glass"]];
+    [191.5, "opal diffuser ring"],
+    [201.5, "top cover + 0.7 mm cover glass"]];
 module exploded_labels()
     for (l = EXPL_LABELS) translate([40 * 0.744, 40 * 0.668, l[0] * explode]) rotate([0, 0, 41.9]) rotate([90, 0, 0])
         color("#202020") linear_extrude(0.2) text(l[1], size = 3.2, halign = "left", valign = "center", font = "DejaVu Sans");
@@ -990,8 +990,8 @@ module print_part(p) {
 }
 
 // ---------- labels ----------
-module label(t, p, sz = 1.9, ha = "center")
-    color("#111111") translate([p[0], p[1], 14]) mirror([0, 1, 0]) linear_extrude(0.2)
+module label(t, p, sz = 1.9, ha = "center", c = "#111111")
+    color(c) translate([p[0], p[1], 14]) mirror([0, 1, 0]) linear_extrude(0.2)
         text(t, size = sz, halign = ha, valign = "center", font = "DejaVu Sans:style=Bold");
 // SPEC section 8 bottom-side rules as outlines on the board underside: keep-out sector (yellow), actuator corridor
 // (orange) and rotating hub zone (cyan)
@@ -1014,11 +1014,16 @@ module spec_keepout_overlay() {
         circle(r = HUB_ZONE_R[1], $fn = fn_big); circle(r = HUB_ZONE_R[0], $fn = fn_big); }
 }
 module board_bottom_labels() {
-    label("SPEC keep-out θ60–120° r12–32", [-3, 30.5], 1.5);
-    label(str("actuator corridor θ30–160° r8.5–27: parts ≤", CORRIDOR_H, " mm"), [26.5, 22.5], 1.3, "right");
-    label(str("hub zone r9.5–12.5: bottom z≥", HUB_ZONE_Z), [-3.5, -13.0], 1.3);
+    // SPEC section 8 bottom rules: colour-keyed legend in the lower-left corner
+    label("SPEC §8 bottom rules:", [-47, 28.6], 1.3, "left");
+    label(str("keep-out θ", KO_SECTOR[0], "–", KO_SECTOR[1], "° r", KO_R[0], "–", KO_R[1], ": no parts"), [-47, 30.4], 1.3,
+          "left", "#b38f00");
+    label(str("actuator corridor θ", CORRIDOR_A[0], "–", CORRIDOR_A[1], "° r", CORRIDOR_R[0], "–", CORRIDOR_R[1],
+              ": parts ≤", CORRIDOR_H, " mm"), [-47, 32.2], 1.3, "left", "#e8590c");
+    label(str("hub zone r", HUB_ZONE_R[0], "–", HUB_ZONE_R[1], ": bottom z≥", HUB_ZONE_Z), [-47, 34.0], 1.3, "left",
+          "#0c8599");
     label("TMAG5273 r29 θ270", [0, -25.5]);
-    label("MDBT50Q U10", [-17.5, -13.0]);
+    label("MDBT50Q U10", [-13.5, -6.0]);
     label("u.FL (outward end)", [UFLP[2] - 1.8, UFLP[3] - 1.0], 1.4, "right");
     label("J1 link", [16.5, -14.0], 1.6);
     label("piezo BZ1", [21.0, 8.0], 1.6);
@@ -1064,35 +1069,35 @@ module section_labels()
             text(l[0], size = 1.55, halign = l[3], valign = "center", font = "DejaVu Sans");
     }
 
-// ---------- NFC tail close-up: cut on the vertical plane through the J11 axis (u = 0), seen from +u ----------
+// ---------- NFC tail close-up: thin section on the vertical plane through the J11 axis (u = 0), seen from +u ----------
+// (the glass edge is oblique to this plane: the closest tail-to-glass gap, 0.33 mm, is at the tail's edge u = -1.0)
 module cut_j11(c, k)
     color(c) render(convexity = 6) intersection() {
         children();
-        translate([J11P[2], J11P[3], 0]) rotate(J11P[4]) translate([-100 + k * 0.001, -100, -50]) cube([100, 200, 200]);
+        translate([J11P[2], J11P[3], 0]) rotate(J11P[4]) translate([-0.05 + k * 0.001, -100, -50]) cube([0.05, 200, 200]);
     }
-NFC_LABELS = [   // [text, point (v, z) in the J11 frame, text position (v, z), halign]
-    ["top cover: coil pocket ceiling z 35.0 inside r 26.35", [-1.0, 35.5], [-9.6, 38.0], "left"],
-    ["NFC coil sheet z 34.8-34.95, bonded to the ceiling", [-5.6, 34.88], [-9.6, 37.0], "left"],
-    [str("copper turns r ", NFC_CU[0], "-", NFC_CU[1]), [NFC_CU[0] + 0.6 - J11_R, 34.96], [6.9, 37.4], "left"],
-    ["OLED glass (edge 0.34 from the tail)", [-1.0, 33.85], [-9.6, 33.85], "left"],
-    ["bracket rim, relief to z 32.3 over J11", [-0.3, 32.55], [-9.6, 32.2], "left"],
-    ["J11 joint (pads + solder + tail end)", [-0.6, 30.9], [-9.6, 29.6], "left"],
-    ["main board top z 30.7", [-3.5, 30.4], [-9.6, 28.6], "left"],
-    [str("tail ", NFC_TAIL_W, " wide, folds R ", NFC_TAIL_BR, ", vertical at r ", NFC_TAIL_RV), [NFC_TAIL_VV, 33.0],
-        [6.9, 33.6], "left"],
-    ["light box (r 27-30) + diffuser", [5.9, 33.0], [6.9, 31.4], "left"],
-    ["LED cap r 25.9", [4.4, 31.1], [6.9, 30.0], "left"],
+NFC_LABELS = [   // [text, point (v, z) in the J11 frame, text anchor (v, z), halign]; v = r - J11_R along theta 222
+    ["OLED glass (0.33 to the tail's near edge)", [-1.0, 33.85], [-4.5, 39.6], "right"],
+    ["top cover: pocket ceiling z 35.0, r ≤ 26.35", [-3.0, 35.6], [-4.5, 38.8], "right"],
+    ["NFC coil sheet z 34.8–34.95 on the ceiling", [-5.6, 34.88], [-4.5, 38.0], "right"],
+    [str("copper turns r ", NFC_CU[0], "–", NFC_CU[1]), [NFC_CU[0] + 0.6 - J11_R, 34.96], [1.5, 39.6], "left"],
+    ["diffuser + light box r 27–30", [7.0, 35.0], [6.5, 38.8], "left"],
+    ["main board top z 30.7", [-3.5, 30.4], [-3.5, 28.3], "right"],
+    ["rim relief to z 32.3 over J11 (0.5 rim left)", [-0.3, 32.55], [-3.5, 27.5], "right"],
+    ["J11 joint: pads + solder + tail end", [-0.6, 30.9], [-3.5, 26.7], "right"],
+    [str("tail ", NFC_TAIL_W, " wide, folds R ", NFC_TAIL_BR, ", vertical r ", NFC_TAIL_RV, "–", NFC_TAIL_RV + NFC_T),
+        [NFC_TAIL_VV, 32.4], [1.5, 28.3], "left"],
 ];
 module nfc_labels()
     translate([J11P[2], J11P[3], 0]) rotate(J11P[4]) for (l = NFC_LABELS) {
         a = l[1]; b = l[2];
         color("#555555") hull() {
-            translate([2.5, a[0], a[1]]) cube(0.05, center = true);
-            translate([2.5, b[0] + (l[3] == "left" ? -0.25 : 0.25), b[1]]) cube(0.05, center = true);
+            translate([2.5, a[0], a[1]]) cube(0.04, center = true);
+            translate([2.5, b[0] + (l[3] == "left" ? -0.2 : 0.2), b[1]]) cube(0.04, center = true);
         }
-        color("#e03131") translate([2.5, a[0], a[1]]) sphere(d = 0.25, $fn = 8);
+        color("#e03131") translate([2.5, a[0], a[1]]) sphere(d = 0.2, $fn = 8);
         color("#111111") translate([2.5, b[0], b[1]]) rotate([90, 0, 90]) linear_extrude(0.05)
-            text(l[0], size = 0.42, halign = l[3], valign = "center", font = "DejaVu Sans");
+            text(l[0], size = 0.3, halign = l[3], valign = "center", font = "DejaVu Sans");
     }
 module nfc_view() {
     cut_j11(c_pcb_m, 0) main_board_pcb();

@@ -182,7 +182,7 @@ FW_V_FULL, FW_V_DERATE, FW_V_OFF, FW_V_SHIP = 3.65, 3.60, 3.53, 3.53
 # the one used on USB (PI-2, NF-1)
 FW_V_SHIP_OLD = 3.48
 FW_V_OLED_DIM = 3.75                  # OLED C7 <= 08h below this rested VBAT and during LED bursts (OLED-BST-2)
-FW_VSYS_MOVE, FW_VSYS_PARK = 3.55, 3.30   # non-park moves from VSYS >= 3.55 V measured idle (MD-2); park moves
+FW_VSYS_PARK = 3.30        # park moves from VSYS >= 3.30 V; non-park moves only from >= 3.55 V measured idle (MD-2)
 # instantaneous lit-channel budget, docs/firmware.md 6.3 (PI-2): (rested VBAT row, allowed aligned ring peak A);
 # the full ring from 3.90 V, about 0.23 A less while the actuator moves
 FW_PK_ROWS = ((3.48, 0.19), (3.53, 0.28), (3.60, 0.33), (3.65, 0.42), (3.70, 0.51), (3.80, 0.69))
@@ -919,7 +919,8 @@ def test_firmware_capped_sync_pwm_transient_with_fw_rule(main, base, check, cnam
     pk = fw_peak_cap(vbat, s.n_led, moving)
     loads = fw_rule_loads(s.n_led, cap, icc, moving, sync=True, pk=pk)
     r = run_tran(s.deck(f"PI-2 rule {point} {actuator}", loads, vbat=vbat), stop=1.2e-3, waves=("v(p_bat)",))
-    tag = f"PI-2 rule ({pk:.2f} A aligned peak), sync-PWM {point}{', actuator idle' if actuator == 'idle' else ''} {cname}"
+    idle = ", actuator idle" if actuator == "idle" else ""
+    tag = f"PI-2 rule ({pk:.2f} A aligned peak), sync-PWM {point}{idle} {cname}"
     check_supply(check, s, r, tag, led_on=True, extra=sync_rule_items(r, tag, RULE_PI2), rule=RULE_PI2)
 
 
@@ -1037,11 +1038,11 @@ def test_usb_without_battery_with_fw_rule(main, base, check, phase, cname):
         raise err
 
     if phase == "ILIM100":
-        ilim = BQ_ILIM100[0]
+        ilim, total = BQ_ILIM100[0], FW_NOSUP_TOTAL100
         loads = Loads(oled_icc=0.0, oled_ripple=False, tx=False, i3v3_base=I3V3_BASE - 25e-3,   # no W25Q erase
                       **led_avg(FW_NOSUP_LED100, s.n_led))
     else:
-        ilim = BQ_ILIM500[0]
+        ilim, total = BQ_ILIM500[0], FW_NOSUP_TOTAL500
         if phase == "ILIM500":
             loads = Loads(oled_icc=OLED_ICC_DIM, oled_ripple=False, tx=False, **led_avg(FW_NOSUP_LED500, s.n_led))
         else:
@@ -1061,6 +1062,8 @@ def test_usb_without_battery_with_fw_rule(main, base, check, phase, cname):
         items = [(f"{tag}: I(IN) (pinned at ILIM = no regulation)", r["iin"], None, 0.98 * ilim, "A", src_ilim),
                  (f"{tag}: VLED", r["vled"], WS_VDD_MIN, None, "V", f"{SRC_WS}; {RULE_PI4}"),
                  (f"{tag}: +3V3", r["v3v3"], V3V3_MIN, None, "V", f"{SRC_3V3}; {RULE_PI4}")]
+    # the profile's documented total itself must fit under the same ILIM bound (any split of it is a VSYS load)
+    items.append((f"{tag}: documented profile total ({total * 1e3:.0f} mA)", total, None, 0.98 * ilim, "A", src_ilim))
     check_all(check, items)
 
 
@@ -1399,7 +1402,9 @@ def test_led_peak_budget_vs_vbat(main, base, check):
 @pytest.mark.parametrize("vbat", [3.53, 3.65, 3.70])
 def test_proposed_peak_cap_fix(main, base, check, vbat):
     """Fix check: with the ring's aligned peak limited to 95 % of the derived budget (fewer lit channels instead of
-    lower PWM duty) the worst-corner sync-PWM transient keeps VLED >= 3.3 V at the low-VBAT policy points."""
+    lower PWM duty) the worst-corner sync-PWM transient keeps VLED >= 3.3 V at the low-VBAT policy points.
+    (Not the documented values: firmware.md 6.3 rounds the budget to 0.28 / 0.42 / 0.51 A, which the
+    *_with_fw_rule guards check.)"""
     s = System(main, base, WORST)
     icc = OLED_ICC_MAX if vbat >= FW_V_DERATE else OLED_ICC_DIM
     peak = 0.95 * led_peak_budget(s, vbat, icc)
