@@ -514,16 +514,13 @@ def test_fault_ct_cap_ten_times_too_big(main, base, check):
 
 @pytest.mark.fault
 def test_fault_ct_cap_ten_times_too_small(main, base, check):
-    """C7 fitted as 100 pF instead of 1 nF: ~0.9 A inrush into ~49 uF for ~0.2 ms (>> tBUVLO 60 us).  At the 3.48 V
-    firmware floor in the cold the battery-pin dip must cross BUVLO (the 1 nF design passes this check)."""
+    """C7 fitted as 100 pF instead of 1 nF: ~0.9 A inrush into ~49 uF for ~0.2 ms.  The +3V3 floor check of
+    test_u2_turn_on_supply_and_temperature at VBAT 3.0 V / -10 C (2.88 V with 1 nF) must catch it.  (Inside the
+    firmware envelope, VBAT >= 3.48 V, the 82 uF of unswitched VSYS bulk absorbs the surge: BAT pin ~3.15 V > BUVLO.)"""
     main.override("C7", "100p")
-    CORNERS["_floor"] = dict(usb=0, vbat=FW_VBAT_FLOOR, vbus=0.0)
-    try:
-        r = u2_turn_on(main, base, "_floor", -10)
-    finally:
-        CORNERS.pop("_floor")
-    detects(check, "BQ25180 BAT pin min with C7 = 100p, VBAT 3.48 V, -10 C", r["vbatmin"], BQ_BUVLO, None, "V",
-            f"{DS_BQ} 7.5 VBUVLO 3.0 V, 7.6 tBUVLO 60 us")
+    r = u2_turn_on(main, base, "bat3.0", -10)
+    detects(check, "+3V3 min during U2 turn-on with C7 = 100p, bat3.0 -10C", min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO),
+            W25_VCC_MIN, None, "V", "W25Q128JV VCC min 2.7 V; RT9080 DS9080-09 dropout 0.53 V @ 0.6 A")
 
 
 # ======================================================================================== 3. U2 off: QOD discharge of VLED
