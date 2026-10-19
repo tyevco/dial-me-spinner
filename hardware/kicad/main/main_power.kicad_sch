@@ -846,6 +846,113 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Mechanical:MountingHole_Pad"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom no)
+			(on_board yes)
+			(property "Reference" "H"
+				(at 0 6.35 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "MountingHole_Pad"
+				(at 0 4.445 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Mounting Hole with connection"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "mounting hole"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_fp_filters" "MountingHole*Pad*"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "MountingHole_Pad_0_1"
+				(circle
+					(center 0 1.27)
+					(radius 1.27)
+					(stroke
+						(width 1.27)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "MountingHole_Pad_1_1"
+				(pin input line
+					(at 0 -2.54 90)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Power_Management:TPS22917DBV"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -1904,9 +2011,45 @@
 		)
 		(uuid "a44e35f3-8e1d-58e7-a945-abacf11774ff")
 	)
-	(text "Power flags"
+	(text "Spindle clamp holes (GND)"
 		(exclude_from_sim no)
 		(at 179.07 97.79 0)
+		(effects
+			(font
+				(size 2 2)
+				(bold yes)
+			)
+			(justify left top)
+		)
+		(uuid "7e25c470-22f4-5e03-82bc-41c752bb8bd8")
+	)
+	(text "Plated M2 holes for the stainless spindle flange: grounds spindle -> 608 races -> ring, giving the\ntouchable 316L flywheel an ESD bleed path instead of arcing to the encoder (review SCH-2).\nBond the ring to the bearing outer race with conductive epoxy (docs/mechanical.md)."
+		(exclude_from_sim no)
+		(at 179.07 101.6 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(italic yes)
+			)
+			(justify left top)
+		)
+		(uuid "f87ba29f-4133-5bd1-ab7f-9b290cc368fa")
+	)
+	(rectangle
+		(start 176.53 95.25)
+		(end 279.4 133.35)
+		(stroke
+			(width 0.1)
+			(type dash)
+		)
+		(fill
+			(type none)
+		)
+		(uuid "36b45af8-e49e-538e-8d52-3881af5cea8d")
+	)
+	(text "Power flags"
+		(exclude_from_sim no)
+		(at 287.02 97.79 0)
 		(effects
 			(font
 				(size 2 2)
@@ -1918,7 +2061,7 @@
 	)
 	(text "VSYS, VBUS and GND enter this board only through the passive link connector J1"
 		(exclude_from_sim no)
-		(at 179.07 101.6 0)
+		(at 287.02 101.6 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1929,8 +2072,8 @@
 		(uuid "ba1baab0-43c0-537e-aecb-7a82d98a133f")
 	)
 	(rectangle
-		(start 176.53 95.25)
-		(end 259.08 127)
+		(start 284.48 95.25)
+		(end 367.03 127)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -1942,7 +2085,7 @@
 	)
 	(text "Test points"
 		(exclude_from_sim no)
-		(at 266.7 97.79 0)
+		(at 374.65 97.79 0)
 		(effects
 			(font
 				(size 2 2)
@@ -1953,8 +2096,8 @@
 		(uuid "1a30b614-0ad1-5e52-9f5f-cd5fb1ad0440")
 	)
 	(rectangle
-		(start 264.16 95.25)
-		(end 297.18 125.73)
+		(start 372.11 95.25)
+		(end 405.13 125.73)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -6334,16 +6477,16 @@
 		)
 	)
 	(symbol
-		(lib_id "power:PWR_FLAG")
-		(at 180.34 111.76 0)
+		(lib_id "Mechanical:MountingHole_Pad")
+		(at 180.34 116.84 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
-		(on_board no)
+		(on_board yes)
 		(dnp no)
-		(uuid "d98e7774-1cc1-5c80-8bea-8d5ba38c874f")
-		(property "Reference" "#FLG01"
-			(at 182.626 110.49 0)
+		(uuid "c61a64f2-1891-5e0b-b759-7361a143e6b0")
+		(property "Reference" "H1"
+			(at 181.61 115.57 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6351,8 +6494,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "PWR_FLAG"
-			(at 182.626 113.03 0)
+		(property "Value" "SPINDLE_M2"
+			(at 181.61 118.11 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6360,8 +6503,8 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
-			(at 180.34 111.76 0)
+		(property "Footprint" "MountingHole:MountingHole_2.2mm_M2_Pad_Via"
+			(at 180.34 116.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6370,7 +6513,427 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 180.34 111.76 0)
+			(at 180.34 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Mounting Hole with connection"
+			(at 180.34 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "cf5bcd20-1bfa-5f6e-b461-b377e5dfa519")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "H1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 180.34 119.38) (xy 180.34 121.92))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3e05b559-a006-5eb9-b7ef-19e2a0c1e286")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 180.34 121.92 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c255f42a-e37a-51dd-a373-4e2c82ad0c26")
+		(property "Reference" "#PWR02035"
+			(at 180.34 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 180.34 125.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify top)
+			)
+		)
+		(property "Footprint" ""
+			(at 180.34 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 180.34 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 180.34 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "848e6b11-9938-5b97-8877-c31069de4887")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "#PWR02035")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Mechanical:MountingHole_Pad")
+		(at 187.96 116.84 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "b79bb34e-eb7a-5151-b867-52e6fb630c00")
+		(property "Reference" "H2"
+			(at 189.23 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "SPINDLE_M2"
+			(at 189.23 118.11 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "MountingHole:MountingHole_2.2mm_M2_Pad_Via"
+			(at 187.96 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 187.96 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Mounting Hole with connection"
+			(at 187.96 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "985340c0-8d4a-5d77-b140-76c7709d7cad")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "H2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 187.96 119.38) (xy 187.96 121.92))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5a77f307-a141-5efa-8cad-7d2ca88865c5")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 187.96 121.92 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "56d74331-b867-527a-8d66-e61a422ac583")
+		(property "Reference" "#PWR02036"
+			(at 187.96 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 187.96 125.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify top)
+			)
+		)
+		(property "Footprint" ""
+			(at 187.96 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 187.96 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 187.96 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "329b15ad-ece1-532f-b292-b67d48e79561")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "#PWR02036")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Mechanical:MountingHole_Pad")
+		(at 195.58 116.84 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "b2928fc7-ec8a-5e9b-b129-7fb52f3cc5c7")
+		(property "Reference" "H3"
+			(at 196.85 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "SPINDLE_M2"
+			(at 196.85 118.11 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "MountingHole:MountingHole_2.2mm_M2_Pad_Via"
+			(at 195.58 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 195.58 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Mounting Hole with connection"
+			(at 195.58 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "aa2230e1-0342-54c9-84b3-b011f6ccf9a1")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "H3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 195.58 119.38) (xy 195.58 121.92))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "555f4b9e-5b34-5034-bf04-f8f78bd2b31a")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 195.58 121.92 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "fc42f6ac-e137-583e-87f2-f6c8be03113d")
+		(property "Reference" "#PWR02037"
+			(at 195.58 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 195.58 125.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify top)
+			)
+		)
+		(property "Footprint" ""
+			(at 195.58 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 195.58 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 195.58 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "e995d7e7-02fe-520f-afc5-e14ceca757e9")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
+					(reference "#PWR02037")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 289.56 111.76 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(uuid "d98e7774-1cc1-5c80-8bea-8d5ba38c874f")
+		(property "Reference" "#FLG01"
+			(at 291.846 110.49 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 291.846 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 289.56 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 289.56 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6379,7 +6942,7 @@
 			)
 		)
 		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 180.34 111.76 0)
+			(at 289.56 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6400,7 +6963,7 @@
 		)
 	)
 	(wire
-		(pts (xy 180.34 111.76) (xy 180.34 114.3))
+		(pts (xy 289.56 111.76) (xy 289.56 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -6409,15 +6972,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 180.34 114.3 180)
+		(at 289.56 114.3 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "ac3eb542-832d-5d21-81a6-3711b7ea462f")
-		(property "Reference" "#PWR02035"
-			(at 180.34 114.3 0)
+		(property "Reference" "#PWR02038"
+			(at 289.56 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6426,7 +6989,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 180.34 117.6 0)
+			(at 289.56 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6435,7 +6998,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 180.34 114.3 0)
+			(at 289.56 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6444,7 +7007,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 180.34 114.3 0)
+			(at 289.56 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6453,7 +7016,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 180.34 114.3 0)
+			(at 289.56 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6467,7 +7030,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02035")
+					(reference "#PWR02038")
 					(unit 1)
 				)
 			)
@@ -6475,7 +7038,7 @@
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
-		(at 187.96 111.76 0)
+		(at 297.18 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -6483,7 +7046,7 @@
 		(dnp no)
 		(uuid "1d4eef1a-c775-535a-a1d6-33bc52ddfb33")
 		(property "Reference" "#FLG02"
-			(at 190.246 110.49 0)
+			(at 299.466 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6492,7 +7055,7 @@
 			)
 		)
 		(property "Value" "PWR_FLAG"
-			(at 190.246 113.03 0)
+			(at 299.466 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6501,7 +7064,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 187.96 111.76 0)
+			(at 297.18 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6510,7 +7073,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 187.96 111.76 0)
+			(at 297.18 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6519,7 +7082,7 @@
 			)
 		)
 		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 187.96 111.76 0)
+			(at 297.18 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6540,7 +7103,7 @@
 		)
 	)
 	(wire
-		(pts (xy 187.96 111.76) (xy 187.96 114.3))
+		(pts (xy 297.18 111.76) (xy 297.18 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -6549,15 +7112,15 @@
 	)
 	(symbol
 		(lib_id "power:VBUS")
-		(at 187.96 114.3 180)
+		(at 297.18 114.3 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "83f83502-e64a-5fec-bd5b-a8ce17a52197")
-		(property "Reference" "#PWR02036"
-			(at 187.96 114.3 0)
+		(property "Reference" "#PWR02039"
+			(at 297.18 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6566,7 +7129,7 @@
 			)
 		)
 		(property "Value" "VBUS"
-			(at 187.96 117.6 0)
+			(at 297.18 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6575,7 +7138,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 187.96 114.3 0)
+			(at 297.18 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6584,7 +7147,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 187.96 114.3 0)
+			(at 297.18 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6593,7 +7156,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 187.96 114.3 0)
+			(at 297.18 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6607,7 +7170,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02036")
+					(reference "#PWR02039")
 					(unit 1)
 				)
 			)
@@ -6615,7 +7178,7 @@
 	)
 	(symbol
 		(lib_id "power:PWR_FLAG")
-		(at 195.58 111.76 0)
+		(at 304.8 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -6623,7 +7186,7 @@
 		(dnp no)
 		(uuid "c8ac010d-9936-5fea-ae80-d1b0174a7644")
 		(property "Reference" "#FLG03"
-			(at 197.866 110.49 0)
+			(at 307.086 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6632,7 +7195,7 @@
 			)
 		)
 		(property "Value" "PWR_FLAG"
-			(at 197.866 113.03 0)
+			(at 307.086 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6641,7 +7204,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 195.58 111.76 0)
+			(at 304.8 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6650,7 +7213,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 195.58 111.76 0)
+			(at 304.8 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6659,7 +7222,7 @@
 			)
 		)
 		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 195.58 111.76 0)
+			(at 304.8 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6680,7 +7243,7 @@
 		)
 	)
 	(wire
-		(pts (xy 195.58 111.76) (xy 195.58 114.3))
+		(pts (xy 304.8 111.76) (xy 304.8 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -6689,15 +7252,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 195.58 114.3 0)
+		(at 304.8 114.3 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "a5855d27-ba1e-5cc5-acf0-7ce2e60689ff")
-		(property "Reference" "#PWR02037"
-			(at 195.58 114.3 0)
+		(property "Reference" "#PWR02040"
+			(at 304.8 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6706,7 +7269,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 195.58 117.6 0)
+			(at 304.8 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6715,7 +7278,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 195.58 114.3 0)
+			(at 304.8 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6724,7 +7287,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 195.58 114.3 0)
+			(at 304.8 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6733,7 +7296,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 195.58 114.3 0)
+			(at 304.8 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6747,7 +7310,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02037")
+					(reference "#PWR02040")
 					(unit 1)
 				)
 			)
@@ -6755,7 +7318,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 269.24 111.76 0)
+		(at 375.92 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -6763,7 +7326,7 @@
 		(dnp no)
 		(uuid "6b76ef59-affc-5b43-9932-dbe133343fc6")
 		(property "Reference" "TP1"
-			(at 270.51 110.49 0)
+			(at 377.19 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6772,7 +7335,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 270.51 113.03 0)
+			(at 377.19 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6781,7 +7344,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 269.24 111.76 0)
+			(at 375.92 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6790,7 +7353,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 269.24 111.76 0)
+			(at 375.92 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6799,7 +7362,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 269.24 111.76 0)
+			(at 375.92 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6820,7 +7383,7 @@
 		)
 	)
 	(wire
-		(pts (xy 269.24 111.76) (xy 269.24 114.3))
+		(pts (xy 375.92 111.76) (xy 375.92 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -6829,15 +7392,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 269.24 114.3 180)
+		(at 375.92 114.3 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "60c29f93-f711-52cd-8297-627cf10c2347")
-		(property "Reference" "#PWR02038"
-			(at 269.24 114.3 0)
+		(property "Reference" "#PWR02041"
+			(at 375.92 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6846,7 +7409,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 269.24 117.6 0)
+			(at 375.92 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6855,7 +7418,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 269.24 114.3 0)
+			(at 375.92 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6864,7 +7427,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 269.24 114.3 0)
+			(at 375.92 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6873,7 +7436,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 269.24 114.3 0)
+			(at 375.92 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6887,7 +7450,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02038")
+					(reference "#PWR02041")
 					(unit 1)
 				)
 			)
@@ -6895,7 +7458,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 276.86 111.76 0)
+		(at 383.54 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -6903,7 +7466,7 @@
 		(dnp no)
 		(uuid "b57f669d-d1d9-5f26-a452-529d7a5854cc")
 		(property "Reference" "TP2"
-			(at 278.13 110.49 0)
+			(at 384.81 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6912,7 +7475,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 278.13 113.03 0)
+			(at 384.81 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6921,7 +7484,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 276.86 111.76 0)
+			(at 383.54 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6930,7 +7493,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 276.86 111.76 0)
+			(at 383.54 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6939,7 +7502,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 276.86 111.76 0)
+			(at 383.54 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6960,7 +7523,7 @@
 		)
 	)
 	(wire
-		(pts (xy 276.86 111.76) (xy 276.86 114.3))
+		(pts (xy 383.54 111.76) (xy 383.54 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -6969,15 +7532,15 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 276.86 114.3 180)
+		(at 383.54 114.3 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "73c95075-61f4-556d-bb42-723ba896a52b")
-		(property "Reference" "#PWR02039"
-			(at 276.86 114.3 0)
+		(property "Reference" "#PWR02042"
+			(at 383.54 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6986,7 +7549,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 276.86 117.6 0)
+			(at 383.54 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6995,7 +7558,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 276.86 114.3 0)
+			(at 383.54 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7004,7 +7567,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 276.86 114.3 0)
+			(at 383.54 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7013,7 +7576,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 276.86 114.3 0)
+			(at 383.54 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7027,7 +7590,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02039")
+					(reference "#PWR02042")
 					(unit 1)
 				)
 			)
@@ -7035,7 +7598,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 284.48 111.76 0)
+		(at 393.7 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -7043,7 +7606,7 @@
 		(dnp no)
 		(uuid "73444376-b917-588d-a5f6-7ce7cf52808a")
 		(property "Reference" "TP3"
-			(at 285.75 110.49 0)
+			(at 394.97 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7052,7 +7615,7 @@
 			)
 		)
 		(property "Value" "VLED"
-			(at 285.75 113.03 0)
+			(at 394.97 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7061,7 +7624,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 284.48 111.76 0)
+			(at 393.7 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7070,7 +7633,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 284.48 111.76 0)
+			(at 393.7 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7079,7 +7642,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 284.48 111.76 0)
+			(at 393.7 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7100,7 +7663,7 @@
 		)
 	)
 	(wire
-		(pts (xy 284.48 111.76) (xy 284.48 114.3))
+		(pts (xy 393.7 111.76) (xy 393.7 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -7109,15 +7672,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 284.48 114.3 180)
+		(at 393.7 114.3 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "d43cf557-9294-597d-9608-1eb9a92ddb35")
-		(property "Reference" "#PWR02040"
-			(at 284.48 114.3 0)
+		(property "Reference" "#PWR02043"
+			(at 393.7 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7126,7 +7689,7 @@
 			)
 		)
 		(property "Value" "VLED"
-			(at 284.48 117.6 0)
+			(at 393.7 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7135,7 +7698,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 284.48 114.3 0)
+			(at 393.7 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7144,7 +7707,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 284.48 114.3 0)
+			(at 393.7 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7153,7 +7716,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 284.48 114.3 0)
+			(at 393.7 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7167,7 +7730,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02040")
+					(reference "#PWR02043")
 					(unit 1)
 				)
 			)
@@ -7175,7 +7738,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 292.1 111.76 0)
+		(at 401.32 111.76 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -7183,7 +7746,7 @@
 		(dnp no)
 		(uuid "8ef0d0ea-9254-5356-9c3d-5ad8b293ed4f")
 		(property "Reference" "TP4"
-			(at 293.37 110.49 0)
+			(at 402.59 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7192,7 +7755,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 293.37 113.03 0)
+			(at 402.59 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7201,7 +7764,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 292.1 111.76 0)
+			(at 401.32 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7210,7 +7773,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 292.1 111.76 0)
+			(at 401.32 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7219,7 +7782,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 292.1 111.76 0)
+			(at 401.32 111.76 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7240,7 +7803,7 @@
 		)
 	)
 	(wire
-		(pts (xy 292.1 111.76) (xy 292.1 114.3))
+		(pts (xy 401.32 111.76) (xy 401.32 114.3))
 		(stroke
 			(width 0)
 			(type default)
@@ -7249,15 +7812,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 292.1 114.3 0)
+		(at 401.32 114.3 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "fa639101-7ff8-53d5-9c98-673c2afd32a4")
-		(property "Reference" "#PWR02041"
-			(at 292.1 114.3 0)
+		(property "Reference" "#PWR02044"
+			(at 401.32 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7266,7 +7829,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 292.1 117.6 0)
+			(at 401.32 117.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7275,7 +7838,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 292.1 114.3 0)
+			(at 401.32 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7284,7 +7847,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 292.1 114.3 0)
+			(at 401.32 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7293,7 +7856,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 292.1 114.3 0)
+			(at 401.32 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7307,7 +7870,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/f5291bb4-1470-5b34-a72e-617e02f765d6"
-					(reference "#PWR02041")
+					(reference "#PWR02044")
 					(unit 1)
 				)
 			)

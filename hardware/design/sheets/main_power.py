@@ -77,6 +77,14 @@ def build(d):
     d.add("C9", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "LCSC": "C45783"})
 
+    d.group("Spindle clamp holes (GND)",
+            "Plated M2 holes for the stainless spindle flange: grounds spindle -> 608 races -> ring, giving the\n"
+            "touchable 316L flywheel an ESD bleed path instead of arcing to the encoder (review SCH-2).\n"
+            "Bond the ring to the bearing outer race with conductive epoxy (docs/mechanical.md).")
+    for i in range(1, 4):
+        d.add(f"H{i}", "Mechanical:MountingHole_Pad", "SPINDLE_M2", "MountingHole:MountingHole_2.2mm_M2_Pad_Via",
+              pins={"1": "GND"}, in_bom=False)
+
     d.group("Power flags", "VSYS, VBUS and GND enter this board only through the passive link connector J1")
     for i, net in enumerate(["VSYS", "VBUS", "GND"], start=1):
         d.add(f"#FLG0{i}", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": net}, in_bom=False, on_board=False)
