@@ -153,6 +153,17 @@
   "ee_pads": 14,
   "footprint": "JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal"
  },
+ "C163455": {
+  "rot": 0,
+  "dx": 0.0,
+  "dy": 0.0,
+  "rms": 0.077,
+  "title": "R0402",
+  "matched": 2,
+  "kicad_pads": 2,
+  "ee_pads": 2,
+  "footprint": "R_0402_1005Metric"
+ },
  "C165948": {
   "rot": 0,
   "dx": 0.0,
@@ -373,6 +384,28 @@
   "ee_pads": 61,
   "footprint": "Raytac_MDBT50Q_UFL"
  },
+ "C277470": {
+  "rot": 0,
+  "dx": 0.0,
+  "dy": 0.0,
+  "rms": 0.05,
+  "title": "C0805",
+  "matched": 2,
+  "kicad_pads": 2,
+  "ee_pads": 2,
+  "footprint": "C_0805_2012Metric"
+ },
+ "C2909356": {
+  "rot": 0,
+  "dx": 0.0,
+  "dy": 0.0,
+  "rms": 0.077,
+  "title": "R0402",
+  "matched": 2,
+  "kicad_pads": 2,
+  "ee_pads": 2,
+  "footprint": "R_0402_1005Metric"
+ },
  "C295747": {
   "rot": 0,
   "dx": 0.0,
@@ -544,6 +577,17 @@
   "kicad_pads": 5,
   "ee_pads": 5,
   "footprint": "SOT-23-5"
+ },
+ "C78636": {
+  "rot": 0,
+  "dx": 0.0,
+  "dy": 0.0,
+  "rms": 0.06,
+  "title": "C0402",
+  "matched": 2,
+  "kicad_pads": 2,
+  "ee_pads": 2,
+  "footprint": "C_0402_1005Metric"
  },
  "C841192": {
   "rot": 270,
