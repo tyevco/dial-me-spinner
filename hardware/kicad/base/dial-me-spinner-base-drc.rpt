@@ -1,34 +1,18 @@
 ** Drc report for dial-me-spinner-base.kicad_pcb **
-** Created on 2026-10-19T01:39:37+0000 **
+** Created on 2026-10-19T01:44:17+0000 **
 ** Report includes: Errors **
 
 ** Found 0 DRC violations **
 
-** Found 6 unconnected pads **
+** Found 2 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(122.0000 mm, 101.4500 mm): Track [VBUS] on F.Cu, length 1.6358 mm
-    @(122.0928 mm, 105.1237 mm): Track [VBUS] on F.Cu, length 1.8089 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(108.1051 mm, 106.8279 mm): Pad 1 [VSYS] of C2 on F.Cu
     @(110.5923 mm, 105.8000 mm): Pad B2 [VSYS] of U1 on F.Cu
+    @(91.4847 mm, 95.4296 mm): Pad 1 [VSYS] of C4 on F.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(108.1051 mm, 106.8279 mm): Pad 1 [VSYS] of C2 on F.Cu
-    @(91.2100 mm, 95.1549 mm): Track [VSYS] on F.Cu, length 0.3885 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(104.6888 mm, 93.4018 mm): Via [/Base board/CHG_INT_N] on F.Cu - B.Cu
-    @(89.4990 mm, 82.4923 mm): Pad 11 [/Base board/CHG_INT_N] of J3 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(103.0000 mm, 101.8750 mm): Pad 2 [/Base board/SW_GATE] of SW1 on F.Cu
-    @(97.0000 mm, 101.8750 mm): Track [/Base board/SW_GATE] on F.Cu, length 0.4248 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(99.2400 mm, 110.3650 mm): Track [/Base board/CHG_TSMR] on F.Cu, length 0.4342 mm
-    @(110.1923 mm, 106.6000 mm): Pad D1 [/Base board/CHG_TSMR] of U1 on F.Cu
+    @(110.5923 mm, 105.8000 mm): Track [VSYS] on F.Cu, length 0.7000 mm
+    @(113.0923 mm, 106.5750 mm): Pad 1 [VSYS] of C2 on F.Cu
 
 ** Found 0 Footprint errors **
 

@@ -354,6 +354,33 @@ def preroute_usb_c(bb, ref):
     track(off(b7, far), b7.GetPosition(), pcbnew.F_Cu, dm)
 
 
+def preroute_bga_escape(bb, ref, length=0.7, power=("VBUS", "VSYS", "VBAT", "GND")):
+    """Locked escape stubs for a 2-column fine-pitch BGA: each ball goes straight outward, away from
+    the other column, so the autorouter starts outside the 0.4 mm-pitch array."""
+    fp = bb.footprints.get(ref)
+    if fp is None:
+        return
+    pads = [p for p in fp.Pads() if p.GetNumber() and p.GetNetname()]
+    xs = [p.GetPosition().x for p in pads]
+    ys = [p.GetPosition().y for p in pads]
+    cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
+    along_x = (max(xs) - min(xs)) < (max(ys) - min(ys))  # columns separated in x -> escape along x
+    for p in pads:
+        pos = p.GetPosition()
+        if along_x:
+            d = pcbnew.VECTOR2I(pcbgen.MM(length) * (1 if pos.x > cx else -1), 0)
+        else:
+            d = pcbnew.VECTOR2I(0, pcbgen.MM(length) * (1 if pos.y > cy else -1))
+        t = pcbnew.PCB_TRACK(bb.board)
+        t.SetStart(pos)
+        t.SetEnd(pcbnew.VECTOR2I(pos.x + d.x, pos.y + d.y))
+        t.SetWidth(pcbgen.MM(0.2 if p.GetNetname() in power else 0.15))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(p.GetNet())
+        t.SetLocked(True)
+        bb.board.Add(t)
+
+
 def base_inside(x, y, side):
     if radius(x, y) <= BASE_R - 0.5:
         return True
@@ -417,11 +444,21 @@ def base_keepouts():
     return [("*", bosses), ("B", bottom), ("F", usb_preroute)]
 
 
+BGA_CLEAR_MM = 1.6  # free radius around the BQ25180 so its escape stubs and first vias have room
+
+
+def base_post_place(bb, comps):
+    for ref, c in comps.items():
+        if "BQ25180" in mpn(c):
+            preroute_bga_escape(bb, ref)
+
+
 def build_base(bb, comps, nets):
     bb.edge_band_keepout(base_outline(bb))
     for ref, c in comps.items():
         if "TYPE-C" in mpn(c):
             preroute_usb_c(bb, ref)
+
     for i, th in enumerate((90, 270)):   # clear of the pack (long axis along θ 0/180); USB shell is the 3rd support
         x, y = pol(21.0, th)
         bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", f"H{i + 1}")
@@ -441,7 +478,7 @@ BOARDS = {
                  post_fixed=main_post_fixed),
     "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
                  keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.25,
-                 post_fixed=base_post_fixed),
+                 post_fixed=base_post_fixed, post_place=base_post_place),
 }
 
 
@@ -516,9 +553,14 @@ def generate(board, pours=True):
         if ref in fixed or ref not in bb.footprints:
             continue
         x, y = pol(r, th)
-        if not placer.place_near(bb.footprints[ref], x, y, side, max_r=20):
+        fp = bb.footprints[ref]
+        if not placer.place_near(fp, x, y, side, max_r=20):
             print("WARN: could not place anchor", ref)
-        anchors.append(bb.footprints[ref])
+        if "BQ25180" in mpn(comps[ref]):  # reserve room for the BGA escape stubs + first vias
+            px, py = pcbnew.ToMM(fp.GetPosition().x), pcbnew.ToMM(fp.GetPosition().y)
+            placer.occupied[side].append((ref + "_esc", (px - BGA_CLEAR_MM, py - BGA_CLEAR_MM,
+                                                         px + BGA_CLEAR_MM, py + BGA_CLEAR_MM)))
+        anchors.append(fp)
     # everything else clusters around its schematic-group anchor (fallback: the part it shares most nets with)
     gmap = group_anchors(board)
     rest = [fp for ref, fp in bb.footprints.items() if ref not in fixed and ref not in anchor_cfg]
@@ -545,6 +587,8 @@ def generate(board, pours=True):
             anchors.append(fp)
     if unplaced:
         print("WARN: unplaced:", ", ".join(unplaced))
+    if "post_place" in cfg:
+        cfg["post_place"](bb, comps)
     if pours:
         cfg["pours"](bb)
     out = os.path.join(pdir, project_name(board) + ".kicad_pcb")
