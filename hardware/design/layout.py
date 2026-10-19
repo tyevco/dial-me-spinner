@@ -64,12 +64,17 @@ def local_map(fp):
     ref = pcbnew.FootprintLoad(*fp_lib_path(fp)) if fp_lib_path(fp) else None
     if ref is None:
         return None
-    loc = {p.GetNumber(): (pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y)) for p in ref.Pads()}
-    src, dst = [], []
-    for p in fp.Pads():
-        if p.GetNumber() in loc:
-            src.append(loc[p.GetNumber()])
-            dst.append((pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y)))
+    lib_pads, brd_pads = list(ref.Pads()), list(fp.Pads())
+    xy = lambda p: (pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y))  # noqa: E731
+    if len(lib_pads) == len(brd_pads) and all(a.GetNumber() == b.GetNumber() for a, b in zip(lib_pads, brd_pads)):
+        # same library footprint: pair pads by position in the list, so repeated numbers (MP, GND, "") pair correctly
+        src, dst = [xy(a) for a in lib_pads], [xy(b) for b in brd_pads]
+    else:  # otherwise only pad numbers that are unique on both sides
+        nums = [p.GetNumber() for p in lib_pads]
+        loc = {p.GetNumber(): xy(p) for p in lib_pads if p.GetNumber() and nums.count(p.GetNumber()) == 1}
+        bnums = [p.GetNumber() for p in brd_pads]
+        pairs = [(loc[p.GetNumber()], xy(p)) for p in brd_pads if p.GetNumber() in loc and bnums.count(p.GetNumber()) == 1]
+        src, dst = [a for a, _ in pairs], [b for _, b in pairs]
     A = np.c_[np.array(src), np.ones(len(src))]
     sol, *_ = np.linalg.lstsq(A, np.array(dst), rcond=None)
     return lambda x, y: tuple(float(v) for v in np.array([x, y, 1.0]) @ sol)
@@ -458,9 +463,10 @@ def base_fixed(comps):
     put(lambda c: "TYPE-C" in mpn(c), CX + 31.35, CY, 90.0, "F")   # mating face (local y +3.65) at r = 35
     put(lambda c: "TS-1187" in mpn(c) or c["value"].upper().startswith("SW_PRESS"), CX, CY, 0.0, "F")
     put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", *pol(15.5, 120.0), 0.0, "F")
-    put(lambda c: "PH-SM4" in mpn(c) or "S2B-PH" in mpn(c), *pol(17.0, 212.0), 0.0, "F")
-    # JEITA NTC on the bottom, pressed onto the pack through a thermal pad (the only bottom-side part)
-    put(lambda c: "NCP15" in mpn(c) or "B3435" in c["value"].upper(), *pol(8.0, 200.0), 0.0, "B")
+    put(lambda c: "PH-SM4" in mpn(c) or "S2B-PH" in mpn(c), *pol(J2_POS[0], J2_POS[1]), 0.0, "F")
+    # NTC on the top side over the middle of the pack, away from the charger: the board is single-sided
+    # (the pack sits 1 mm under it), so RT1 reads board/pack-air temperature
+    put(lambda c: "NCP15" in mpn(c) or "B3435" in c["value"].upper(), *pol(8.0, 200.0), 0.0, "F")
     return P
 
 
@@ -473,37 +479,39 @@ def base_post_fixed(bb, comps, fixed):
         if "SM12B" in m:      # harness arrives from the spindle side-slot near the centre
             orient_local_toward(fp, 0.0, 4.0, CX, CY)
             fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(15.5, 120.0))))
-        elif "S2B-PH" in m:   # battery leads come from the pack end at θ = 180°
-            orient_local_toward(fp, 0.0, 6.0, *pol(30.0, 190.0))
-            fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(17.0, 212.0))))
-            for pad in fp.Pads():  # polarity marks: a reversed pack destroys the charger
-                label = {"1": "BAT+", "2": "GND"}.get(pad.GetNumber())
-                if label:
-                    px, py = pcbnew.ToMM(pad.GetPosition().x), pcbnew.ToMM(pad.GetPosition().y)
-                    dx, dy = px - CX, py - CY
-                    dl = math.hypot(dx, dy)
-                    ang = math.degrees(math.atan2(-dy, dx))  # read along the radius: the 2 mm pitch fits two lines
-                    ang = (ang + 90) % 180 - 90
-                    bb.text(pcbnew.F_SilkS, label, px + 3.4 * dx / dl, py + 3.4 * dy / dl, 0.8, angle=ang)
+        elif "S2B-PH" in m:   # mouth radially outward in the open sector; the leads drop past the board edge
+            fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(*J2_POS))))
+            orient_local_toward(fp, 0.0, 6.0, *pol(J2_POS[0] + 13.0, J2_POS[1]))
+            fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(*J2_POS))))
+            m2 = local_map(fp)
+            # polarity marks behind the pin tails (local -y), where they stay visible with the plug fitted
+            for lx, label in ((-1.0, "BAT+"), (1.0, "GND")):
+                x, y = m2(lx, -5.6)
+                ux, uy = m2(0.0, 1.0)
+                ox, oy = m2(0.0, 0.0)
+                ang = math.degrees(math.atan2(-(uy - oy), ux - ox))  # text runs along the pin direction
+                ang = (ang + 90) % 180 - 90
+                bb.text(pcbnew.F_SilkS, label, x, y, 0.8, angle=ang)
 
 
 def base_anchor_sides(comps):
     sides = {}
     for ref, c in comps.items():
         m = mpn(c)
-        if "BQ25180" in m:
-            sides[ref] = ("F", (12.0, 330.0))
+        if "BQ25180" in m:  # off the pack (|y| > 17.25) in the open θ 240 sector, near the board edge
+            sides[ref] = ("F", BQ_POS)
         elif "USBLC6" in m or "SMF5" in m:
             sides[ref] = ("F", (22.0, 0.0))
-        elif "BSS138" in m:
-            sides[ref] = ("F", (9.0, 200.0))
+        elif "BSS138" in m:  # SOT-363 is up to 1.1 mm tall: keep it out of the θ 180 spoke sector (162-198)
+            sides[ref] = ("F", (9.0, 218.0))
 
     return sides
 
 
 def base_keepouts():
     def bosses(x, y):
-        return any(math.hypot(x - hx, y - hy) < 2.8 for hx, hy in (pol(21.0, a) for a in (90, 270)))
+        hx, hy = pol(BOSS_R, 270.0)
+        return math.hypot(x - hx, y - hy) < 2.8
 
     def bottom(x, y):  # battery directly below: no parts on B (the NTC is placed explicitly)
         return True
@@ -513,6 +521,12 @@ def base_keepouts():
     return [("*", bosses), ("B", bottom), ("F", usb_preroute)]
 
 
+J2_POS = (17.0, 222.0)   # battery connector (r, θ)
+BOSS_R = 20.0            # M2 boss at θ 270: Ø4.5 boss clears the pack (|y| ≤ 17.25); 1.9 mm FR4 to the edge
+ANT_Y_INNER = 19.0       # antenna inner edge (device y), hardware/mechanical/dial_spinner.scad ANT_YC - ANT_W/2
+ANT_B_CLEAR = 3.6        # with the 3.5 mm height gap: ≥ 5 mm from B.Cu copper
+ANT_F_POUR_CLEAR = 2.0   # top pour held back from over the antenna
+BQ_POS = (19.5, 255.0)   # charger (r, θ)
 BGA_CLEAR_MM = 1.6  # free radius around the BQ25180 so its escape stubs and first vias have room
 
 
@@ -528,10 +542,20 @@ def build_base(bb, comps, nets):
         if "TYPE-C" in mpn(c):
             preroute_usb_c(bb, ref)
 
-    for i, th in enumerate((90, 270)):   # clear of the pack (long axis along θ 0/180); USB shell is the 3rd support
-        x, y = pol(21.0, th)
-        bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", f"H{i + 1}")
-    bb.text(pcbnew.F_SilkS, "dial-me-spinner base rA", CX - 2.0, CY + 18.5, 0.8)
+    # supports: one M2 boss at θ 270 (outside the pack), a printed rib under the θ 90 edge (the antenna shelf
+    # leaves no room for a boss there) and the USB-C shell clamped in the cup wall
+    x, y = pol(BOSS_R, 270.0)
+    bb.mounting_hole(x, y, "MountingHole:MountingHole_2.2mm_M2", "H1")
+    # 2.4 GHz antenna under the θ 90 edge (inner edge at y = ANT_Y_INNER, z ≈ 6): bottom copper (z 9.5) stays
+    # ≥ 5 mm away; top copper (z 11.1) is ≥ 5 mm above it anyway, so only the top pour is held back
+    seg = lambda y0: [(px, py) for px, py in bb.circle_pts(CX, CY, BASE_R + 1.0, 96) if py < CY - y0] or []  # noqa: E731
+    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu], {}),
+                           (ANT_Y_INNER - ANT_F_POUR_CLEAR, [pcbnew.F_Cu], dict(tracks=False, vias=False, pads=False))):
+        half = math.sqrt((BASE_R + 1.0) ** 2 - y0 ** 2)
+        pts = [(CX - half, CY - y0)] + sorted(seg(y0), key=lambda q: -math.atan2(CY - q[1], q[0] - CX)) + \
+              [(CX + half, CY - y0)]
+        bb.keepout(layers, pts, name="ANTENNA_KEEPOUT_" + ("B" if layers == [pcbnew.B_Cu] else "F_POUR"), **kw)
+    bb.text(pcbnew.F_SilkS, "dial-me-spinner base rA", CX - 2.0, CY + 15.5, 0.8)
 
 
 def pours_base(bb):
@@ -674,15 +698,86 @@ def generate(board, pours=True):
     return out
 
 
+def thermal_points(b):
+    """Priority stitching spots: rings around the charger's GND ball (BQ25180 D2) for its heat path."""
+    pts = []
+    for fp in b.GetFootprints():
+        if "BQ25180" in (fp.GetFieldText("MPN") if fp.HasFieldByName("MPN") else ""):
+            for pad in fp.Pads():
+                if pad.GetNumber() == "D2":
+                    x, y = pcbnew.ToMM(pad.GetPosition().x), pcbnew.ToMM(pad.GetPosition().y)
+                    pts += [(x + r * math.cos(math.radians(a)), y + r * math.sin(math.radians(a)))
+                            for r in (0.9, 1.2, 1.5, 1.8) for a in range(0, 360, 20)]
+    return pts
+
+
+def prune_dangling(path, rounds=6):
+    """Delete the unlocked wiring that KiCad's DRC flags as dangling (track_dangling / via_dangling), keeping a
+    deletion only if the board stays fully connected."""
+    removed = 0
+    for _ in range(rounds):
+        rpt, _ = drc(path)
+        spots = []
+        kind = None
+        for line in open(rpt, encoding="utf-8"):
+            if line.startswith("["):
+                kind = line[1:].split("]")[0]
+            elif kind in ("track_dangling", "via_dangling") and line.strip().startswith("@("):
+                xy = line.split("@(")[1].split(")")[0].replace("mm", "").split(",")
+                m = re.search(r" on (\S+), length ([0-9.]+) mm", line)
+                spots.append((kind, float(xy[0]), float(xy[1]), m.group(1) if m else None,
+                              float(m.group(2)) if m else None))
+                kind = None
+        if not spots:
+            break
+        backup = path + ".bak"
+        shutil.copyfile(path, backup)
+        b = pcbnew.LoadBoard(path)
+        doomed = []
+        for kind, x, y, layer, length in spots:
+            p = pcbnew.VECTOR2I(pcbgen.MM(x), pcbgen.MM(y))
+            for t in b.GetTracks():
+                if t.IsLocked() or t in doomed:
+                    continue
+                if kind == "via_dangling" and t.Type() == pcbnew.PCB_VIA_T and (t.GetStart() - p).EuclideanNorm() < 2000:
+                    doomed.append(t)
+                elif kind == "track_dangling" and t.Type() == pcbnew.PCB_TRACE_T and \
+                        b.GetLayerName(t.GetLayer()) == layer and abs(pcbnew.ToMM(t.GetLength()) - length) < 0.002 and \
+                        min((t.GetStart() - p).EuclideanNorm(), (t.GetEnd() - p).EuclideanNorm()) < 2000:
+                    doomed.append(t)
+        if not doomed:
+            os.remove(backup)
+            break
+        for t in doomed:
+            b.Delete(t)
+        pcbnew.SaveBoard(path, b)
+        pcbgen.refill(path)
+        _, after = drc(path)
+        if after.get("[unconnected_items]", 0):
+            shutil.copyfile(backup, path)  # that piece was load-bearing after all: keep the board as it was
+            os.remove(backup)
+            break
+        os.remove(backup)
+        removed += len(doomed)
+    return removed
+
+
 def finish(board, path):
-    """Post-route clean-up on an existing board: duplicate/dangling wiring, silk references, zone refill."""
+    """Post-route clean-up (needs the pours): duplicate/dangling/overlaid wiring, GND stitching, silk, refill."""
     b = pcbnew.LoadBoard(path)
     dups, trimmed = pcbgen.dedupe_tracks(b), pcbgen.trim_dangling(b)
+    pcbnew.SaveBoard(path, b)
+    b = pcbgen.refill(path)
+    debris = pcbgen.remove_debris(b)
+    pcbnew.SaveBoard(path, b)
+    b = pcbgen.refill(path)
+    stitched = pcbgen.stitch_vias(b, "GND", pitch=BOARDS[board].get("stitch_pitch", 3.0), priority=thermal_points(b))
     moved, hidden = silk.place_refs(b)
     pcbnew.SaveBoard(path, b)
     pcbgen.refill(path)
-    print(f"[{board}] finish: {dups} duplicate tracks removed, {trimmed} stubs trimmed, "
-          f"{moved} references placed, {hidden} hidden")
+    pruned = prune_dangling(path)
+    print(f"[{board}] finish: {dups} duplicate tracks, {trimmed} stubs trimmed, {debris + pruned} debris items removed, "
+          f"{stitched} GND stitching vias, {moved} references placed, {hidden} hidden")
 
 
 def add_pours(board, path):
@@ -702,15 +797,21 @@ def set_layer_types(path, layers):
         f.write(s)
 
 
-def drc(path):
+def drc(path, warnings=None):
+    """Errors as {type: n}; warnings (silk etc.) go into the optional `warnings` dict. Includes schematic parity."""
     rpt = path.replace(".kicad_pcb", "-drc.rpt")
-    subprocess.run(["kicad-cli", "pcb", "drc", "--severity-error", "-o", rpt, path], capture_output=True)
-    counts = {}
+    subprocess.run(["kicad-cli", "pcb", "drc", "--severity-all", "--schematic-parity", "-o", rpt, path],
+                   capture_output=True)
+    counts, kind = {}, None
     with open(rpt, encoding="utf-8") as f:
         for line in f:
             if line.startswith("["):
-                k = line.split("]")[0] + "]"
-                counts[k] = counts.get(k, 0) + 1
+                kind = line.split("]")[0] + "]"
+            elif kind and line.startswith("    ") and ("; error" in line or "; warning" in line):
+                target = counts if "; error" in line else warnings
+                if target is not None:
+                    target[kind] = target.get(kind, 0) + 1
+                kind = None
     return rpt, counts
 
 
@@ -744,8 +845,9 @@ def main():
         if a.finish:
             out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
             finish(board, out)
-            rpt, counts = drc(out)
-            print(f"[{board}] DRC errors:", counts or "none", "->", rpt)
+            warn = {}
+            rpt, counts = drc(out, warn)
+            print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
             continue
         out = generate(board, pours=not a.route)
         print(f"[{board}] placed ->", out)
@@ -758,9 +860,11 @@ def main():
                 if not left:
                     break
             add_pours(board, out)
+            finish(board, out)
             print(f"[{board}] routed")
-        rpt, counts = drc(out)
-        print(f"[{board}] DRC errors:", counts or "none", "->", rpt)
+        warn = {}
+        rpt, counts = drc(out, warn)
+        print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
 
 
 if __name__ == "__main__":

@@ -51,10 +51,49 @@ def _edge_clear(box, pts, margin):
     return True
 
 
-def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, max_off=3.0, hide=("H", "FID")):
+def clip_footprint_silk(board, edge_pts, outline, margin=0.25):
+    """Shorten footprint silk lines that run past (or too close to) the board edge, e.g. a connector overhanging
+    the outline. Returns the number of lines changed."""
+    def good(p):
+        x, y = pcbnew.ToMM(p.x), pcbnew.ToMM(p.y)
+        return outline.Contains(p) and _edge_clear((x, y, x, y), edge_pts, margin)
+
+    n = 0
+    for fp in board.GetFootprints():
+        for g in list(fp.GraphicalItems()):
+            if g.GetLayer() not in (pcbnew.F_SilkS, pcbnew.B_SilkS) or not isinstance(g, pcbnew.PCB_SHAPE) \
+                    or g.GetShape() != pcbnew.SHAPE_T_SEGMENT:
+                continue
+            a, b = g.GetStart(), g.GetEnd()
+            ga, gb = good(a), good(b)
+            if ga and gb:
+                continue
+            if not ga and not gb:
+                fp.Remove(g)
+                n += 1
+                continue
+            inside, outside = (a, b) if ga else (b, a)
+            for _ in range(30):  # bisect along the line for the last point that is still clear of the edge
+                mid = pcbnew.VECTOR2I((inside.x + outside.x) // 2, (inside.y + outside.y) // 2)
+                if good(mid):
+                    inside = mid
+                else:
+                    outside = mid
+            if ga:
+                g.SetEnd(inside)
+            else:
+                g.SetStart(inside)
+            n += 1
+    return n
+
+
+def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, max_off=3.0, hide=("H", "FID"),
+               clip_silk=False):
     outline = pcbnew.SHAPE_POLY_SET()
     board.GetBoardPolygonOutlines(outline)
     edge_pts = _edge_points(board)
+    if clip_silk:  # off by default: an edited footprint shows up as a library mismatch in DRC
+        clip_footprint_silk(board, edge_pts, outline)
     sides = {"F": (pcbnew.F_SilkS, pcbnew.F_Cu), "B": (pcbnew.B_SilkS, pcbnew.B_Cu)}
     obstacles = {"F": [], "B": []}
     for side, (silk, cu) in sides.items():
@@ -79,7 +118,7 @@ def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, 
         p0 = d.GetPosition()
         tb = _mm_box(d.GetBoundingBox())
         ox, oy = pcbnew.ToMM(p0.x), pcbnew.ToMM(p0.y)
-        for r in [0.0] + [0.25 * k for k in range(1, 13)]:
+        for r in [0.0] + [0.25 * k for k in range(1, 41)]:
             spot = None
             for k in range(max(1, int(2 * math.pi * r / 0.25))):
                 a = 2 * math.pi * k / max(1, int(2 * math.pi * r / 0.25))
