@@ -454,23 +454,18 @@ def test_sleep_breakdown_and_top_contributors(nominal, budget, check):
     assert top[0][1] > 0
 
 
-D21_ISSUE = ("DESIGN ISSUE (sleep budget; remains after the SLP-1/LSW-1 fix): the sleep total is 36.0 / 37.4 / "
-             "37.5 uA at VBAT 3.0 / 3.7 / 4.2 V (typ, 25 C), above the architecture.md 8.2 sum of 32.41 uA. The "
-             "panel's VCI->VCC ESD path holds +13V_OLED at about 2.7 V. U21 QOD, now tied to OLED_VIN, holds "
-             "OLED_VIN at about 0 V, so the B5819W rectifier D21 sits at VR about 2.7 V. Its reverse leakage (CJ typ "
-             "curve: 5.4 uA at 25 C, 30 uA at 60 C) flows all the time: +3V3 -> panel ESD -> D21 -> L -> U21 QOD -> "
-             "GND. The boost itself is off (test_boost_is_really_off_in_sleep). Before the fix, OLED_VIN floated "
-             "to the U20 UVLO (D21 VR about 1.2 V, 4.95 uA) and U20 burned that leakage while hiccuping (total "
-             "36.9 uA). The 8.2 OLED line (12 uA: ICI, divider, RES# pull-down) "
-             "does not include it; the sim gives 17.6 uA. Fix: either budget it in architecture 8.2 (OLED about "
-             "17.6 uA, 60 C about 42 uA), or remove the leak in hardware: a low-IR rectifier, or U20 EN on its own "
-             "GPIO with U21 QOD open (32.18 uA, test_boost_fix_whatif_en_held_low).")
+# Sleep budget (rev A, accepted): with the boost off (U21 QOD tied to OLED_VIN, SLP-1/LSW-1), the panel's VCI->VCC
+# ESD path holds +13V_OLED at about 2.7 V and the B5819W rectifier D21 leaks backwards all the time (CJ typ curve:
+# 5.4 uA at 25 C, 30 uA at 60 C): +3V3 -> panel ESD -> D21 -> L20 -> U21 QOD -> GND. architecture.md 8.2 now budgets
+# it in the OLED line (17.6 uA; total 38 uA). Before the fix the design drew 36.9 uA (U20 hiccuping at UVLO). Rev-B
+# options that remove it: a low-IR rectifier, or U20 EN on its own GPIO with U21 QOD open (32.18 uA,
+# test_boost_fix_whatif_en_held_low).
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=D21_ISSUE)
 @pytest.mark.parametrize("vbat", [3.0, 3.7, 4.2])
 def test_sleep_total_within_budget_vs_vbat(main, base, budget, vbat, check):
-    """Total battery drain in SLEEP (typ, 25 C) against the itemised architecture.md §8.2 sleep budget."""
+    """Total battery drain in SLEEP (typ, 25 C) against the itemised architecture.md §8.2 sleep budget.
+    Guards the accepted rev-A budget (36.0 / 37.4 / 37.5 µA at VBAT 3.0 / 3.7 / 4.2 V vs the 38.0 µA sum)."""
     sim, r = simulate(main, base, vbat=vbat)
     check(f"sleep battery current at VBAT {vbat} V (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget), unit="µA",
           source="docs/architecture.md §8.2 sleep column (sum of lines)")
@@ -520,11 +515,9 @@ def test_boost_fix_whatif_en_held_low(main, base, budget, check):
     either way). The original deck had therefore become a copy of the real-design total, and it failed that
     total's budget. This deck keeps the alternative it was written for. OLED_VIN floats up to +13V_OLED, D21 sees
     VR of about 0 V, and its reverse leakage falls from 5.4 uA (QOD fix) to 0.19 uA. The result, 32.18 uA, is the
-    same as on the pre-fix netlist. The test (a) records that this alternative meets the architecture 8.2 budget
-    (32.41 uA), which the built fix misses by 5.0 uA (37.37 uA, 5.19 uA above this alternative), and (b) keeps the
-    SLP-V3 role. It is the regression guard on every
-    other sleep contributor while the real-design total (test_sleep_total_within_budget_vs_vbat) is xfailed for
-    the D21 leak."""
+    same as on the pre-fix netlist. The test records that this rev-B alternative meets the architecture 8.2 budget
+    (now 38.0 µA, accepted for rev A with the D21 leak in the OLED line); the built fix draws 37.37 µA, 5.19 µA
+    above this alternative."""
     for temp in (-10.0, 25.0, 60.0):
         sim, r = simulate(main, base, temp=temp, u20_en_net="GND", u21_qod_open=True)
         check(f"[what-if EN low, QOD open] U20 current at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=2.0,
@@ -544,16 +537,11 @@ def test_boost_fix_whatif_en_held_low(main, base, budget, check):
           unit="µA", source="docs/architecture.md §8.2 sleep column (sum of lines)")
 
 
-OLED_MAX_ISSUE = ("DESIGN ISSUE: at datasheet maxima the OLED sleep current exceeds the architecture's '35-40 uA "
-                  "maximum'. With the SLP-1/LSW-1 fix (U21 QOD tied to OLED_VIN) it is 45.4 uA at 25 C and 70.0 uA "
-                  "at 60 C. The cause is the D21 back-feed (see D21_ISSUE): typical-curve reverse leakage of 5.4 / "
-                  "29.9 uA, now sunk through U21 QOD (the diode has no low-VR max). 1.7 uA of the total is SSD1351 "
-                  "ISLP_VCC, scaled linearly from its 16 V test point; without it the total is still 43.7 uA at "
-                  "25 C. The excess therefore does not come from that scaling. The EN-low alternative with QOD open "
-                  "gives 41.9 uA at 25 C.")
+# OLED sleep at datasheet maxima (rev A, accepted): 45.4 µA at 25 C and 70.0 µA at 60 C, budgeted in architecture
+# 8.2 as 46 / 72 µA. Most of the rise over the old 35-40 µA is the D21 back-feed above (typ-curve 5.4 / 29.9 µA, no
+# low-VR max in the datasheet); 1.7 µA is SSD1351 ISLP_VCC scaled from its 16 V test point (43.7 µA without it).
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=OLED_MAX_ISSUE)
 @pytest.mark.parametrize("temp", [25.0, 60.0])
 def test_oled_sleep_within_architecture_max(main, base, budget, temp, check):
     """architecture.md §8.2 / §6.3: OLED sleep maximum (datasheet-max IC currents) at 25 °C and at 60 °C."""
