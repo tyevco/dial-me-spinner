@@ -844,15 +844,21 @@ def drc(path, warnings=None):
     return rpt, counts
 
 
-def route(path, passes=12, timeout=3600):
+def route(path, passes=12, timeout=4 * 3600, threads=2, optimizer_passes=20):
+    """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
+    The post-route optimizer is capped (its default of 100 passes takes hours on the 4-layer main board)."""
     jar = FREEROUTING or os.path.join(os.environ.get("SCRATCH", "/tmp"), "freerouting.jar")
     if not os.path.exists(jar):
         raise SystemExit(f"Freerouting jar not found ({jar}); set FREEROUTING_JAR")
     dsn = path.replace(".kicad_pcb", ".dsn")
     ses = path.replace(".kicad_pcb", ".ses")
+    if os.path.exists(ses):
+        os.remove(ses)
     pcbgen.export_dsn(path, dsn)
-    subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mp", str(passes), "--gui.enabled=false"],
-                   timeout=timeout, capture_output=True)
+    with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
+        subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mp", str(passes), "-mt", str(threads),
+                        f"--router.optimizer.max_passes={optimizer_passes}", "--gui.enabled=false"],
+                       timeout=timeout, stdout=log, stderr=subprocess.STDOUT)
     if not os.path.exists(ses):
         raise RuntimeError("Freerouting produced no session file")
     pcbgen.import_ses(path, ses, path)
