@@ -39,12 +39,42 @@ def board_pdf(pcb, pdf, layers):
     return pdf
 
 
+def sync_fields(pcb, net):
+    """Copy value/MPN/LCSC/Manufacturer from the (re-exported) netlist onto the board footprints."""
+    import pcbnew
+    import pcbgen
+    comps, _ = pcbgen.load_netlist(net)
+    b = pcbnew.LoadBoard(pcb)
+    changed = 0
+    for fp in b.GetFootprints():
+        c = comps.get(fp.GetReference())
+        if not c:
+            continue
+        if fp.GetValue() != c["value"]:
+            fp.SetValue(c["value"])
+            changed += 1
+        for k in ("MPN", "LCSC", "Manufacturer"):
+            v = c["fields"].get(k)
+            current = fp.GetFieldText(k) if fp.HasFieldByName(k) else None
+            if v and current != v:
+                fp.SetField(k, v)
+                fld = fp.GetFieldByName(k)
+                if fld:
+                    fld.SetVisible(False)
+                changed += 1
+    if changed:
+        pcbnew.SaveBoard(pcb, b)
+    return changed
+
+
 def release(board):
     kdir = os.path.join(HW, "kicad", board)
     proj = f"dial-me-spinner-{board}"
     pcb = os.path.join(kdir, proj + ".kicad_pcb")
     sch = os.path.join(kdir, proj + ".kicad_sch")
     net = os.path.join(kdir, proj + ".net")
+    subprocess.run(["kicad-cli", "sch", "export", "netlist", "-o", net, sch], check=True, capture_output=True)
+    print(f"[{board}] synced {sync_fields(pcb, net)} footprint fields from the schematic")
     out = os.path.join(HW, "fab", board)
     if os.path.isdir(out):
         shutil.rmtree(out)

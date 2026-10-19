@@ -89,7 +89,10 @@ ZIF_NOTE = (
     "19 CS# | 20 D/C# | 21 RES# | 22 IREF | 23 GPIO1, 24 GPIO0, 25 NC: open | 26 VDD (int. reg.)\n"
     "27 VCI=+3V3 | 28 VSS | 29 NC | 30 NC(GND)=GND.   BS1:BS0 = 00 -> 4-wire SPI, write-only, mode 0, <= 20 MHz.\n"
     "Bottom-contact ZIF: FPC folds 180 deg behind the glass (NHD's top-contact advice is for unfolded entry).\n"
-    "RES# 1M pull-down keeps the panel in reset while the MCU is in reset. Mates with the panel (not assembled)."
+    "RES# 1M pull-down keeps the panel in reset while the MCU is in reset. Mates with the panel (not assembled).\n"
+    "FPC fit: NHD W 15.5+/-0.2 / t 0.3+/-0.03 / stiffener 4+/-0.5 vs JUSHUO slot 15.60+/-0.05, recommended FPC\n"
+    "  15.50+/-0.05 / t 0.30+/-0.01 / stiffener 6.0: check insertion, latch and retention with real panel samples\n"
+    "  (with the 1:1 contact-side mock-up) before PCBA."
 )
 
 

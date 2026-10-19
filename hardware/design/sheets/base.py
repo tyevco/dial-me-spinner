@@ -167,9 +167,9 @@ def build(d):
             "Only 1.7 mm (~1.2 mm pressed) under the FA lower plate: J3 + mated SHR plug need a plate\n"
             "cut-out (the harness exits through it into the spindle).")
     d.add("J3", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
-          "Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical",
+          "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
-          fields={"MPN": "BM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160398"})
+          fields={"MPN": "SM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160411"})
     d.add("C4", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
 

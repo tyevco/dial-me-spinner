@@ -49,7 +49,7 @@ def build(d):
     s.notes.append(
         "48x WS2812C-2020-V6 (5 mA/ch) on VLED = TPS22917 load-switch output (main_power sheet, 2x 22 uF bulk there).\n"
         "Data: nRF P0.06 (I2S SDOUT) = LED_DIN_MCU -> R40 220R -> LED_DIN -> D101 -> LED_D1 -> D102 -> ... -> D148 -> LED_D48 (TP40).\n"
-        "D101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic: no level shifter (SPEC 5.4).\n"
+        "D101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic; DNP SN74LV1T34 option (U43/R43) if the margin is short.\n"
         "WS2812B-2020-V6 (C52917434, 12 mA/ch) is a footprint/pinout drop-in; firmware must then cap peak current."
     )
 
@@ -61,8 +61,21 @@ def build(d):
             "LED_PWR_EN. Never drive LED_DIN_MCU high while VLED is off:\n"
             "QOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\n"
             "would back-power the ring through its ESD diode.")
-    d.add("R40", "Device:R", "220", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN"}, fields=RES_220R)
+    d.add("R40", "Device:R", "220", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN_R"}, fields=RES_220R)
     d.add("R41", "Device:R", "100k", R0402, pins={"1": "LED_DIN", "2": "GND"}, fields=RES_100K)
+
+    d.group("Optional VLED-referenced level shifter (DNP)",
+            "Default: R43 0R fitted, U43 not fitted (3.3 V drive; margin 0.1-0.2 V at VSYS 4.5 V on USB).\n"
+            "If the bench test at VSYS = 4.6 V shows bit errors: remove R43, fit U43 (powered from VLED,\n"
+            "so it is unpowered whenever the ring is off) and C43.")
+    d.add("R43", "Device:R", "0", R0402, pins={"1": "LED_DIN_R", "2": "LED_DIN"},
+          fields={"MPN": "0402WGF0000TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C17168"})
+    d.add("U43", "74xGxx:74LVC1G34", "SN74LV1T34DBVR", "Package_TO_SOT_SMD:SOT-23-5",
+          pins={"1": None, "2": "LED_DIN_R", "3": "GND", "4": "LED_DIN", "5": "VLED"}, dnp=True,
+          fields={"MPN": "SN74LV1T34DBVR", "Manufacturer": "Texas Instruments", "LCSC": "C100024"},
+          datasheet="https://www.ti.com/lit/ds/symlink/sn74lv1t34.pdf",
+          description="Single buffer, 1.8-5.5 V, TTL-level input (level-up translator), DNP option")
+    d.add("C43", "Device:C", "100n", C0402, pins={"1": "VLED", "2": "GND"}, fields=CAP_100N, dnp=True)
 
     for g0 in range(1, N_LEDS + 1, PER_GROUP):
         g1 = g0 + PER_GROUP - 1
