@@ -326,7 +326,7 @@ The essentials:
   **top face** at R = 29.0 mm. They give the detent torque and act as the
   encoder scale.
 * **Stack (SPEC §8).** From the bottom up: feet, base cup floor, LiPo bay
-  (z 2.5–9.0, pack ≤ 6.0 mm) with the antenna shelf beside the pack
+  (z 2.5–8.5, pack ≤ 6.0 mm, ≥ 1 mm below the base board) with the antenna shelf beside the pack
   (z 5.5–6), base board (9.5–11.1), press switch, FA lower plate (12.8–14.3,
   a 3-spoke spider), rotor (15.6–25.6, magnet face at 25.6), detent carriage in the
   1.0 mm gap above the track (26.6–28.6), main board (29.1–30.7), LEDs and
@@ -460,7 +460,8 @@ passes a few millimetres below it.
   at a constant 1.0 mm gap. 0 mm offset is full click, and r ≤ 21.5 mm
   (offset ≥ 7.5 mm) is free spin.
 * The carriage is driven by a **micro PM linear stepper with a self-locking
-  M2×0.4 lead screw** (VIC-TECH VSM08102 class, or its 10 mm sibling) through
+  M2×0.4 lead screw** (VIC-TECH VSM08102 class; the 10 mm sibling does not fit
+  the bowl, [docs/mechanical.md](mechanical.md) §7) through
   **2× DRV8837** and a side-entry JST SH 4-pin connector (J40, SM04B-SRSS-TB,
   main-board bottom at r 25.5, θ 132°). The θ 60–120° sector stays free of
   parts. J40 sits inside the wider actuator corridor (θ 30–160°, r 8.5–27,
@@ -480,7 +481,8 @@ passes a few millimetres below it.
   ≤ 3 µN·m residual) and puts about 2.4× less magnetic load on the actuator
   than pulling the magnet straight away from the face.
 * The stepper gives variable strength and repeats to ±1–2 full steps
-  (±0.02–0.04 mm, about ±2–4 % torque).
+  (±0.015–0.03 mm at 0.015 mm of carriage per full step, about ±1.5–3 %
+  torque; 500 full steps for the 7.5 mm stroke, [docs/mechanical.md](mechanical.md) §7).
 
 **Key numbers (verified by independent re-simulation, within about 1 %).**
 
@@ -500,12 +502,14 @@ passes a few millimetres below it.
   0.78 N minimum thrust**, which is rated only at 500 PPS. The SPICE motor
   model puts its thrust at 0.93 N at best from any battery VSYS, so no
   driver change closes the gap (hardware/sim, MD-4; risk R4, still open).
-  * Either use the 10 mm sibling (about 1.7 N claimed, not yet confirmed by a
-    vendor datasheet).
-  * Or reduce preloads to about 0.4–0.5 N on a PTFE/POM pair, make the
+  * The 10 mm sibling (about 1.7 N claimed) is not an option: its Ø10 can
+    does not fit the 10.1 mm bowl ([docs/mechanical.md](mechanical.md) §7).
+  * So reduce preloads to about 0.4–0.5 N on a PTFE/POM pair, make the
     anti-lash spring push toward PARK, and step at ≤ 300–500 PPS through the
-    loaded 0–4 mm zone.
-  * Expect **0.6–0.9 s per full stroke** and about 0.035–0.08 mAh per stroke.
+    loaded 0–4 mm zone; if that is not enough, fall back to an N20 or a Ø6
+    planetary gearmotor with a lead screw (same connector, mechanical.md §7).
+  * Expect **about 0.8–1.2 s per full stroke** (500 full steps; 0.83–1.18 s
+    in mechanical.md §7) and about 0.045–0.08 mAh per stroke.
   * Peak battery current is 0.36–0.42 A.
 * Homing: a gentle stall at the force-free PARK end at ≤ 50 % PWM. **The stall
   is the position reference; the DRV5032 only confirms it.** HOME must read
@@ -620,8 +624,9 @@ controller:
   delivers only about 33–35 mA, and at 3.6 V the worst-case stack (ILIM,
   L20 −20 %, DCR and U21 RON at their limits) still cannot supply the 42 mA
   full-white maximum at VCC ≥ 12.5 V. Firmware MUST therefore cap master
-  current at C7 ≤ 08h and white area at ≤ 30 % below VBAT_est 3.75 V (the
-  rested reading less the 75 mV margin of firmware.md §12.4),
+  current at C7 ≤ 08h and white area at ≤ 30 % below VBAT_est 3.75 V
+  (0.979 × the rested reading, rule R1' of firmware.md §12.4, i.e. a reading
+  below 3.8304 V),
   and whenever the LED current is above its 150 mA sustained cap
   (hardware/sim, OLED-BST-2). This is the same threshold as
   [firmware.md §7.4](firmware.md#74-burn-in-mitigation-and-power-caps)
@@ -782,9 +787,10 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
     After the one-point production calibration the reading is within
     about ±10 mV at 25 °C and ±24 mV at 15–35 °C on a fresh board; over
     −10…60 °C it drifts by about +48/−55 mV, and an aged board read at −10
-    or 60 °C by about +73/−79 mV. Firmware therefore compares every
-    threshold that protects a datasheet limit against VBAT_est = reading
-    − 75 mV, which puts the SHIP point at a 3.54 V reading
+    or 60 °C by about +73/−79 mV. The error is a gain error that grows with
+    VSYS, to about 2.1 % of the reading. Firmware therefore compares every
+    threshold that protects a datasheet limit against VBAT_est = 0.979 ×
+    reading (rule R1'), which puts the SHIP point at a 3.5393 V reading
     ([§7](#7-power-tree)) (hardware/sim, VSENSE-1/4). The VSYS_SENSE node is
     high-impedance: 4.5 nA of surface leakage uses the whole ±10 mV (25 °C)
     budget, so keep it away from other copper and clean (VSENSE-4).
@@ -853,7 +859,9 @@ values from the verified research, with the two SPICE-driven changes
   setting (hardware/sim, V-2).
 * **No supplement.** With the pack absent, below BUVLO or in precharge, the
   BQ25180 cannot supplement SYS from the battery, so every load must fit
-  under ILIM. Firmware cannot see an absent pack directly (CHG_STAT may then
+  under ILIM. Firmware reads precharge from STAT1 BUVLO_STAT = 1: CHG_STAT
+  reports precharge as CC, and with VLOWV = BUVLO = 3.0 V BUVLO_STAT stays
+  set through precharge (firmware.md §6.3). Firmware cannot see an absent pack directly (CHG_STAT may then
   read done), so the pack counts as absent until a battery-only reading in
   this power-up. Firmware MUST then run a "no supplement" profile: while
   ILIM is the 100 mA code, LEDs at most the ≤ 20 mA charging cue, OLED off,
@@ -988,13 +996,13 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
 | Rail | Source | Voltage | Switched by | Design current | Notes |
 |---|---|---|---|---|---|
 | VBUS | USB-C | 4.5–5.25 V supported (USB 2.0); nRF VBUS minimum 4.35 V | none | ≤ 475 mA into the charger; a few mA to the nRF | The nRF VBUS absolute maximum is 5.8 V. R12 and C12 keep the hot-plug ring off the nRF pin (see VBUS protection below). |
-| VBAT | cell | 3.0–4.2 V | PCM / BQ25180 BATFET | 1.5 A (BATOCP) | Firmware enters ship mode below VBAT_est 3.465 V, i.e. a rested reading below 3.54 V (VBAT_est = reading − 75 mV; it was a 3.53 V reading, and 3.48 V before that): an aged board read at −10 or 60 °C can over-read by about 72 mV, and the true VBAT must stay above the BQ25180 battery-only power-up threshold VBATPOR (3.46 V max, SLUSE99C) so a button press can wake it; the worst case is a true 3.4676 V (hardware/sim, VSENSE-1/4). |
+| VBAT | cell | 3.0–4.2 V | PCM / BQ25180 BATFET | 1.5 A (BATOCP) | Firmware enters ship mode below VBAT_est 3.465 V, i.e. a rested reading below 3.5393 V (VBAT_est = 0.979 × reading, rule R1'; it was a 3.54 V reading under the flat 75 mV margin, and 3.53 V and 3.48 V before that): an aged board read at −10 or 60 °C can over-read by about 72 mV, and the true VBAT must stay above the BQ25180 battery-only power-up threshold VBATPOR (3.46 V max, SLUSE99C) so a button press can wake it; the worst case is a true 3.4669 V (hardware/sim, VSENSE-1/4). |
 | VSYS | BQ25180 SYS | 3.0–4.4 V (4.4 V ± 2 % on USB) | ship / shutdown | 1.5 A DC, 2.5 A for < 20 ms | Unswitched capacitance is about 82 µF nominal, 93.6 µF at +tolerance (main C1, C2, C6, C41, C74, C70/C72; base C2, C4), against the BQ25180's 100 µF maximum (SLUSE99C Table 9-2): do not add VSYS bulk; if more is ever needed, put it behind U2 on VLED (hardware/sim, NF-2). The 10 µF parts main C2, C6, C41 and base C4 are 25 V CL10A106MA8NRNC (C96446), because a 10 V 0603 keeps only about 28 % of its value at 5 V; the effective VSYS capacitance at 5 V is still only 32.1 µF worst case (MD-5). |
 | +3V3 | RT9080-33 | 3.3 V; tracks VSYS minus dropout below about 3.35 V | always on | about 50 mA peak (TX + CPU + QSPI erase) | W25Q128 needs ≥ 2.7 V. With BUVLO at 3.0 V the rail stays ≥ 2.9 V. |
 | VLED | TPS22917 U2 | = VSYS | LED_PWR_EN (R3 100 kΩ pull-down) | 0.73 A hardware max; firmware cap 0.3 A burst, 0.15 A sustained | Load is about 49 µF nominal (2 × 22 µF + 48 × 100 nF). CT 1 nF (C7, from CT to VIN) gives a slew of about 1.9 V/ms, so about 90 mA of inrush, a 1.6 ms rise and a turn-on time tON of about 4 ms (3.8 µs/pF at 3.6 V, [SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.6). QOD goes through R4 = 68 Ω (RC0402FR-0768RL, C163455), in series with the internal ≈ 150 Ω (RDIS ≈ 218 Ω, SLVSDW8B §9.3.3), so the fall time is about 2.2 × 218 Ω × 49 µF ≈ 24 ms. SPICE puts VLED at 10 % after about 20–27 ms: about 24 ms nominal, 25.9 ms Monte Carlo maximum, 25.7 ms from 4.2 V, and 26.6 ms worst case (3.465 V start, C8/C9 +20 %, DC bias), inside the firmware's ≥ 30 ms wait (hardware/sim, LSW-2; it was 30.6 ms with R4 = 100 Ω). Bring-up measures tFALL, because the datasheet tFALL row implies a QOD of about 170 Ω (NEW-4). DC-bias derating of the 22 µF parts makes the real inrush lower. U2 has no current limit (see LED fault below). |
 | OLED_VIN | TPS22917 U21 | = VSYS | OLED_VCC_EN (R25 100 kΩ pull-down) | ≤ 0.2 A (boost input) | C37 1 nF from CT to VIN: tON about 4 ms. The inrush is about 0.3 A for about 2 ms with a 0.4 A peak, set by the TPS61040 soft start, not by C37: the boost (EN tied to OLED_VIN) starts at its UVLO while U21 is still ramping, so U21 carries the boost's current-limited charging current in its linear region and absorbs up to about 0.65 mJ per turn-on (hardware/sim, LSW-4, OLED-BST-3; SLVSDW8B gives no SOA data). Bring-up checks U21's temperature and the VSYS sag at the first OLED enable. C41 10 µF bypasses VIN. QOD is tied to OLED_VIN (VOUT): with OLED_VCC_EN low, OLED_VIN is held at about 0 V, the boost stays in shutdown (U21 itself draws 10 nA typical) and the panel VCC floats behind D21; reverse-current blocking keeps OLED_VIN from back-feeding VSYS (IIN,RCB ≤ 1 µA). The build's ERC waiver for the QOD–VOUT pin pair is documented in `hardware/design/build.py`. |
 | +13V_OLED | TPS61040 | 13.0 V (12.5–13.5 V window) | as above | ≤ 40 mA | The high-impedance FB divider (R26 499 kΩ / R27 52.3 kΩ) turns the TPS61040's FB bias current (1 µA max) into ±0.5 V on VCC, which uses up the whole window at the datasheet worst case. A lower divider would cost about 21 µA of sleep current, because the panel's ESD path holds VCC at about 2.7 V across it, so the parts stay and every board is screened for VCC 12.7–13.3 V at bring-up (B-9.9a) and in production (hardware/sim, OLED-BST-1, accepted risk). With the OLED off, FB − OLED_VIN is 0.26–0.29 V against the 0.3 V absolute maximum (R31). |
-| VM | VSYS | = VSYS | MOT_NSLEEP | 0.36–0.42 A for ≤ 0.9 s | Firmware starts a non-park move only from VSYS_est ≥ 3.54 V, i.e. an idle reading ≥ 3.615 V (it was 3.55 V measured, and 3.40 V before that), so the coils still get their rated current under load when the reading is 72 mV high (hardware/sim, MD-2). Every stop path, FAULT and abort included, MUST brake first (IN1 = IN2 = 1 on U40/U41 for ≥ 3 ms, then IN = 00 and nSLEEP low), and the drive stays sine microstepping, never full-current full steps on USB: a coast dumps the coil energy into VSYS, and on USB after charge termination only the ceramic capacitance absorbs it (MD-1). With the shared VM bulk C74 the worst coast peak is 5.31–5.36 V against the BQ25180 SYS 5.5 V absolute maximum; without C74 it is 5.42–5.48 V (MD-5). |
+| VM | VSYS | = VSYS | MOT_NSLEEP | 0.36–0.42 A for ≤ 1.1 s | Firmware starts a non-park move only from VSYS_est ≥ 3.54 V, i.e. an idle reading ≥ 3.6159 V (VSYS_est = 0.979 × reading; it was 3.615 V under the flat 75 mV margin, 3.55 V measured, and 3.40 V before that), so the coils still get their rated current under load when the reading is 2.1 % (75.9 mV) high (hardware/sim, MD-2). Every stop path, FAULT and abort included, MUST brake first (IN1 = IN2 = 1 on U40/U41 for ≥ 3 ms, then IN = 00 and nSLEEP low), and the drive stays sine microstepping, never full-current full steps on USB: a coast dumps the coil energy into VSYS, and on USB after charge termination only the ceramic capacitance absorbs it (MD-1). With the shared VM bulk C74 the worst coast peak is 5.31–5.36 V against the BQ25180 SYS 5.5 V absolute maximum; without C74 it is 5.42–5.48 V (MD-5). |
 
 **VBUS protection.**
 * R12 (4.7 Ω, FRC0402F4R70TS, LCSC C2909356) runs from link VBUS to the
@@ -1077,7 +1085,7 @@ main VBUS ── R12 4.7 Ω ── VBUS_NRF (C12 4.7 µF; U12 USBLC6 rail) ─�
 ### 8.1 Assumptions
 
 * **Cell:** about 1000 mAh nominal; **900 mAh usable** (*estimate*) to the
-  SHIP point, a rested reading of 3.54 V ([§7](#7-power-tree)), with some ageing
+  SHIP point, a rested reading of 3.5393 V (VBAT_est 3.465 V, [§7](#7-power-tree)), with some ageing
   margin. Currents are battery-side at VBAT ≈ 3.7 V and **25 °C typical**;
   [§8.2](#82-per-subsystem-currents) gives the temperature and maximum
   figures separately.
@@ -1416,7 +1424,7 @@ L = likelihood, I = impact (H / M / L).
 | R1 | Antenna on the base shelf (about 6 mm above the desk) detuned by the desk (metal desks especially), the LiPo and the ring, giving short range and drop-outs | M | H | Mock-up VNA and RSSI tests ([§9](#9-rf-strategy-and-its-risk)) before PCB release. Wall-mount fallback. TX is already +8 dBm by default, so there is no power headroom left. |
 | R2 | Antenna coax flexes 0.3–0.5 mm on every click. **Length and route: closed.** It was too short (the -0050 is 50 mm); SPEC §5.2/§8 name the 146153-0100 (100 mm), and the CAD route to the outward-facing u.FL is 79 mm, leaving about 21 mm to stow ([§9](#9-rf-strategy-and-its-risk)). Near U12 it passes 0.13 mm from the part and 0.44 mm above the rotating cap ring | L | M | Service loop and strain relief. Tack the coax up with Kapton tape beside U12 (assembly step). |
 | R3 | Spin time below expectation (bearing preload ≥ 2.5–3 N, oil migration, shield rub; the model may under-predict friction). The verified acceptance is ≥ 45–60 s from 10 rev/s, and SPEC's preload is predicted to give 20–65 s | M | H | Measure spin-down with 3–5 bearings of each type. Keep **≥ 45 s from 10 rev/s** as the acceptance and treat the preload as the variable (D3): the lowest preload that stops click-mode rocking. Bearing prep step in assembly. |
-| R4 | Detent actuator under-powered: the worst-case load is 0.8–1.15 N, and the SPICE motor model gives the 8 mm VSM08102 at most 0.93 N from any battery VSYS (rated ≥ 0.78 N at 500 PPS) (hardware/sim, MD-4). Fit: a radial lead screw from r 21.5 inward hits the hub, so the mechanical model uses an inclined-slot chord path sweeping θ ≈ 35–160° ([docs/mechanical.md](mechanical.md) A11) | M | H | **Still open.** Select the 10 mm sibling once a datasheet confirms ≥ 1.2 N, or cut the carriage preload and anti-lash spring so the worst-case load stays ≤ 0.5 N; no change on the `detent` sheet closes the gap. Slow PPS in the loaded zone. N20 fallback. |
+| R4 | Detent actuator under-powered: the worst-case load is 0.8–1.15 N, and the SPICE motor model gives the 8 mm VSM08102 at most 0.93 N from any battery VSYS (rated ≥ 0.78 N at 500 PPS) (hardware/sim, MD-4). Fit: a radial lead screw from r 21.5 inward hits the hub, so the mechanical model uses an inclined-slot chord path sweeping θ ≈ 35–160° ([docs/mechanical.md](mechanical.md) A11) | M | H | **Still open.** Cut the carriage preload and anti-lash spring so the worst-case load stays ≤ 0.5 N; if the thrust gate still fails, fall back to the N20 or a Ø6 planetary gearmotor with a lead screw ([docs/mechanical.md](mechanical.md) §7). The 10 mm sibling is not a remedy: its Ø10 can does not fit the 10.1 mm bowl. No change on the `detent` sheet closes the gap. Slow PPS in the loaded zone. |
 | R5 | Detent ringing: 5–10 s of rocking after capture | M | M | Optional felt/UHMW shoe (about 1.6 mN·m). Firmware predicts the landing detent. |
 | R6 | Eddy drag or cogging from copper or ferrous parts near the track (pours, screws, inductors, tact-switch frames, the stepper can and lead screw) | M | M | SPEC §7/§8 keep-outs. Non-magnetic fasteners. Acceptance test: no preferred rest angle over 50 free-spin rests. |
 | R7 | SSD1351 panel sourcing: 0 stock, 8–16 week lead time | H | H | Buy ≥ 3 panels per unit now, from Newhaven or Orient. SH1107 fallback needs its own footprint. |
@@ -1460,18 +1468,18 @@ L = likelihood, I = impact (H / M / L).
 | ID | Decision | Options | Recommendation | Decide when |
 |---|---|---|---|---|
 | D1 | Final antenna location | Base shelf at z ≈ 5.5–6, centred on y = +23.5 (SPEC), base floor (the earlier SPEC position), base wall, a different antenna, a ≤ 30 mm-wide pack for more pack clearance | Keep the shelf for rev A (SPEC §8 now closes its geometry, at 1.75 mm from the pack: [§13](#13-issues-found-in-spec-during-this-review) item 4), but make the cup accept a wall-mounted antenna too, and decide on mock-up VNA/RSSI data | Before PCB release |
-| D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 10 mm sibling if the vendor datasheet confirms ≥ 1.2 N; design the mount for both. The 8 mm motor reaches at most 0.93 N from battery VSYS, below the 0.8–1.15 N worst-case load, so it works only with preloads cut to ≤ 0.5 N (hardware/sim, MD-4; R4). Chord path with an inclined-slot link in the mechanical model ([docs/mechanical.md](mechanical.md) A11) | Before mechanical CAD freeze |
+| D2 | Detent actuator and linkage | 8 mm VSM08102, 10 mm sibling, N20 gearmotor | 8 mm VSM08102 with the preloads cut to ≤ 0.5 N; the N20 or a Ø6 planetary gearmotor as the fallback. The 10 mm sibling's Ø10 can does not fit the 10.1 mm bowl ([docs/mechanical.md](mechanical.md) §7). The 8 mm motor reaches at most 0.93 N from battery VSYS, below the 0.8–1.15 N worst-case load, so it works only with preloads cut to ≤ 0.5 N (hardware/sim, MD-4; R4). Chord path with an inclined-slot link in the mechanical model ([docs/mechanical.md](mechanical.md) A11) | Before mechanical CAD freeze |
 | D3 | Bearing preload | 1.5 N, 2.5–3 N (SPEC), a preloaded pair | Start at SPEC's value, then measure click-mode rocking and spin-down at 1.5, 2.5 and 3.5 N. Pick the lowest preload that stops rocking; it must meet the verified ≥ 45 s acceptance (R3). If no preload does both, the conflict goes back to SPEC | First rotor prototype |
 | D4 | Detent damping shoe | None, felt, UHMW | Make it removable and decide by feel | First rotor prototype |
 | D5 | Production LED variant | WS2812C-V6 (5 mA), WS2812B-V6 (12 mA) | C for rev A. B only with the instantaneous lit-channel cap (1.0 A from VBAT_est ≥ 3.91 V) implemented and verified, otherwise drop it from the alternates (hardware/sim, PI-3). Either way, V6 parts only (LED-DATA-2) | Before the PCBA order |
 | D6 | OLED SPI instance | SPIM3 at 16 MHz, SPIM2 at 8 MHz | **Decided: SPIM3 at 16 MHz** (SPEC §4) with the anomaly 198 and 195 workarounds ([§6.3](#63-display)). SPIM2 at 8 MHz on the same pins is the fallback | Done |
 | D7 | 3V3 LDO | RT9080-33 (2 µA typical, 4 µA max), TPS7A0233 (25 nA) | TPS7A0233 if stocked: −2 µA sleep. Pin-compatible SOT-23-5, so check the EN/NC pins. The rev-A sheet fits the RT9080-33GJ5 (U1, LCSC C841192); measure its ground current at the ~20 µA sleep load on the first boards and switch if it is above a few µA (hardware/sim, LDO-6/SLP-3) | Before the PCBA order |
-| D8 | Battery pack | Protected 603450-class ≤ 6.0 mm (SPEC), a thinner 503450-class (5.0 mm), a deeper bay | Get the vendor drawing with PCM and leads. SPEC §8 now sets the envelope: long axis along θ 0°/180°, \|x\| ≤ 27.5, \|y\| ≤ 17.25, leads at the θ 180° end, inside Ø66.8, clear of the θ 270° boss (r = 20), the θ 90° rib (y 17.75–18.75) and the antenna shelf. **Maximum drawing thickness ≤ 6.0 mm, which leaves ≥ 1 mm to the base-board underside as the swelling allowance.** A 6.3 mm pack does not fit. Nothing sits on the base-board underside. A 5.0 mm pouch holds roughly 15–20 % less (*estimate* by volume) | Before the base CAD freeze |
+| D8 | Battery pack | Any protected pack ≤ 6.0 mm at the drawing maximum (the SPEC §8 envelope; a 603450-class pack only if its drawing maximum incl. PCM is ≤ 6.0 mm), the 503450/523450-class BOM pick (≤ 5.6 mm, SPEC §8, docs/mechanical.md §13), a deeper bay | Get the vendor drawing with PCM and leads. SPEC §8 now sets the envelope: long axis along θ 0°/180°, \|x\| ≤ 27.5, \|y\| ≤ 17.25, leads at the θ 180° end, inside Ø66.8, clear of the θ 270° boss (r = 20), the θ 90° rib (y 17.75–18.75) and the antenna shelf. **Maximum drawing thickness ≤ 6.0 mm, which leaves ≥ 1 mm to the base-board underside as the swelling allowance.** A 6.3 mm pack does not fit. Nothing sits on the base-board underside. A 5.0 mm pouch holds roughly 15–20 % less (*estimate* by volume) | Before the base CAD freeze |
 | D9 | Press switch | TS-1187A (1.6 N, 100k cycles), KSC2xx (2 N, 0.5–5M cycles, 3.5 mm tall) | TS-1187A for rev A (fits the 1.5 mm zone; about 2.0–2.1 N at the rim, 4.1–4.3 N at the centre). KSC2 needs a 3.6 mm zone and gives about 2.3 N at the rim and 4.7–4.95 N at the centre | Mechanical CAD |
 | D10 | Fast charge | 400 mA fixed, add CC sensing for 500 mA | 400 mA for rev A | Rev B |
 | D11 | Fuel gauge | Voltage table, MAX17048 | Voltage table | Rev B |
 | D12 | Phone app concurrency | Exclusive game slot, concurrent second identity | Concurrent, with 2 extended-advertising sets | Firmware |
-| D13 | Automatic free spin on a flick (SmartShift-like) | Off, partial retract | Rate-limited partial retract (3.5 mm in about 0.3 s). The full stroke is too slow (0.6–0.9 s) | Firmware |
+| D13 | Automatic free spin on a flick (SmartShift-like) | Off, partial retract | Rate-limited partial retract (3.5 mm, 233 full steps, in about 0.5 s). The full stroke is too slow (about 0.9–1.1 s) | Firmware |
 | D14 | Ship-mode wake UX | About 2 s hold (BQ25180), nPM1300 at 96 ms | Accept 2 s. System ON idle is the everyday "off" | Done unless the nPM1300 is restocked |
 | D15 | D21 reverse leakage in sleep (5.4 µA at 25 °C, about 30 µA at 60 °C, through U21's QOD) | Accept; a low-IR rectifier for D21; TPS61040 EN on its own GPIO with a ≤ 400 kΩ pull-down and U21's QOD open (32.2 µA total simulated) | **Decided for rev A: accept** and budget it ([§8.2](#82-per-subsystem-currents)). Choose a fix for rev B after the bring-up sleep measurement; with the EN option, EN must never rise before VIN | Rev B |
 
@@ -1602,7 +1610,7 @@ item 8, and item 9.
    antenna strip (item 4) and was dropped. The θ 180° guide pin at r = 29 now
    sits just beyond the pack end (x = −29 against −27.5), and the CAD model
    moves it to r = 30.
-6. **LiPo swelling gap** (risk R28). **Resolved.** SPEC's bay is z 2.5–9.0 under
+6. **LiPo swelling gap** (risk R28). **Resolved.** SPEC's bay was z 2.5–9.0 under
    the base board at z 9.5, and SPEC asked for a pack "≤ 6.3 thick". A 6.3 mm
    pack left about 0.7 mm to the board underside, and less under any
    bottom-side part. The verified mechanical correction asks for
@@ -1610,7 +1618,8 @@ item 8, and item 9.
    pressing on solder joints or part corners is a puncture hazard. Status of
    what was required:
    * pack ≤ about 6.0 mm (maximum drawing thickness): **done**, SPEC §8 now
-     says "≤ 6.0 thick (≥ 1 mm swelling gap to the board)";
+     gives the bay as z 2.5–8.5 for a pack ≤ 6.0 thick, ≥ 1 mm below the
+     board, with a 503450/523450-class pack (≤ 5.6 mm) as the BOM pick;
    * no components on the base-board underside over the pack: **done**. The
      base board is single-sided, and RT1 is on the top side (SPEC §8,
      item 14);
@@ -1620,7 +1629,7 @@ item 8, and item 9.
    shelf at z ≈ 5.5–6, about 6 mm above the desk. Metal surfaces remain the
    main RF risk ([§9](#9-rf-strategy-and-its-risk)); validate before PCB
    release.
-8. **Actuator path wording. Partly addressed.** SPEC §1/§8 say the carriage
+8. **Actuator path wording. Addressed.** SPEC §1/§8 said the carriage
    "slides radially … along θ = 90°" with a "chord placement" actuator in the
    θ 60–120° keep-out. A radial lead screw driving the carriage from r 21.5 to
    29 cannot fit, because the about 33 mm stepper would cross the hub at
@@ -1628,9 +1637,11 @@ item 8, and item 9.
    leave the 60–120° sector. **Status:** docs/mechanical.md A11 now defines
    the linkage (a chord at y 15.5 with an inclined-slot link, sweeping
    θ ≈ 35–160°), and SPEC §8 adds the matching corridor rule (bottom parts in
-   θ 30–160°, r 8.5–27 at most 1.3 mm tall). SPEC §8 still describes the
-   carriage as sliding "along θ = 90°" and keeps the θ 60–120° sector as the
-   only no-component keep-out; the wording should follow the chord path.
+   θ 30–160°, r 8.5–27 at most 1.3 mm tall). SPEC §1/§8 now say that the
+   carriage slides along the θ = 90° radius while the actuator lies on the
+   chord y = 15.5 and sweeps θ ≈ 35–160°, and they state both bottom-side
+   rules together (no components in θ 60–120°, r 12–32; parts ≤ 1.3 mm tall
+   in θ 30–160°, r 8.5–27; the keep-out wins where they overlap).
 9. **Bearing preload vs spin time. Still open.** The ≥ 2.5–3 N wave-spring
    preload (needed against click-mode rocking) roughly halves the predicted
    free-spin time, to about 20–65 s from 10 rev/s. The verified acceptance test

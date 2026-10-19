@@ -438,8 +438,9 @@ stronger actuator (the fallbacks below; the 10 mm sibling does not fit) (hardwar
 
 * **Keep friction low:** PTFE tape on the rails, lubricated slot, ramp ≤ 8°.
 * **Firmware:** move the carriage only with the rotor at rest or below 1 rev/s, and run the loaded zone (0–4 mm) at
-  ≤ 300 PPS. Non-park moves MUST start only from ≥ 3.55 V measured idle VSYS, because at the old 3.40 V the
-  stroke-load sag leaves the coils below the motor's 3.3 V / 165 mA rated drive (hardware/sim, MD-2; firmware.md §5.8).
+  ≤ 300 PPS. Non-park moves MUST start only from VSYS_est ≥ 3.54 V (VSYS_est = 0.979 × the idle VSYS reading, so a
+  reading ≥ 3.6159 V; firmware.md §5.8, §12.4), because at the old 3.40 V the stroke-load sag leaves the coils below
+  the motor's 3.3 V / 165 mA rated drive (hardware/sim, MD-2).
 * **Gate:** slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the real carriage (§15 #6). If it fails, fall back to the
   N20 or a Ø6 planetary micro gearmotor (below).
 

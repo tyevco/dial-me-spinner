@@ -444,9 +444,9 @@ against the current bindings.
 		pwm = <&pwm0>;
 		nsleep-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
 		home-gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-		full-steps-per-mm = <50>;              /* M2x0.4 lead, 20 steps/rev -> 0.02 mm/step */
+		carriage-um-per-step = <15>;           /* M2x0.4 lead, 20 steps/rev: 0.02 mm slider x 0.75 slot */
 		microsteps = <8>;
-		stroke-steps = <375>;                  /* 7.5 mm, click -> park */
+		stroke-steps = <500>;                  /* 7.5 mm / 0.015 mm, click -> park (mechanical.md §7) */
 		coil-milliohms = <20000>;
 	};
 
@@ -760,7 +760,7 @@ properties:
   pwm:                { type: phandle, required: true }
   nsleep-gpios:       { type: phandle-array, required: true }
   home-gpios:         { type: phandle-array, required: true }
-  full-steps-per-mm:  { type: int, required: true }
+  carriage-um-per-step: { type: int, required: true }
   microsteps:         { type: int, default: 8 }
   stroke-steps:       { type: int, required: true }
   coil-milliohms:     { type: int, required: true }
@@ -1365,20 +1365,29 @@ sits in standby at 0.45 mA):
 * **Carriage coordinate.** x is the offset in mm, measured radially inward from
   the CLICK-MAX position: x = 0 is full click at r = 29.0, and x ≥ 7.5 is FREE
   (park, r ≤ 21.5).
-* **Actuator.** A micro PM linear stepper (VIC-TECH VSM08102 class, or the
-  10 mm sibling; SPEC "micro actuator"). It has 20 full steps per revolution
-  on an M2×0.4 lead screw, so 1 full step = **0.02 mm**, and the stroke is 375
-  full steps. The self-locking screw gives zero hold power.
-* **Strength LUT.** Peak detent torque vs in-plane offset at a 1.0 mm gap,
-  verified by independent re-simulation
+* **Actuator.** A micro PM linear stepper (VIC-TECH VSM08102 class; SPEC
+  "micro actuator"; the 10 mm sibling does not fit the bowl, mechanical.md §7).
+  It has 20 full steps per revolution on an M2×0.4 lead screw, so the slider
+  moves 0.02 mm per full step, and the link plate's inclined slot (slope 0.75)
+  turns that into **0.015 mm** of carriage per full step: the 7.5 mm stroke is
+  **500** full steps (mechanical.md §7, `hardware/mechanical/calcs_output.txt`
+  §4). The self-locking screw gives zero hold power.
+* **Strength LUT.** Peak detent torque vs in-plane offset at a 1.0 mm gap
   ([detent research](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)
   for the actuator; the magnetics come from the project's magpylib model). The
-  values are for R = 30 mm; SPEC's R = 29 mm differs by only a few percent
-  (TVP). Calibration step (f) scales them per unit.
+  points at 0, 1.5, 3.0, 5.0 and 7.5 mm were verified by independent
+  re-simulation; the others are log-linear interpolations between them. This
+  is the LUT of `hardware/mechanical/calcs_output.txt` §4 (also mechanical.md
+  §7 and bringup.md B-12.3); the earlier table here carried the research's own
+  intermediate values, up to 12 % higher at 0.5–1.0 mm. The values are for
+  R = 30 mm; SPEC's R = 29 mm gives about 2–5 % less (TVP). Calibration step
+  (f) scales them per unit, and bring-up B-12.3 replaces them with the
+  measured LUT.
 
   | x (mm) | 0 | 0.5 | 1.0 | 1.5 | 2.0 | 2.5 | 3.0 | 3.5 | 4.0 | 5.0 | 6.0 | 7.0 | 7.5 |
   |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-  | T1 (mN·m) | 16.5 | 15.4 | 12.8 | 9.5 | 6.2 | 3.7 | 2.0 | 1.1 | 0.55 | 0.14 | 0.031 | 0.006 | 0.0027 |
+  | T1 (mN·m) | 16.5 | 13.7 | 11.4 | 9.5 | 5.65 | 3.36 | 2.0 | 1.03 | 0.53 | 0.14 | 0.029 | 0.0059 | 0.0027 |
+  | Full steps from click | 0 | 33 | 67 | 100 | 133 | 167 | 200 | 233 | 267 | 333 | 400 | 467 | 500 |
 
 * **User strength s (1–100 %)** maps logarithmically to torque:
   T = T_min·(T_max/T_min)^((s−1)/99), with T_min = 1.0 mN·m and
@@ -1389,7 +1398,7 @@ sits in standby at 0.45 mA):
     x ≤ 0.5 mm, [§5.6](#56-friction-shoe-interplay)), so the default click is
     damped. It follows architecture.md §6.2 ("default to the strongest
     setting") and the detent verifier's correction.
-  * An EC11-like s = 85 % (T ≈ 11 mN·m at x ≈ 1.25 mm, 62 steps) becomes the
+  * An EC11-like s = 85 % (T ≈ 11 mN·m at x ≈ 1.15 mm, 77 steps) becomes the
     default only if the factory-measured `shoe_x_max` is at least 1.3 mm.
     Otherwise 85 % stays a user choice and is undamped: about 10 s of rocking
     after a spin with bearing friction alone (§5.6).
@@ -1443,9 +1452,9 @@ sits in standby at 0.45 mA):
     i.e. one erase per 4 KB sector every 5 days or so, against 10,000 cycles.
   * Ship-mode entry parks first ([§12](#12-power-management)); the park move's
     SETTLE writes the valid record.
-  * Homing takes about 2 s from the click end, up to about 2.7 s from inside
-    the park zone, and about 3 s before the factory has learned the HOME edges
-    ([§5.4](#54-homing-with-the-drv5032)).
+  * Homing takes about 2.4 s from the click end, up to about 3.2 s from
+    inside the park zone, and about 3.5 s before the factory has learned the
+    HOME edges ([§5.4](#54-homing-with-the-drv5032)).
 * **Command coalescing:** only the latest target is kept. A new target during
   MOVING re-plans from the current step, with deceleration if the direction
   reverses.
@@ -1475,7 +1484,7 @@ sits in standby at 0.45 mA):
   Clamp d ≤ 1; at T = 60 °C the 160 mA run current needs VSYS ≥ 3.69 V
   (calculated from the formula).
   * Run: I_target = 160 mA, giving d = 0.77 at 4.2 V, 0.88 at 3.7 V and 0.90 at
-    3.615 V, the move-threshold reading of [§5.8](#58-limits) (25 °C).
+    3.6159 V, the move-threshold reading of [§5.8](#58-limits) (25 °C).
   * Homing: run current (160 mA) for every travel phase, because the load
     can oppose the carriage in either direction (magnetic up to 0.29 N, and
     0.8–1.15 N worst case with guide friction and the anti-lash spring,
@@ -1483,9 +1492,9 @@ sits in standby at 0.45 mA):
     shortfall is still open, [§18](#18-open-items-and-to-verify-list)
     item 10). 80 mA (50 %) only for the final stall into the park stop, where
     the magnetic force is about 0 and the anti-lash spring pushes toward PARK.
-  * Below VSYS_est 3.54 V (the idle reading less the 75 mV margin of
+  * Below VSYS_est 3.54 V (0.979 × the idle reading, rule R1' of
     [§12.4](#124-battery-measurement-and-low-battery-policy), i.e. a reading
-    below 3.615 V) the coil may no longer get its rated current under load,
+    below 3.6159 V) the coil may no longer get its rated current under load,
     so only park moves are allowed ([§5.8](#58-limits)).
 * **Sequences.** Use `nrfx_pwm_complex_playback()` with two ping-pong
   sequences, each holding 8 µsteps (one full step) × 4 channels (64 B).
@@ -1509,12 +1518,15 @@ sits in standby at 0.45 mA):
   | x > 4 mm | Ramp 521 → 781 PPS (1042 only after a thrust test, TVP) | Magnetic force is about 0 there |
   | Decel | Mirror of the ramp, last 4 steps at 313 PPS | |
   | Homing travel (back-off, approach, run-in) | 313 PPS back-off; approach and run-in 313 → 446 PPS; run current | Thrust margin in the loaded zone ([§5.4](#54-homing-with-the-drv5032)) |
-  | Final stall (homing, and the tail of every move to FREE) | 80 PPS, 50 % current, about 60–140 steps | Gentle stall into the park stop; at x ≥ 6.7 mm the detent torque is ≤ 0.01 mN·m, so the slow tail is not felt |
+  | Final stall (homing, and the tail of every move to FREE) | 80 PPS, 50 % current, about 60–130 steps | Gentle stall into the park stop; from s = 40 (x = 6.9 mm) on, the detent torque is below 0.01 mN·m, so the slow tail is not felt |
 
-  A full 7.5 mm stroke takes **about 0.7–0.9 s** (verifier: plan 0.6–0.9 s),
+  A full 7.5 mm stroke (500 full steps: 267 in the loaded zone at 446 PPS,
+  233 beyond it on the 521–781 PPS ramp) takes **about 0.9–1.1 s**
+  (mechanical.md §7 gives 0.83–1.18 s for 500 / 300 PPS in the loaded zone),
   plus the 0.75 s re-reference tail when the target is FREE ([§5.4](#54-homing-with-the-drv5032));
-  a strength trim of 0.5 mm takes about 60 ms. Energy is 0.035–0.055 mAh per
-  full stroke, and battery peak current is 0.36–0.42 A.
+  a strength trim of 0.5 mm (33 full steps) takes about 80 ms. Energy is
+  about 0.045–0.07 mAh per full stroke (scaled from the 375-step estimate by
+  the longer stroke time), and battery peak current is 0.36–0.42 A.
 
 ### 5.4 Homing with the DRV5032
 
@@ -1535,16 +1547,17 @@ BHYS 0.8/1.5/3 mT (min/typ/max). It samples at 20 Hz with a sampling period
 tS of 27/50/75 ms, so a field change is seen 0–75 ms late
 ([DRV5032 DS SLVSDC7H §6.5, §6.6](https://www.ti.com/lit/ds/symlink/drv5032.pdf)).
 The 48-magnet track adds about 0.01 mT. Below, s is the carriage distance from
-the **park stop** in full steps (s = 0 at the stop, s = 375 at click;
-x = (375 − s) × 0.02 mm). This leads to the following:
+the **park stop** in full steps (s = 0 at the stop, s = 500 at click;
+x = (500 − s) × 0.015 mm, [§5.1](#51-coordinates-and-strength-lut)). This
+leads to the following:
 
 * At park the field is more than 50 mT, so HOME is solidly asserted.
 * **Assert edge** (moving toward park): HOME asserts about 3.8–4.6 mm from the
-  stop, i.e. s_ast ≈ 190–230 steps. It does **not** mark the stop.
+  stop, i.e. s_ast ≈ 253–307 steps. It does **not** mark the stop.
 * **Release edge** (moving toward click): the field falls below BRP about
-  4.1–5.0 mm from the stop, s_rel ≈ 200–250 steps. The hysteresis puts the
-  release 11–42 steps further out than the assert (BHYS 0.8–3 mT over a local
-  gradient of about 3.6 mT/mm).
+  4.1–5.0 mm from the stop, s_rel ≈ 273–333 steps. The hysteresis puts the
+  release 15–56 steps (0.22–0.83 mm) further out than the assert (BHYS
+  0.8–3 mT over a local gradient of about 3.6 mT/mm).
 * **Detection lag**: 0–75 ms in the direction of travel, which is 0–6 steps at
   80 PPS, 0–24 at 313 PPS and 0–34 at 446 PPS. Both edges lie at
   x ≈ 2.5–3.7 mm, inside the ≤ 446 PPS loaded zone of
@@ -1567,28 +1580,28 @@ re-home, lost-step recovery, FAULT retry):
 | Phase | Drive | Ends when | Limit |
 |---|---|---|---|
 | H0 wake | nSLEEP high, 1 ms; energise the stored phase 10 ms at run current | | |
-| H1 back-off (only if HOME reads asserted) | Toward click, **run current**, 313 PPS | HOME releases (now just outside the park zone) | s_rel,L + 24 + 20 steps (default 295). Still asserted → failed attempt |
-| H2 approach | Toward park, **run current**, 4 steps at 313 PPS then 446 PPS | HOME released → asserted edge | 375 + 40 = 415 steps. No edge → failed attempt (likely a stall in the loaded zone) |
-| H3 run-in | Continue toward park, run current, 446 PPS, for n3 = s_ast,L − 34 − 10 − 20 steps | n3 steps done; the carriage is now 20–80 steps from the stop (20–94 with the unlearned default, n3 = 136) | |
-| H4 final stall | Decelerate to **80 PPS, 50 % current**; step the remaining maximum + 20 steps of overdrive (100 learned, 114 default) | The carriage reaches the stop after 20–94 steps and slips for at least 20 more | |
-| H5 confirm | Read HOME | HOME asserted → back off 4 steps at run current, x = x_park = stop − 4 steps (7.42 mm nominal, T1 ≈ 3 µN·m), → SETTLE | HOME not asserted → failed attempt |
+| H1 back-off (only if HOME reads asserted) | Toward click, **run current**, 313 PPS | HOME releases (now just outside the park zone) | s_rel,L + 24 + 20 steps (default 377). Still asserted → failed attempt |
+| H2 approach | Toward park, **run current**, 4 steps at 313 PPS then 446 PPS | HOME released → asserted edge | 500 + 40 = 540 steps. No edge → failed attempt (likely a stall in the loaded zone) |
+| H3 run-in | Continue toward park, run current, 446 PPS, for n3 = s_ast,L − 34 − 10 − 20 steps | n3 steps done; the carriage is now 20–80 steps from the stop (20–108 with the unlearned default, n3 = 199) | |
+| H4 final stall | Decelerate to **80 PPS, 50 % current**; step the remaining maximum + 20 steps of overdrive (100 learned, 128 default) | The carriage reaches the stop after 20–108 steps and slips for at least 20 more | |
+| H5 confirm | Read HOME | HOME asserted → back off 4 steps at run current, x = x_park = stop − 4 steps (7.44 mm nominal, T1 ≈ 3 µN·m), → SETTLE | HOME not asserted → failed attempt |
 
 * **x_park and SPEC.** SPEC §1 defines FREE as x ≥ 7.5 mm. With the park stop
-  exactly at 7.5 mm, the 4-step back-off leaves x = 7.42 mm and
+  exactly at 7.5 mm, the 4-step back-off leaves x = 7.44 mm and
   T1 ≈ 3 µN·m, which is the residual the 7.5 mm stroke was sized for. Ask
-  the mechanical design for the park stop at x ≥ 7.58 mm (r ≤ 21.42 mm) so
+  the mechanical design for the park stop at x ≥ 7.56 mm (r ≤ 21.44 mm) so
   that x_park itself is ≥ 7.5 mm; `stroke-steps` in [§3.1](#31-board-dts-draft)
   then becomes the measured stop-to-stop count (TVP).
 * A failed attempt retries from H0 with every travel phase at 313 PPS, where
   the PM stepper has more thrust; after 3 failures go to FAULT (E_DET_HOME).
-* **Duration**: about 2 s from the click end (H2 ≤ 0.5 s, H3 about 0.3 s,
-  H4 1.25 s), up to about 2.7 s from inside the park zone (H1 adds up to
-  0.9 s), and about 3 s with unlearned edges.
+* **Duration**: about 2.4 s from the click end (H2 ≤ 0.65 s, H3 about
+  0.5 s, H4 1.25 s), up to about 3.2 s from inside the park zone (H1 adds up
+  to 1.2 s), and about 3.5 s with unlearned edges (H4 1.6 s).
 * **Every move to FREE re-references.** Run the normal profile to s = 40
-  (x = 6.7 mm), then 80 PPS at 50 % current for 40 + 20 steps (0.75 s), confirm
+  (x = 6.9 mm), then 80 PPS at 50 % current for 40 + 20 steps (0.75 s), confirm
   HOME asserted, back off 4 steps and set x = x_park. Detent torque is already
-  ≤ 0.01 mN·m at s = 40, so the slow tail is not felt. If HOME is not asserted
-  there, run the full homing procedure. This park stall plus HOME confirmation
+  below 0.01 mN·m at s = 40 (about 7 µN·m), so the slow tail is not felt. If
+  HOME is not asserted there, run the full homing procedure. This park stall plus HOME confirmation
   is the **primary** lost-step check (and it matches architecture.md §6.2:
   "HOME must read asserted after every park stall, including the one that
   ends every return to free mode").
@@ -1617,7 +1630,7 @@ Firmware rules that follow:
 
 There is no current sensing, so stall detection is open-loop. A PM stepper
 slips against the stop at 50 % current, and the final error is ±1–2 full
-steps (±0.02–0.04 mm, about ±2–4 % torque). *TVP:* confirm on the prototype
+steps (±0.015–0.03 mm, about ±1.5–3 % torque). *TVP:* confirm on the prototype
 that repeated 50 % stalls do not wear or jam the lead-screw nut, and that the
 run-current approach clears the loaded zone at 446 PPS at a true VSYS of
 3.54 V, the non-park move minimum of [§5.8](#58-limits).
@@ -1626,9 +1639,9 @@ run-current approach clears the loaded zone at 446 PPS at a true VSYS of
 
 | Mode | Behaviour |
 |---|---|
-| FREE | Go to the park stop with the re-reference tail, end at x_park ≈ 7.42 mm ([§5.4](#54-homing-with-the-drv5032)) |
+| FREE | Go to the park stop with the re-reference tail, end at x_park ≈ 7.44 mm ([§5.4](#54-homing-with-the-drv5032)) |
 | CLICK(s) | Go to x(s) from the LUT |
-| AUTO | Like Logitech SmartShift. In CLICK, a flick (ω rising past 2 rev/s with α > 20 rev/s²) moves to FREE; returns to CLICK when \|ω\| < 0.5 rev/s or on `TOUCH`. Rate-limited to one switch per second. The actuator takes 0.7–0.9 s (the 0.75 s re-reference tail of a move to FREE is not felt), so switching happens after the flick, which is fine. |
+| AUTO | Like Logitech SmartShift. In CLICK, a flick (ω rising past 2 rev/s with α > 20 rev/s²) moves to FREE; returns to CLICK when \|ω\| < 0.5 rev/s or on `TOUCH`. Rate-limited to one switch per second. The actuator takes 0.9–1.1 s (the 0.75 s re-reference tail of a move to FREE is not felt), so switching happens after the flick, which is fine. |
 | BRAKE (game) | FREE while \|ω\| > ω_brake (default 1.5 rev/s); below that, move to CLICK-MAX with the shoe engaged, giving a short prize-wheel ending. ω_brake is fixed per game setting and never depends on the prediction (fairness). |
 
 ### 5.6 Friction shoe interplay
@@ -1680,7 +1693,7 @@ because the ring may be moving. "Blanking" here means suppressing the
 
 | Limit | Value | Reason |
 |---|---|---|
-| Minimum VSYS for non-park moves | VSYS_est ≥ 3.54 V: the idle reading less 75 mV ([§12.4](#124-battery-measurement-and-low-battery-policy)), i.e. a reading ≥ 3.615 V | The coil must get its rated 165 mA at 3.3 V under the stroke load (cell, BATFET, link and rDS(on) sag); that point is a true 3.533 V at 25 °C. A true 3.54 V gives 165.3 mA, and the worst over-read there (72.4 mV, aged unit at −10/60 °C) is inside the 75 mV margin; the former 3.55 V reading, 46 mV high, left a true 3.504 V and 163.6 mA (hardware/sim, MD-2) |
+| Minimum VSYS for non-park moves | VSYS_est ≥ 3.54 V, with VSYS_est = 0.979 × the idle reading (rule R1', [§12.4](#124-battery-measurement-and-low-battery-policy)), i.e. a reading ≥ 3.6159 V | The coil must get its rated 165 mA at 3.3 V under the stroke load (cell, BATFET, link and rDS(on) sag); that point is a true 3.533 V at 25 °C. R1' tolerates a reading up to 2.1 % (75.9 mV) high at this threshold, so the true idle VSYS is at least 3.54 V, which gives 165.3 mA; the worst simulated over-read there is 72.4 mV (aged unit at −10/60 °C), which leaves VSYS_est 3.4 mV below the true value. The former 3.55 V reading, 46 mV high, left a true 3.504 V and 163.6 mA (hardware/sim, MD-2) |
 | Minimum VSYS for a park move | 3.30 V | Parking is needed before ship mode |
 | Rate | At most 20 full strokes per minute sustained; bursts of 5 | Motor heating (about 1 J per stroke) and battery |
 | LED cap while moving | 100 mA average; instantaneous budget less 0.23 A ([§6.3](#63-power-limiter)) | Keeps the coincident peak below about 0.6 A and the cell sag below 0.3 V |
@@ -1801,10 +1814,10 @@ while (lit_channels(frame) * I_CH > pk)
   |---|---|---|---|---|---|---|---|
   | Allowed peak (A) | 0.19 | 0.26 | 0.33 | 0.42 | 0.51 | 0.69 | full ring (0.72 A) |
 
-  * Look the row up with VBAT_est, the rested estimate less the 75 mV
-    reading margin ([§12.4](#124-battery-measurement-and-low-battery-policy)),
-    never with the raw reading: use the row at or below VBAT_est, so the row
-    is at or below the true VBAT. Subtract about 0.23 A while the actuator
+  * Look the row up with VBAT_est = 0.979 × the rested reading (rule R1',
+    [§12.4](#124-battery-measurement-and-low-battery-policy)), never with the
+    raw reading: use the row at or below VBAT_est, so the row is at or below
+    the true VBAT. Subtract about 0.23 A while the actuator
     moves. On battery the LEDs are off below VBAT_est 3.53 V (derating
     below), so the 3.48 V row is used on USB only.
   * The table assumes the OLED-BST-2 dimming: OLED C7 ≤ 08h below VBAT_est
@@ -1820,10 +1833,11 @@ while (lit_channels(frame) * I_CH > pk)
     only 3 mV over the WS2812C's 3.3 V VDD minimum with its documented
     100 mA load. With the documented loads every battery row now keeps at
     least +13.4 mV at the worst corner (the 3.53 V row with the pack at
-    3.53 V), and the 3.48 V row +214 mV on USB (hardware/sim, PI-2).
+    3.53 V, the lowest true VBAT R1' admits for that row), and the 3.48 V row
+    +214 mV on USB (hardware/sim, PI-2).
   * **On USB** SYS is regulated, so VBAT_est is the last battery-only
     estimate of this power-up, or unknown ([§12.4](#124-battery-measurement-and-low-battery-policy)).
-    While VBAT_est ≥ 3.48 V (a true cell of at least 3.483 V), firmware MUST
+    While VBAT_est ≥ 3.48 V (a true cell of at least 3.48 V under R1'), firmware MUST
     either use the 3.48 V row until CHG_STAT reports CV or done, or keep the
     **instantaneous** on-USB sum (lit channels × I_ch + OLED boost input
     current + actuator) ≤ 0.40 A. An average does not do: with 0.40 A as
@@ -1839,15 +1853,23 @@ while (lit_channels(frame) * I_CH > pk)
     of about 3.3 V) protects VLED (hardware/sim, NF-1).
   * With the B variant, I_ch = 12 mA. The rows above apply in amperes (the
     ≥ 3.90 V row is 0.72 A, i.e. 60 lit B channels, not the 1.73 A B ring),
-    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.91 V: at
-    the worst corner (300 mA bursts, OLED C7 ≤ 08h) VLED reaches 3.3 V at a
-    true 3.9025 V and keeps +10 mV from 3.9123 V; with the OLED at 100 % the
-    bursts would need 3.9405 V (hardware/sim, PI-3).
+    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.91 V (a
+    reading of 3.9939 V): at the worst corner (300 mA bursts, OLED C7 ≤ 08h)
+    VLED reaches 3.3 V at a true 3.9025 V and keeps +10 mV from 3.9123 V; with
+    the OLED at 100 % the bursts would need 3.9405 V (hardware/sim, PI-3).
+    At the R1' bound (true VBAT = VBAT_est = 3.910 V) the burst phase keeps
+    +7.9 mV (VLED 3.3079 V; sustained +53.7 mV, moving +112.2 mV): above the
+    3.3 V limit, but short of the 10 mV the 3.91 V threshold was sized for.
+    With the simulated worst over-read at 3.91 V (79.9 mV, so a true VBAT of
+    at least about 3.914 V) it is about +11.7 mV (interpolated). A threshold
+    of VBAT_est 3.92 V (a reading of 4.0041 V) would keep +17.9 mV at the
+    bound itself; this revision keeps 3.91 V ([§18](#18-open-items-and-to-verify-list)
+    item 12).
   * *TVP:* bring-up scopes the summed ring current after power-up to see
     whether the V6 PWM phases really align; the budget stays until that is
     measured.
 
-* **Derating** (VBAT_est, the rested estimate less the 75 mV reading margin,
+* **Derating** (VBAT_est = 0.979 × the rested reading, rule R1',
   [§12.4](#124-battery-measurement-and-low-battery-policy); never the raw
   reading: compared with the raw reading, the 3.60 V burst edge admits a
   3.528 V cell, and 300 mA bursts at −10 °C then take VLED to 3.295 V, under
@@ -1864,7 +1886,7 @@ while (lit_channels(frame) * I_CH > pk)
   | nRF die temperature > 55 °C | 100 mA sustained |
   | On USB, charging (optional "charge first") | 150 mA, no bursts; instantaneous budget per the USB rule above |
   | **VBUS present but input limit still 100 mA** (TMR_ILIM = 0xC9, before USB "configured" or charger detection, [§13.3](#133-input-current-strategy-on-usb)) | **20 mA**, no bursts: the charging cue. No actuator moves (homing is deferred). OLED_VCC_EN stays low unless the battery can supplement SYS (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a battery-only reading in this power-up, [§7.2](#72-init-sequence-and-power-sequencing)); only then OLED C7 ≤ 04h (hardware/sim, NEW-1, OLED-V1). Lifted when ILIM goes to 500 mA (at most about 2 s after VBUS). With a battery below BUVLO or absent, the BQ25180 cannot supplement SYS ([SLUSE99C §8.3.3](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) and the 100 mA input cannot carry the OLED boost's turn-on surge, so an uncapped boot (OLED VCC, LED animation, homing at run current) collapses SYS into a brown-out reboot loop exactly in the "battery empty, plug in" case. |
-  | **No supplement** on USB: pack absent or not yet seen (no battery-only VBAT_est in this power-up, [§13.3](#133-input-current-strategy-on-usb)), STAT1 BUVLO_STAT = 1, or CHG_STAT = precharge | ILIM 100 mA phase: LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, BLE TX 0 dBm, total ≤ 70 mA. ILIM 500 mA phase: no actuator moves, LEDs ≤ 100 mA and peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA; while VBAT_est is unknown the USB rule above also holds (only the charging cue until CHG_STAT reports CV or done). Without this profile both USB budgets exceed the ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). |
+  | **No supplement** on USB: pack absent or not yet seen (no battery-only VBAT_est in this power-up, [§13.3](#133-input-current-strategy-on-usb)), or STAT1 BUVLO_STAT = 1, which also covers precharge (CHG_STAT has no precharge code and reports precharge as CC; with VLOWV = BUVLO = 3.0 V, [§13.1](#131-register-init-table), BUVLO_STAT stays 1 through precharge, because it clears only at 3.11–3.19 V rising, above VLOWV's 3.1 V maximum, SLUSE99C §7.5) | ILIM 100 mA phase: LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, BLE TX 0 dBm, total ≤ 70 mA. ILIM 500 mA phase: no actuator moves, LEDs ≤ 100 mA and peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA; while VBAT_est is unknown the USB rule above also holds (only the charging cue until CHG_STAT reports CV or done). Without this profile both USB budgets exceed the ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). |
   | VLED fault latched, or the last reset was a brown-out/BATOCP with LED_PWR_EN set | LEDs off ([§15](#15-fault-handling); hardware/sim, NEW-5, NF-3) |
 
   While the LEDs run above the 150 mA sustained cap (bursts), the OLED is
@@ -2022,9 +2044,9 @@ or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
 
 * Firmware MUST never set OLED_VCC_EN while the BQ25180 input limit is
   100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS: no
-  BUVLO_STAT and VBAT_est ≥ 3.21 V (a true-cell value,
-  [§12.4](#124-battery-measurement-and-low-battery-policy)), taken from a
-  battery-only reading in this power-up (none counts as "cannot").
+  BUVLO_STAT and VBAT_est ≥ 3.21 V (a true-cell value; a reading of
+  3.2789 V, [§12.4](#124-battery-measurement-and-low-battery-policy)), taken
+  from a battery-only reading in this power-up (none counts as "cannot").
   Otherwise it raises OLED_VCC_EN only after ILIM = 500 mA, and until then
   shows the charging cue on the LEDs (≤ 20 mA).
   A dead battery cannot supplement SYS and the 100 mA input cannot carry the
@@ -2032,7 +2054,7 @@ or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
   "battery empty, plug in" case (hardware/sim, NEW-1, OLED-V1; [§13.3](#133-input-current-strategy-on-usb)).
   At −10 °C (pack impedance doubled) the U21 + boost surge needs about a
   3.204 V cell to keep the BQ25180 BAT pin above BUVLO (3.0 V). With a
-  3.21 V cell the BAT pin stays at 3.040 V or more (ILIM 80 mA minimum);
+  3.21 V cell (the R1' bound) the BAT pin stays at 3.039 V or more (ILIM 80 mA minimum);
   the former 3.15 V reading admitted a 3.104 V cell, whose BAT pin fell to
   2.935 V for 1.37 ms, far past the 60 µs tBUVLO.
 * Firmware MUST NOT toggle OLED_VCC_EN during an actuator move while
@@ -2550,7 +2572,7 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 | **DIM** | 10 s without input | AEh or C7 03–04h, VCC on | Ambient or off | Tracking for 2 s after motion, then ARMED | LP | Latency 30 | Mostly idle | About 6–12 mA |
 | **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **62 µA** at 25 °C, the architecture.md §8.2 budget, which assumes +8 dBm TX and carries the 17.6 µA OLED line of [§7.2](#72-init-sequence-and-power-sequencing); about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
 | **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **38 µA** (25 °C typical, the architecture.md §8.2 sum; about 70 µA at 60 °C) |
-| **SHIP** | VBAT_est < 3.465 V, i.e. a rested reading below 3.54 V (the BQ25180 VBATPOR max of 3.46 V plus 5 mV, with the 75 mV reading margin of [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
+| **SHIP** | VBAT_est < 3.465 V, i.e. a rested reading below 3.5393 V (the BQ25180 VBATPOR max of 3.46 V plus 5 mV, with VBAT_est = 0.979 × reading, rule R1' of [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
 | **SHUTDOWN** | Factory/transport command | Unpowered | | | | | | About 3 µA (PCM only); wakes on USB only |
 
 * **System OFF is not used.** It would save only about 2.6 µA of the 38 µA
@@ -2669,26 +2691,40 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   ±reference tolerances to about ±10 mV at 25 °C and about ±24 mV at
   15–35 °C, **but only on a fresh unit**. Over temperature and with ageing
   the calibrated reading drifts further (worst case over both calibration
-  references, at the 3.54 V SHIP reading; the error grows with VSYS, to
+  references, at the 3.5393 V SHIP reading; the error grows with VSYS, to
   about 2.0–2.1 % of the reading at the aged −10/60 °C corner): a fresh unit
   over −10…60 °C reads up to about 48 mV high and 55 mV low, an aged unit at
   25 °C +30/−36 mV, and an aged unit at −10 or 60 °C +73/−79 mV
   (hardware/sim, VSENSE-1, VSENSE-4).
-* **Reading margin (VREAD_MARGIN = 75 mV).** Every threshold in this
+* **Reading gain (rule R1', VREAD_GAIN = 0.979).** Every threshold in this
   document that protects a datasheet limit is a true-cell value and is
-  compared against **VBAT_est = calibrated rested reading − 75 mV**, never
+  compared against **VBAT_est = 0.979 × calibrated rested reading**, never
   against the raw reading; the idle-VSYS move threshold of [§5.8](#58-limits)
-  likewise uses VSYS_est = idle reading − 75 mV. A threshold T therefore
-  engages at a reading of T + 75 mV, and the true value is still at least T
-  while the worst over-read at T stays within 75 mV: it is 67.9 mV at
-  3.21 V, 71.4 mV at 3.465 V, 72.4 mV at 3.54 V, 73.3 mV at 3.60 V and
-  74.7 mV at 3.70 V (aged unit at −10/60 °C, hardware/sim, VSENSE-1,
-  VSENSE-4). **Open:** above a true 3.72 V it exceeds 75 mV (75.7 mV at
-  3.75 V, 77.0 mV at 3.80 V, 79.6 mV at 3.90 V, 87.6 mV at 4.20 V), so the
-  3.75 V OLED-BST-2 threshold, the 3.80 V and ≥ 3.90 V rows of
-  [§6.3](#63-power-limiter) and the 3.91 V B-variant threshold can engage
-  0.7–4.9 mV below their true value ([§18](#18-open-items-and-to-verify-list)
-  item 12).
+  likewise uses VSYS_est = 0.979 × idle reading. A threshold T therefore
+  engages at a reading of T / 0.979, and the true value is still at least T
+  while the worst over-read at T stays within 2.1 % of the reading. The
+  over-read is a gain error that grows with VSYS (aged unit at −10/60 °C,
+  calibrated with the board under 5 mA): 67.9 mV at 3.21 V (2.07 % of the
+  reading, the largest fraction), 71.4 mV at 3.465 V, 72.4 mV at 3.54 V,
+  73.3 mV at 3.60 V, 74.7 mV at 3.70 V, 75.7 mV at 3.75 V, 77.0 mV at
+  3.80 V, 79.6 mV at 3.90 V, 79.9 mV at 3.91 V and 87.6 mV at 4.20 V. At
+  every threshold the worst VBAT_est stays below the true value, over
+  11 264 corner values each (fresh unit at −10/15/25/35/60 °C, aged unit at
+  −10/25/60 °C, both calibration references; hardware/sim, VSENSE-1,
+  VSENSE-4, `test_read_margin_covers_over_read_with_fw_rule`):
+
+  | Threshold T (V, VBAT_est or VSYS_est) | 3.21 | 3.465 | 3.48 | 3.53 | 3.54 | 3.60 | 3.65 | 3.70 | 3.75 | 3.80 | 3.90 | 3.91 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | Reading T / 0.979 (V) | 3.2789 | 3.5393 | 3.5546 | 3.6057 | 3.6159 | 3.6772 | 3.7283 | 3.7794 | 3.8304 | 3.8815 | 3.9837 | 3.9939 |
+  | Margin left (mV, true − worst VBAT_est) | +0.97 | +2.87 | +2.98 | +3.35 | +3.43 | +3.87 | +4.24 | +4.62 | +4.68 | +4.43 | +3.94 | +3.89 |
+
+  The thresholds are NEW-1 (3.21), SHIP (3.465), the PI-2 rows (3.48–3.90,
+  with the NF-1 on-USB row at 3.48 and the derating edges 3.53 / 3.60 /
+  3.65), MD-2 (VSYS_est 3.54), OLED-BST-2 (3.75) and PI-3 (3.91). Firmware
+  computes VBAT_est and compares it with T; the reading row is for bench
+  checks. R1' replaces the flat VBAT_est = reading − 75 mV, which covered
+  the over-read only up to a true 3.72 V (closed,
+  [§18](#18-open-items-and-to-verify-list) item 12).
 * **On battery:** VSYS ≈ VBAT − I × 55 mΩ (BATFET). **On USB**, SYS is
   regulated at 4.4 V (SYS_REG 0x20, [§13.1](#131-register-init-table)), so
   VBAT cannot be measured; use BQ25180 CHG_STAT instead. The BQ25180 has no
@@ -2712,9 +2748,9 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   | SoC (%) | 100 | 90 | 80 | 70 | 60 | 50 | 40 | 30 | 20 | 10 | 5 | 0 |
 
   The battery % shown to the user is rescaled so that 0 % is the SHIP point
-  below (a reading of 3.54 V).
+  below (a reading of 3.5393 V).
 
-**Low-battery policy** (VBAT_est, i.e. the rested reading less 75 mV, with
+**Low-battery policy** (VBAT_est, i.e. 0.979 × the rested reading, with
 50 mV of hysteresis upward):
 
 | VBAT_est | Action |
@@ -2722,9 +2758,9 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
 | ≥ 3.75 V | Normal |
 | < 3.75 V | OLED C7 ≤ 08h and ≤ 30 % white area ([§7.4](#74-burn-in-mitigation-and-power-caps); hardware/sim, OLED-BST-2) |
 | < 3.60 V | Warning icon; LED cap 100 mA; TMAG DEEP-LOWBAT interval in SLEEP; DFU swap refused unless on USB |
-| VSYS_est < 3.54 V (an idle reading below 3.615 V) | Only park moves ([§5.8](#58-limits); hardware/sim, MD-2) |
+| VSYS_est < 3.54 V (an idle reading below 3.6159 V) | Only park moves ([§5.8](#58-limits); hardware/sim, MD-2) |
 | < 3.53 V | LEDs off except the red cue ([§6.3](#63-power-limiter)); quiet sounds |
-| < 3.465 V (a reading below 3.54 V) | After 3 readings 10 s apart, SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)). An aged unit read at −10 or 60 °C can be 72.4 mV high here, so a 3.54 V reading still means a true VBAT of at least 3.4676 V, 7.6 mV above VBATPOR max, and every unit wakes from a button press right after a low-battery ship; the former 3.53 V reading left 3.4577 V at that corner (hardware/sim, VSENSE-1, VSENSE-4). Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". A nominal unit ships at a rested 3.54 V, 90 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs about 2 % of capacity (estimate from the OCV table above). |
+| < 3.465 V (a reading below 3.5393 V) | After 3 readings 10 s apart, SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)). R1' alone puts the true VBAT at 3.465 V or more, 5 mV above VBATPOR max; an aged unit read at −10 or 60 °C can be 72.4 mV high here, so a 3.5393 V reading still means a true VBAT of at least 3.4669 V, 6.9 mV above VBATPOR max, and every unit wakes from a button press right after a low-battery ship; the former 3.53 V reading left 3.4577 V at that corner (hardware/sim, VSENSE-1, VSENSE-4). Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". A nominal unit (no reading error) ships at a rested 3.539 V, 89 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs about 2 % of capacity (estimate from the OCV table above). |
 | POF event (VDD < 2.9 V) | Immediately: LEDs off, OLED off (OLED_VCC_EN low; hardware/sim, PI-4), motor brake then sleep, abort flash writes. If it persists for 100 ms, enter SHIP. **Blanking:** firmware ignores POFWARN for 10 ms after it raises OLED_VCC_EN or LED_PWR_EN. Those enables can dip +3V3 to 2.87–3.02 V (2.867 V: dead battery on USB at the 80 mA ILIM minimum with the charging cue; 2.93–3.02 V: the NEW-1 supplement branch at a 3.21 V cell), below the POF threshold's 3.045 V upper bound (2.9 V + 5 %) for up to 5.8 ms, though above VBOR and the W25Q128's 2.7 V minimum; without the blanking the handler would shed the OLED or the cue it has just enabled. 10 ms leaves 4.2 ms over the worst crossing, and +3V3 is back at 3.30 V by then (3.15 V, still above the 3.045 V bound, in the floor case that enables the OLED during a move, which NEW-2 forbids) (hardware/sim, NEW-1 and floor guards in `test_load_switches.py`). A POFWARN inside the window does not count toward the VLED fault latch of [§15](#15-fault-handling) either; a brown-out reset or BAT_OCP_FAULT still does. |
 | VBAT < 3.0 V | BQ25180 BUVLO disconnects the battery in hardware |
 
@@ -2864,10 +2900,12 @@ is the corrected one.
    battery-only reading in this power-up), and the LEDs show the charging
    cue instead (hardware/sim, NEW-1, OLED-V1;
    [§7.2](#72-init-sequence-and-power-sequencing)). If the pack is absent,
-   below BUVLO or in precharge, the no-supplement profile of §6.3 applies
-   (total ≤ 70 mA; hardware/sim, PI-4). Firmware cannot see an absent pack
-   directly: with no pack, BAT holds only its capacitor near VBATREG, so
-   CHG_STAT may read done rather than precharge. The pack therefore counts
+   or STAT1 BUVLO_STAT = 1, the no-supplement profile of §6.3 applies
+   (total ≤ 70 mA; hardware/sim, PI-4). BUVLO_STAT is also the precharge
+   test: CHG_STAT reports precharge as CC (01), and with VLOWV = BUVLO =
+   3.0 V BUVLO_STAT stays 1 until the cell has left precharge. Firmware
+   cannot see an absent pack directly: with no pack, BAT holds only its
+   capacitor near VBATREG, so CHG_STAT may read done rather than CC. The pack therefore counts
    as absent ("cannot supplement") until a battery-only reading in this
    power-up has given a VBAT_est
    ([§12.4](#124-battery-measurement-and-low-battery-policy)).
@@ -2962,7 +3000,7 @@ clears the latch and the SENSE line.
 | Loss of lock | Tracker supervision | Coast, re-acquire from atan2; mark position relative | None | E_ENC_LOCK |
 | TMAG stuck in standby after W&S (0.45 mA) | 50 ms software watchdog after wake; 4 h periodic re-arm | Re-arm | None | E_ENC_ARM |
 | Magnet missing or reversed | Calibration self-test | Report pocket index; calibration rejected | "Magnet k fault" (factory) | E_MAG_k |
-| Homing failure | Any failed homing phase ([§5.4](#54-homing-with-the-drv5032)): no HOME release within the back-off limit; no released → asserted edge within 375 + 40 approach steps; or HOME not asserted after the final stall at the park stop | 3 retries at 313 PPS, then FAULT, driver asleep | "Detent fault"; mode fixed | E_DET_HOME |
+| Homing failure | Any failed homing phase ([§5.4](#54-homing-with-the-drv5032)): no HOME release within the back-off limit; no released → asserted edge within 500 + 40 approach steps; or HOME not asserted after the final stall at the park stop | 3 retries at 313 PPS, then FAULT, driver asleep | "Detent fault"; mode fixed | E_DET_HOME |
 | Lost steps | Primary: HOME not asserted after the re-reference stall that ends every move to FREE. Secondary: a HOME edge seen outside its direction- and speed-dependent window ([§5.4](#54-homing-with-the-drv5032) rule 2) | Primary: full homing. Secondary: re-reference at the next move to FREE; re-home at rest if the error is above 40 steps or repeats | None | E_DET_STEPS |
 | Move timeout | Per-move watchdog | Stop, sleep driver, FAULT after 2 | "Detent fault" | E_DET_TMO |
 | Actuator move at low battery | VSYS check | Refuse; park only | "Battery low" | W_DET_LOWBAT |
@@ -3037,7 +3075,7 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 | 16 | Magnet track | Spin by hand or with a jig motor at about 3 rev/s | 24 electrical cycles/rev; per-pole amplitude within ±15 %; Bt/Bz amplitude 8–25 mT; no reversed pole |
 | 17 | Encoder calibration | Run [§4.6](#46-calibration) (a)–(e) | Ellipse residual < 2 %; post-LUT error < 0.2° mech |
 | 18 | W&S wake | Arm 10 ms, rotate slowly; measure armed current with the PPK2 | Wake within 5° mech; W&S 10 ms ≤ 25 µA (TMAG share) |
-| 19 | Actuator | Home from the click end and from the park stop; learn the HOME edges (5 sweeps each way at 80 PPS, [§5.4](#54-homing-with-the-drv5032)); go to click (x = 0) and read HOME; pluck test f_n → T1; sweep 3 strength points; 20 CLICK ↔ FREE cycles | Both homings complete; HOME asserted after every park stall; **HOME released at x = 0** (else reject or apply the §18 item 2 hardware fix); s_ast,L in 180–240 and s_rel,L in 190–260 steps with a spread ≤ 10; T1(full click) within 13–20 mN·m; no E_DET_STEPS over 20 cycles |
+| 19 | Actuator | Home from the click end and from the park stop; learn the HOME edges (5 sweeps each way at 80 PPS, [§5.4](#54-homing-with-the-drv5032)); go to click (x = 0) and read HOME; pluck test f_n → T1; sweep 3 strength points; 20 CLICK ↔ FREE cycles | Both homings complete; HOME asserted after every park stall; **HOME released at x = 0** (else reject or apply the §18 item 2 hardware fix); s_ast,L in 243–317 and s_rel,L in 263–343 steps with a spread ≤ 10; T1(full click) within 13–20 mN·m; no E_DET_STEPS over 20 cycles |
 | 20 | Free-spin quality | 50 spin-downs from about 5 rev/s in FREE; histogram of rest angles; spin-down time from 10 rev/s | No preferred rest angle (χ² test over 24 bins). Spin-down from 10 rev/s, median of 10 runs: **≥ 45 s (target ≥ 60 s)**, the verified mechanical acceptance of architecture.md R3 and bringup.md B-13. Record the value and seed the FREE predictor prior with it. SPEC's 2.5–3 N preload is predicted to give only 20–50 s ([§4.7](#47-motion-events-velocity-and-spin-down-prediction)), so a failure here is a mechanical finding (preload, architecture.md D3), not a firmware or test-limit error. |
 | 21 | BLE RF and NFC | RSSI at 1 m with nRF Connect; radio test / DTM carrier and TX power; RX sensitivity with the OLED animating vs off. NFC: a phone reads the test NDEF record through the top cover ([§9.7](#97-nfc-tag-emulation)) | RSSI ≥ −65 dBm at 1 m (TVP target); ≤ 3 dB difference animating vs off; tag read reliably (record the range; retune C16/C17 if it is short, TVP) |
 | 22 | Sleep current | PPK2 on BAT at room temperature: SLEEP, DESK_IDLE (no host), SHIP | SLEEP ≤ 60 µA, and investigate anything above 45 µA (typical 38 µA at 25 °C; the OLED line alone is 17.6 µA typical and up to about 46 µA at datasheet maxima, [§7.2](#72-init-sequence-and-power-sequencing)). DESK_IDLE (no host, app advertising off): record; expect about 55 µA (the 62 µA budget minus the connection's 7 µA), investigate above 65 µA. SHIP ≤ 8 µA including PCM (board ≤ 4.5 µA) |
@@ -3194,9 +3232,11 @@ here, marked, so the history is traceable.
      bleed, as on the `sensors` sheet ([§8.1](#81-piezo); hardware/sim, PB-1).
 10. **Actuator thrust (still open; architecture.md risk R4).** The verified
     worst-case load of 0.8–1.15 N exceeds the 8 mm VSM08102's thrust at any
-    battery VSYS (0.93 N best case). Select the 10 mm motor (≥ 1.2 N) or cut
-    the preloads to ≤ 0.5 N (hardware/sim, MD-4). Firmware cannot close the
-    gap: the 313 PPS homing retries, the VSYS_est 3.54 V move threshold and the
+    battery VSYS (0.93 N best case). Cut the preloads to ≤ 0.5 N, or fall
+    back to the N20 or a Ø6 planetary gearmotor with a lead screw; the 10 mm
+    sibling's Ø10 can does not fit the 10.1 mm bowl (mechanical.md §7;
+    hardware/sim, MD-4). Firmware cannot close the gap: the 313 PPS homing
+    retries, the VSYS_est 3.54 V move threshold and the
     temperature-compensated duty ([§5.3](#53-stepping-profile)) only keep the
     rated current.
 11. **SPICE expected failures that depend on this document.** The suite keeps
@@ -3205,25 +3245,28 @@ here, marked, so the history is traceable.
     VSENSE-1 to VSENSE-5, OLED-V2, OLED-BST-2, charger_ts-1/-v1, LED-DATA-V1,
     errata 219), and next to each one a guard that runs the rule as written
     here and passes; docs/simulation.md lists them under "Remaining strict
-    xfails". One rule is still short there: item 12. The §1.3 GPIO-table drift
-    (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
+    xfails". No rule is short there any more: item 12 is closed. The §1.3
+    GPIO-table drift (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
     revision, and `test_gpio_sleep_states_from_firmware_doc` passes against
     it (hardware/sim/results/report.md).
-12. **VBAT reading margin above 3.72 V (still open; hardware/sim, VSENSE-1/4).**
-    The fixed 75 mV VREAD_MARGIN of [§12.4](#124-battery-measurement-and-low-battery-policy)
-    covers the worst calibrated over-read only up to a true 3.72 V, because
-    the over-read grows with VSYS (about 2.1 % of the reading at the aged
-    −10/60 °C corner). At the 3.75 V OLED-BST-2 threshold and the 3.80 V and
-    3.90 V rows of [§6.3](#63-power-limiter), VBAT_est can exceed the true
-    VBAT by 0.7 / 2.0 / 4.6 mV; the suite keeps these three as strict xfails
-    (`test_read_margin_covers_over_read_with_fw_rule`). The 3.91 V B-variant
-    threshold was sized for a true VBAT of at least VBAT_est + 3 mV; with the
-    over-read of about 80 mV there it can engage at a true 3.905 V, which
-    leaves about 3 mV of VLED margin instead of 10 mV (interpolated from the
-    PI-3 guard). Options: a margin of about 2.12 % of the threshold (68 mV at
-    3.21 V, 82.7 mV at 3.90 V, 89 mV at 4.20 V), or 75 mV up to 3.72 V, 80 mV
-    up to 3.90 V and 88 mV up to 4.20 V; the 3.91 V threshold then needs a
-    re-check.
+12. **VBAT reading margin above 3.72 V (closed; hardware/sim, VSENSE-1/4).**
+    The flat 75 mV VREAD_MARGIN covered the worst calibrated over-read only up
+    to a true 3.72 V, because the over-read is a gain error that grows with
+    VSYS. [§12.4](#124-battery-measurement-and-low-battery-policy) now uses
+    rule R1', VBAT_est = 0.979 × calibrated reading, which covers a 2.1 %
+    over-read (the worst simulated is 2.07 % of the reading, at 3.21 V). The
+    three strict xfails of `test_read_margin_covers_over_read_with_fw_rule`
+    now pass and are retired: at 3.75 / 3.80 / 3.90 V the worst VBAT_est was
+    0.66 / 1.99 / 4.63 mV above the true value and is now 4.68 / 4.43 /
+    3.94 mV below it. Every threshold keeps its VBAT_est value; only the
+    reading equivalents changed (the table in §12.4). One residual stays
+    open: at the 3.91 V B-variant threshold ([§6.3](#63-power-limiter)) the
+    R1' bound (true VBAT ≥ 3.910 V) leaves +7.9 mV of VLED margin in the
+    300 mA bursts, above the 3.3 V limit but short of the 10 mV the
+    threshold was sized for (+10.8 mV at the former true 3.913 V; about
+    +11.7 mV with the simulated worst over-read). VBAT_est 3.92 V would keep
+    +17.9 mV at the bound itself (hardware/sim, PI-3); this revision keeps
+    3.91 V.
 
 **To verify on prototype or against documentation**
 

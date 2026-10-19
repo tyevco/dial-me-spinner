@@ -1,40 +1,40 @@
 ** Drc report for dial-me-spinner-main.kicad_pcb **
-** Created on 2026-10-19T12:53:10+0000 **
+** Created on 2026-10-19T15:10:42+0000 **
 ** Report includes: Errors, Warnings, Exclusions **
 
-** Found 26 DRC violations **
-[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.1275 mm)
+** Found 25 DRC violations **
+[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.1276 mm)
     Rule: board setup constraints edge; error
     @(100.0000 mm, 100.0000 mm): Circle on Edge.Cuts
-    @(101.8262 mm, 102.1587 mm): Via [/Sensors & sounder/BZ_P] on F.Cu - B.Cu
-[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.2577 mm)
+    @(101.8260 mm, 102.1590 mm): Via [/Sensors & sounder/BZ_P] on F.Cu - B.Cu
+[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.2578 mm)
     Rule: board setup constraints edge; error
     @(100.0000 mm, 100.0000 mm): Circle on Edge.Cuts
-    @(105.0291 mm, 98.9558 mm): Track [/Sensors & sounder/BZ_P] on B.Cu, length 4.5296 mm
-[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.2675 mm)
+    @(105.0290 mm, 98.9558 mm): Track [/Sensors & sounder/BZ_P] on B.Cu, length 4.5299 mm
+[copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.2676 mm)
     Rule: board setup constraints edge; error
     @(100.0000 mm, 100.0000 mm): Circle on Edge.Cuts
-    @(101.8262 mm, 102.1587 mm): Track [/Sensors & sounder/BZ_P] on In2.Cu, length 8.5271 mm
+    @(101.8260 mm, 102.1590 mm): Track [/Sensors & sounder/BZ_P] on In2.Cu, length 8.5270 mm
 [copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.1249 mm)
     Rule: board setup constraints edge; error
     @(100.0000 mm, 100.0000 mm): Circle on Edge.Cuts
-    @(97.2751 mm, 90.7110 mm): Track [+3V3] on F.Cu, length 14.2339 mm
+    @(97.2751 mm, 90.7110 mm): Track [+3V3] on F.Cu, length 14.2340 mm
 [copper_edge_clearance]: Board edge clearance violation (board setup constraints edge clearance 0.3000 mm; actual 0.1238 mm)
     Rule: board setup constraints edge; error
     @(100.0000 mm, 100.0000 mm): Circle on Edge.Cuts
-    @(97.3162 mm, 105.3566 mm): Track [CHG_INT_N] on In2.Cu, length 8.4519 mm
+    @(97.3162 mm, 105.3570 mm): Track [CHG_INT_N] on In2.Cu, length 8.4523 mm
 [silk_over_copper]: Silkscreen clipped by solder mask
     Local override; warning
     @(100.0000 mm, 123.0000 mm): PCB text 'dial-me-spinner main rA' on F.Silkscreen
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(85.1926 mm, 117.0378 mm): Track [/MCU, flash & debug/NFC2] on F.Cu, length 0.2773 mm
+    @(85.1926 mm, 117.0380 mm): Track [/MCU, flash & debug/NFC2] on F.Cu, length 0.2780 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(85.1926 mm, 117.0378 mm): Track [/MCU, flash & debug/NFC2] on B.Cu, length 0.2773 mm
+    @(85.1926 mm, 117.0380 mm): Track [/MCU, flash & debug/NFC2] on B.Cu, length 0.2780 mm
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(86.3838 mm, 117.1681 mm): Via [VSYS_SENSE] on F.Cu - B.Cu
+    @(86.3838 mm, 117.1680 mm): Via [VSYS_SENSE] on F.Cu - B.Cu
 [track_dangling]: Track has unconnected end
     Local override; warning
     @(97.9640 mm, 128.5310 mm): Track [/LED ring/LED_D36] on F.Cu, length 0.3780 mm
@@ -43,40 +43,37 @@
     @(97.9640 mm, 128.5310 mm): Track [/LED ring/LED_D36] on B.Cu, length 0.3780 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(85.8299 mm, 109.9802 mm): Track [CHG_INT_N] on B.Cu, length 0.5380 mm
+    @(85.8299 mm, 109.9800 mm): Track [CHG_INT_N] on B.Cu, length 0.5380 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(85.8299 mm, 109.9802 mm): Track [CHG_INT_N] on In2.Cu, length 0.5380 mm
+    @(85.8299 mm, 109.9800 mm): Track [CHG_INT_N] on In2.Cu, length 0.5380 mm
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(85.4401 mm, 97.4058 mm): Via [/Detent actuator & home sensor/MOT_A_OUT1] on F.Cu - B.Cu
-[via_dangling]: Via is not connected or connected on only one layer
-    Local override; warning
-    @(87.0894 mm, 90.7813 mm): Via [/Detent actuator & home sensor/MOT_A_OUT2] on F.Cu - B.Cu
+    @(117.4182 mm, 106.2210 mm): Via [BTN_N] on F.Cu - B.Cu
 [track_dangling]: Track has unconnected end
     Local override; warning
     @(84.6260 mm, 84.4967 mm): Track [/Detent actuator & home sensor/MOT_A_OUT2] on In2.Cu, length 0.7910 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(82.9308 mm, 103.7076 mm): Track [/MCU, flash & debug/QSPI_CS] on B.Cu, length 0.3873 mm
+    @(82.9308 mm, 103.7080 mm): Track [/MCU, flash & debug/QSPI_CS] on B.Cu, length 0.3873 mm
 [track_dangling]: Track has unconnected end
     Local override; warning
-    @(82.9308 mm, 103.7076 mm): Track [/MCU, flash & debug/QSPI_CS] on In2.Cu, length 0.3873 mm
+    @(82.9308 mm, 103.7080 mm): Track [/MCU, flash & debug/QSPI_CS] on In2.Cu, length 0.3873 mm
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(98.0191 mm, 97.6979 mm): Via [LED_PWR_EN] on F.Cu - B.Cu
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(85.2560 mm, 88.0912 mm): Via [MOT_NSLEEP] on F.Cu - B.Cu
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(74.5065 mm, 108.2185 mm): Track [/MCU, flash & debug/TP_SPARE1] on B.Cu, length 0.7328 mm
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(89.6639 mm, 97.4815 mm): Via [MOT_A_IN2] on F.Cu - B.Cu
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
     @(90.0366 mm, 86.6798 mm): Via [MOT_B_IN2] on F.Cu - B.Cu
-[via_dangling]: Via is not connected or connected on only one layer
-    Local override; warning
-    @(72.9651 mm, 87.3795 mm): Via [MOT_B_IN2] on F.Cu - B.Cu
 [track_dangling]: Track has unconnected end
     Local override; warning
     @(80.2567 mm, 99.3273 mm): Track [/MCU, flash & debug/QSPI_IO3] on In2.Cu, length 0.6121 mm
@@ -85,9 +82,9 @@
     @(78.6723 mm, 97.8704 mm): Via [/MCU, flash & debug/QSPI_IO2] on F.Cu - B.Cu
 [via_dangling]: Via is not connected or connected on only one layer
     Local override; warning
-    @(89.5759 mm, 113.7559 mm): Via [/MCU, flash & debug/QSPI_IO2] on F.Cu - B.Cu
+    @(89.5759 mm, 113.7560 mm): Via [/MCU, flash & debug/QSPI_IO2] on F.Cu - B.Cu
 
-** Found 20 unconnected pads **
+** Found 17 unconnected pads **
 [unconnected_items]: Missing connection between items
     Local override; error
     @(84.4655 mm, 91.8885 mm): Track [VSYS] on B.Cu, length 0.9547 mm
@@ -98,12 +95,12 @@
     @(85.7666 mm, 105.3885 mm): Pad 11 [VSYS_SENSE] of U10 on B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
+    @(113.3950 mm, 117.1680 mm): Track [VSYS_SENSE] on B.Cu, length 27.0112 mm
     @(85.7666 mm, 105.3885 mm): Pad 11 [VSYS_SENSE] of U10 on B.Cu
-    @(113.3951 mm, 117.1681 mm): Track [VSYS_SENSE] on B.Cu, length 27.0113 mm
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(121.3696 mm, 105.9869 mm): Pad 12 [BTN_N] of J1 on B.Cu
-    @(95.9011 mm, 105.8150 mm): Track [BTN_N] on In2.Cu, length 0.0110 mm
+    @(95.9011 mm, 105.8150 mm): Track [BTN_N] on B.Cu, length 0.0110 mm
+    @(117.4182 mm, 106.2210 mm): Via [BTN_N] on F.Cu - B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
     @(86.9804 mm, 114.7931 mm): Pad 51 [/MCU, flash & debug/SWDIO] of U10 on B.Cu
@@ -118,31 +115,23 @@
     @(102.2500 mm, 109.5000 mm): Pad 20 [OLED_DC] of J20 on F.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(83.1607 mm, 83.5398 mm): Pad 1 [/Detent actuator & home sensor/MOT_A_OUT1] of J40 on B.Cu
-    @(85.4401 mm, 97.4058 mm): Via [/Detent actuator & home sensor/MOT_A_OUT1] on F.Cu - B.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(73.9402 mm, 90.7613 mm): Pad 3 [/Detent actuator & home sensor/MOT_B_OUT2] of U41 on B.Cu
-    @(84.6260 mm, 88.3179 mm): Track [/Detent actuator & home sensor/MOT_A_OUT2] on In2.Cu, length 3.4838 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(98.8423 mm, 96.8747 mm): Track [LED_PWR_EN] on B.Cu, length 1.1642 mm
     @(85.1321 mm, 107.9691 mm): Pad 56 [LED_PWR_EN] of U10 on B.Cu
+    @(98.8423 mm, 96.8747 mm): Track [LED_PWR_EN] on B.Cu, length 1.1642 mm
 [unconnected_items]: Missing connection between items
     Local override; error
     @(89.3913 mm, 102.5452 mm): Pad 16 [TMAG_INT_N] of U10 on B.Cu
     @(88.0214 mm, 91.8816 mm): Pad 2 [GND] of R70 on B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
+    @(101.2575 mm, 129.4000 mm): Pad 5 [TMAG_INT_N] of U30 on B.Cu
     @(89.3913 mm, 102.5452 mm): Pad 16 [TMAG_INT_N] of U10 on B.Cu
-    @(102.4386 mm, 129.4000 mm): Track [TMAG_INT_N] on B.Cu, length 1.1811 mm
 [unconnected_items]: Missing connection between items
     Local override; error
     @(86.3106 mm, 89.1458 mm): Track [MOT_NSLEEP] on F.Cu, length 1.4914 mm
     @(74.4402 mm, 88.8613 mm): Pad 7 [MOT_NSLEEP] of U41 on B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(72.8441 mm, 101.7609 mm): Pad 1 [/MCU, flash & debug/TP_SPARE4] of TP13 on B.Cu
+    @(74.5065 mm, 108.2185 mm): Track [/MCU, flash & debug/TP_SPARE1] on B.Cu, length 0.7328 mm
     @(85.1113 mm, 105.8473 mm): Pad 9 [/MCU, flash & debug/TP_SPARE1] of U10 on B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
@@ -154,20 +143,16 @@
     @(89.6639 mm, 97.4815 mm): Via [MOT_A_IN2] on F.Cu - B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
-    @(90.0366 mm, 86.6798 mm): Via [MOT_B_IN2] on F.Cu - B.Cu
-    @(73.4402 mm, 88.8613 mm): Track [MOT_B_IN2] on B.Cu, length 0.7376 mm
-[unconnected_items]: Missing connection between items
-    Local override; error
     @(91.6367 mm, 107.3210 mm): Pad 27 [MOT_B_IN2] of U10 on B.Cu
-    @(90.0366 mm, 86.6798 mm): Via [MOT_B_IN2] on F.Cu - B.Cu
+    @(90.0366 mm, 86.6798 mm): Track [MOT_B_IN2] on In2.Cu, length 4.5737 mm
 [unconnected_items]: Missing connection between items
     Local override; error
     @(81.4769 mm, 96.3479 mm): Pad 6 [/MCU, flash & debug/QSPI_SCK] of U11 on B.Cu
     @(90.0685 mm, 111.5321 mm): Pad 42 [/MCU, flash & debug/QSPI_SCK] of U10 on B.Cu
 [unconnected_items]: Missing connection between items
     Local override; error
+    @(89.2545 mm, 113.8570 mm): Track [/MCU, flash & debug/QSPI_IO2] on B.Cu, length 0.5380 mm
     @(78.6723 mm, 97.8704 mm): Via [/MCU, flash & debug/QSPI_IO2] on F.Cu - B.Cu
-    @(88.9464 mm, 113.4165 mm): Pad 46 [/MCU, flash & debug/QSPI_IO2] of U10 on B.Cu
 
 ** Found 0 Footprint errors **
 

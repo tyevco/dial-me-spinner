@@ -146,13 +146,14 @@ other documents cite as "(hardware/sim, *id*)".
 | LDO-3 | A fast VSYS collapse (shorted LED behind U2, BATOCP trip) reverse-biases the RT9080 past its 0.3 V VOUT − VIN abs max through the body diode | Architecture risk R38. Strict xfail ×2: VOUT − VIN reaches 0.885 V at a BATOCP trip and 1.723 V with a shorted LED |
 | USB-1 note | R12 sits in the source resistance the nRF52840 PS limits to RSOURCE,VBUS ≤ 2 Ω, although PS §7.3 recommends this 4R7 | DC check at VBUS 4.5 V / 1.1 A charger load: 4.378 V vs the 4.35 V minimum (28 mV, resting on the typical 2.4 mA IUSB). Bring-up confirms enumeration at a 4.5 V supply through a 1 m cable |
 | USB-4 | Protector stand-offs (USBLC6 5.25 V, SMF5.0A 5.0 V) are below vSafe5V max 5.5 V | Leakage only, no damage. Supported VBUS 4.5–5.25 V; at ~5.5 V the BQ25180 VIN_OVP may stop charging (it runs from the battery) |
-| MD-4 | The verified worst-case actuator load 0.8–1.15 N exceeds what the VSM08102 delivers at any battery VSYS (0.93 N best case) | Architecture risk R4, still open (cut preloads to ≤ 0.5 N or a stronger actuator; see mechanical.md §7). Strict xfail |
+| MD-4 | The verified worst-case actuator load 0.8–1.15 N exceeds what the VSM08102 delivers at any battery VSYS (0.93 N best case) | Architecture risk R4, still open (cut preloads to ≤ 0.5 N, or the N20 / Ø6 planetary gearmotor fallbacks; the 10 mm sibling does not fit the bowl, mechanical.md §7). Strict xfail |
 
 ### Remaining strict xfails
 
-47 tests stay `xfail(strict=True)` (count from the collected marks on 2026-10-19; none of them is in the slow
-set): 6 accepted risks, 34 old-rule evidence xfails for firmware rules, 4 cases the firmware rule does not allow,
-and 3 where the firmware rule is still insufficient. The sleep-budget xfails are gone and the firmware.md §1.3
+44 tests stay `xfail(strict=True)` (count from the collected marks on 2026-10-19; none of them is in the slow
+set): 6 accepted risks, 34 old-rule evidence xfails for firmware rules and 4 cases the firmware rule does not
+allow. The 3 "firmware rule still insufficient" xfails of the flat 75 mV reading margin pass under rule R1' and are
+retired (below), so no firmware rule is short any more. The sleep-budget xfails are gone and the firmware.md §1.3
 pin-table check passes: `test_sleep_current.py` now checks against the architecture §8.2 lines (38 µA total) and
 the current pin table (its non-strict `pytest.xfail` fires again only if that table drifts from nets.py).
 
@@ -164,17 +165,18 @@ now passes against the SPEC §3 maximum.
 **Firmware-dependent** (34 old-rule evidence xfails): the hardware alone breaks a datasheet limit in these cases,
 and only a firmware rule prevents it. The xfails keep the old firmware values on purpose, as the evidence for the
 rule. Each rule has a guard, most named `*_with_fw_rule`, that runs the same deck, corners and datasheet limits
-with the rule as firmware.md states it, and passes. The rules belong in [firmware.md](firmware.md); VBAT_est is the
-calibrated rested reading less 75 mV (firmware.md §12.4):
+with the rule as firmware.md states it, and passes. The rules belong in [firmware.md](firmware.md); VBAT_est is
+0.979 × the calibrated rested reading (rule R1', firmware.md §12.4), so a threshold T on VBAT_est is a reading of
+T / 0.979 and stands for a true value of at least T:
 
 | Strict xfail (old rule) | Without the rule | Firmware rule | Guard (passes) |
 |---|---|---|---|
 | `test_hw_worst_case_uncapped_dc` ×3 | uncapped LEDs + OLED + both coils (~1.33 A) pull VLED to ~3.05 V at VBAT 3.7 V and +3V3 to 2.41–2.68 V at 3.0 V | The LED/OLED/motor limiter is a hardware-protection function: it MUST be active from the first frame after reset, in MCUboot and the USB-recovery image too, and those images MUST keep LED_PWR_EN, OLED_VCC_EN and MOT_NSLEEP low (hardware/sim, PI-1) | `test_hw_worst_case_uncapped_dc_with_fw_rule` ×8 |
-| `test_firmware_capped_sync_pwm_transient` ×5 | aligned 2 kHz PWM draws 0.72 A for 70–210 µs per period; VLED 3.08–3.25 V < 3.3 V at VBAT ≤ 3.70 V | Firmware MUST add an instantaneous lit-channel budget (lit channels × 5 mA) on top of the average cap: 0.19 / 0.26 / 0.33 / 0.42 / 0.51 / 0.69 A at VBAT_est 3.48 / 3.53 / 3.60 / 3.65 / 3.70 / 3.80 V, full ring (0.72 A) from 3.90 V, ~0.23 A less while the actuator moves; rows looked up with VBAT_est, assuming the OLED-BST-2 dimming (hardware/sim, PI-2) | `test_firmware_capped_sync_pwm_transient_with_fw_rule` ×7, `test_led_peak_budget_table_with_fw_rule` ×20 (pack at the row) and `test_led_peak_budget_table_reading_high_with_fw_rule` ×20 (row from a reading 72 mV high): lowest worst-corner margin +13.4 mV. The full@3.65 / full@3.70 points keep only +0.4 / +1.8 mV because they run the OLED at 100 %, which OLED-BST-2 forbids there (+41 / +42 mV with the dimming). Under the earlier wording (row from the reading itself, 0.28 A at 3.53 V) six reading-high cases failed, the worst 3.53-sustained at 3.2561 V; it is now 3.3165 V |
+| `test_firmware_capped_sync_pwm_transient` ×5 | aligned 2 kHz PWM draws 0.72 A for 70–210 µs per period; VLED 3.08–3.25 V < 3.3 V at VBAT ≤ 3.70 V | Firmware MUST add an instantaneous lit-channel budget (lit channels × 5 mA) on top of the average cap: 0.19 / 0.26 / 0.33 / 0.42 / 0.51 / 0.69 A at VBAT_est 3.48 / 3.53 / 3.60 / 3.65 / 3.70 / 3.80 V, full ring (0.72 A) from 3.90 V, ~0.23 A less while the actuator moves; rows looked up with VBAT_est, assuming the OLED-BST-2 dimming (hardware/sim, PI-2) | `test_firmware_capped_sync_pwm_transient_with_fw_rule` ×7, `test_led_peak_budget_table_with_fw_rule` ×20 (pack at the row) and `test_led_peak_budget_table_reading_high_with_fw_rule` ×20 (row picked from a reading 2.1 % high, the most R1' tolerates, so the true VBAT equals VBAT_est: the same deck and the same values as the pack-at-the-row guard, kept rather than deleted): lowest worst-corner margin +13.4 mV (3.53 V sustained, VLED 3.3134 V). The full@3.65 / full@3.70 points keep only +0.4 / +1.8 mV because they run the OLED at 100 %, which OLED-BST-2 forbids there (+41 / +42 mV with the dimming). Under the earlier wording (row from the reading itself, 0.28 A at 3.53 V) six reading-high cases failed, the worst 3.53-sustained at 3.2561 V; under the flat 75 mV margin (true VBAT_est + 3 mV) it was 3.3165 V |
 | `test_usb_low_pack` ×2 | on USB the pack supplements SYS, and VBAT cannot be measured | On USB, while VBAT_est (the last battery-only estimate) is ≥ 3.48 V, firmware MUST use the 3.48 V row until CHG_STAT reports CV/done, or keep the instantaneous on-USB sum (lit channels × I_ch + OLED boost input + actuator) ≤ 0.40 A; below 3.48 V or with VBAT_est unknown, only the charging cue (hardware/sim, NF-1) | `test_usb_low_pack_with_fw_rule` ×10 (the 3.48 V row idle and moving; the instantaneous 0.40 A with the OLED at 100 %, off, and with the actuator; both corners): lowest +47.5 mV |
-| `test_ws2812b_dropin_peak` | the WS2812B-2020-V6 (12 mA/ch) peaks at 1.73 A, I(BAT) ~1.85 A > IBAT_OCP 1.5 A | The drop-in MUST NOT be fitted without the instantaneous cap: 1.0 A only from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that; otherwise it leaves the SPEC §5.4 alternates (hardware/sim, PI-3) | `test_ws2812b_dropin_peak_with_fw_rule` ×2 (4.2 V: I(BAT) ≤ 1.226 A), `test_ws2812b_dropin_threshold_with_fw_rule` ×3 (true 3.913 V: burst VLED 3.3108 V, +10.8 mV) |
+| `test_ws2812b_dropin_peak` | the WS2812B-2020-V6 (12 mA/ch) peaks at 1.73 A, I(BAT) ~1.85 A > IBAT_OCP 1.5 A | The drop-in MUST NOT be fitted without the instantaneous cap: 1.0 A only from VBAT_est ≥ 3.91 V, the PI-2 rows in amperes below that; otherwise it leaves the SPEC §5.4 alternates (hardware/sim, PI-3) | `test_ws2812b_dropin_peak_with_fw_rule` ×2 (4.2 V: I(BAT) ≤ 1.226 A), `test_ws2812b_dropin_threshold_with_fw_rule` ×3 (true 3.910 V, the R1' bound: burst VLED 3.3079 V, +7.9 mV, above the 3.3 V limit but short of the 10 mV margin the 3.91 V threshold was sized for; sustained +53.7 mV, moving +112.2 mV; it was +10.8 mV at the former true 3.913 V, and VBAT_est 3.92 V would give +17.9 mV; firmware.md §18 item 12) |
 | `test_usb_without_battery` ×2 | with the pack absent or below BUVLO nothing supplements SYS above ILIM | A "no supplement" profile MUST apply, and a pack counts as absent until a battery-only reading in this power-up: ILIM-100 phase LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, TX 0 dBm, ≤ 70 mA; ILIM-500 phase no actuator, LEDs ≤ 100 mA peak-limited, OLED contrast C7h ≤ 08h, ≤ 400 mA; the POF handler also sheds the OLED (hardware/sim, PI-4) | `test_usb_without_battery_with_fw_rule` ×8 (also with all 48 LEDs lit and aligned) |
-| `test_u21_turn_on_dead_battery_usb_100ma`, `test_usb_100ma_dead_battery_oled_enable` | the U21 + boost start-up surge (~0.25–0.4 A for 1–2 ms) at the 100 mA input limit with a dead battery pulls VSYS to ~1.5–2.5 V (load-switch / boost model) and +3V3 below the nRF brown-out: a reboot loop | Firmware MUST never set OLED_VCC_EN while TMR_ILIM = 0xC9 (100 mA) unless the battery can supplement (no BUVLO_STAT, VBAT_est ≥ 3.21 V from a battery-only reading in this power-up); until ILIM is 500 mA show the charging cue on the LEDs (≤ 20 mA). POFWARN is ignored for 10 ms after OLED_VCC_EN or LED_PWR_EN rises (hardware/sim, NEW-1, OLED-V1) | `test_u21_turn_on_dead_battery_usb_100ma_with_fw_rule` ×2, `test_usb_100ma_dead_battery_oled_enable_with_fw_rule`, `test_u21_turn_on_usb_100ma_supplement_with_fw_rule` ×4 (3.21 V cell: BAT pin ≥ 3.040 V at −10 °C; at the earlier 3.15 V reading, a 3.104 V cell, the two −10 °C cases fell to 2.935–2.948 V for > 1.2 ms), `test_u21_turn_on_dead_battery_usb_500ma`. The first and the supplement guard also check +3V3 after the POF blanking |
+| `test_u21_turn_on_dead_battery_usb_100ma`, `test_usb_100ma_dead_battery_oled_enable` | the U21 + boost start-up surge (~0.25–0.4 A for 1–2 ms) at the 100 mA input limit with a dead battery pulls VSYS to ~1.5–2.5 V (load-switch / boost model) and +3V3 below the nRF brown-out: a reboot loop | Firmware MUST never set OLED_VCC_EN while TMR_ILIM = 0xC9 (100 mA) unless the battery can supplement (no BUVLO_STAT, VBAT_est ≥ 3.21 V from a battery-only reading in this power-up); until ILIM is 500 mA show the charging cue on the LEDs (≤ 20 mA). POFWARN is ignored for 10 ms after OLED_VCC_EN or LED_PWR_EN rises (hardware/sim, NEW-1, OLED-V1) | `test_u21_turn_on_dead_battery_usb_100ma_with_fw_rule` ×2, `test_usb_100ma_dead_battery_oled_enable_with_fw_rule`, `test_u21_turn_on_usb_100ma_supplement_with_fw_rule` ×4 (3.21 V cell, a 3.2789 V reading: BAT pin ≥ 3.039 V at −10 °C; at the earlier 3.15 V reading, a 3.104 V cell, the two −10 °C cases fell to 2.935–2.948 V for > 1.2 ms), `test_u21_turn_on_dead_battery_usb_500ma`. The first and the supplement guard also check +3V3 after the POF blanking |
 | `test_phantom_din_abs_max` ×2 | P0.06 high with VLED off puts ~5 mA into D101's DIN clamp, DIN > VLED + 0.7 V | Firmware MUST never drive P0.06 high while VLED is off: send an all-zero frame, drive P0.06 low, then LED_PWR_EN low; after LED_PWR_EN goes high, wait ≥ 10 ms with P0.06 low so VLED is ≥ 2.67 V before the first frame. Fitting the DNP U43 + C43 and removing R43 enforces it in hardware (hardware/sim, LSW-3, LED-DATA-V4) | `test_phantom_din_abs_max_with_fw_rule` ×2 (VLED at the first frame ≥ 2.972 V) |
 | `test_pulse_widths_ps_guaranteed_drive[SD]` | standard drive cannot guarantee the WS2812C T1H/T0L/T1L windows | P0.06 (I2S SDOUT) MUST use `nordic,drive-mode = NRF_DRIVE_H0H1` in the default pinctrl state (hardware/sim, LED-DATA-V1) | `test_pulse_widths_ps_guaranteed_drive[HD]` |
 | `test_twim_tlow_400k_errata219` | the TWIM at 400 kHz holds SCL low 1.25 µs < 1.3 µs tLOW at every receiver | nRF52840 errata 219: firmware MUST write TWIM0 FREQUENCY = 0x06200000 after init, MUST run TWIM1 at 250 kHz (0x04000000) or 100 kHz, and keeps S0D1 drive on the TWIM pins (hardware/sim, NF-1 I2C) | `test_twim_tlow_errata219_remedy` (TMAG5273 1.306 µs, 6 ns over the minimum; the 100 kHz fallback is not simulated) |
@@ -182,28 +184,53 @@ calibrated rested reading less 75 mV (firmware.md §12.4):
 | `test_open_ntc_keeps_ts_monitoring_enabled` | an open RT1 can disable TS monitoring instead of reading cold | Firmware MUST treat STAT0.TS_OPEN_STAT = 1 as a fault: set ICHG_CTRL.CHG_DIS = 1 and show "temperature sensor fault". It SHOULD also treat TS COLD with the nRF die above about 10 °C as that fault, since a resistive 46–90 kΩ RT1 leaves TS_OPEN_STAT at 0 (no test) (hardware/sim, charger_ts-v1) | `test_open_ntc_keeps_ts_monitoring_enabled_with_fw_rule` |
 | `test_startup_time_vs_firmware_floor` | VCC rises in up to ~6.3 ms, over the old 5 ms floor | The VCC-to-AFh wait MUST never be below 10 ms (hardware/sim, OLED-V2) | `test_startup_time_vs_firmware_floor_with_fw_rule` |
 | `test_headroom_at_firmware_full_white_threshold` | at VBAT 3.60 V a worst-case boost delivers ~41 mA < the panel's 42 mA | Firmware MUST apply the OLED contrast cap (C7h ≤ 08h, ≤ 30 % white) below VBAT_est 3.75 V and whenever the LED current exceeds the 150 mA sustained cap (hardware/sim, OLED-BST-2) | `test_headroom_at_firmware_full_white_threshold_with_fw_rule` (also with 150 mA of LED load on VSYS) |
-| `test_required_current_at_firmware_move_threshold` | at 3.40 V idle the stroke-load sag leaves the coils below the rated 165 mA | Non-park actuator moves MUST start only from VSYS_est ≥ 3.54 V, i.e. an idle reading ≥ 3.615 V (hardware/sim, MD-2) | `test_required_current_at_firmware_move_threshold_with_fw_rule` (true 3.54 V: 165.3 mA), `test_required_current_at_measured_move_threshold_with_fw_rule` ×2 (reading 24 / 73 mV high: 167.8 / 165.4 mA; the earlier 3.55 V reading, 46 mV high, gave 163.6 mA) |
-| `test_firmware_microstep_pwm[VBAT3.7-60C]` | a fixed 20.3 Ω in the duty formula under-drives the hot coil | Firmware MUST use the temperature-compensated duty d = I × (20 Ω × (1 + 0.00393 × (max(T, 25 °C) − 25 °C)) + 0.33 Ω) / VSYS (hardware/sim, MD-3) | `test_firmware_microstep_pwm_with_fw_rule` ×8, every case ≥ 0.500 N (the −10 °C case gave 0.493 N with the earlier (T − 25 °C) form, 0.586 N now) |
+| `test_required_current_at_firmware_move_threshold` | at 3.40 V idle the stroke-load sag leaves the coils below the rated 165 mA | Non-park actuator moves MUST start only from VSYS_est ≥ 3.54 V, i.e. an idle reading ≥ 3.6159 V (hardware/sim, MD-2) | `test_required_current_at_firmware_move_threshold_with_fw_rule` (true 3.54 V, the R1' bound: 165.3 mA), `test_required_current_at_measured_move_threshold_with_fw_rule` ×2 (reading 24 / 73 mV high: 167.8 / 165.5 mA; the earlier 3.55 V reading, 46 mV high, gave 163.6 mA) |
+| `test_firmware_microstep_pwm[VBAT3.7-60C]` | a fixed 20.3 Ω in the duty formula under-drives the hot coil | Firmware MUST use the temperature-compensated duty d = I × (20 Ω × (1 + 0.00393 × (max(T, 25 °C) − 25 °C)) + 0.33 Ω) / VSYS (hardware/sim, MD-3) | `test_firmware_microstep_pwm_with_fw_rule` ×8, every case ≥ 0.500 N (the −10 °C case gave 0.493 N with the earlier (T − 25 °C) form, 0.586 N now; the three cases at the MD-2 threshold, now `[VBAT3.54-{60C,25C,-10C}-reads-3.616]`, give 0.5065 / 0.5052 / 0.5717 N) |
 | `test_turnoff_kick[usb-chargedone-worst-coast]` | coasting both coils from a full-current hold on USB after charge termination lifts VSYS above the BQ25180 5.5 V abs max | Firmware MUST brake before sleep on every actuator stop path, FAULT and abort included (IN1 = IN2 = 1 for ≥ 3 ms, then IN = 00 and nSLEEP low); keep sine microstepping, never full-current full steps on USB (hardware/sim, MD-1) | `test_turnoff_kick[usb-chargedone-worst-brake-then-sleep]` |
-| `test_calibrated_accuracy_over_temperature` ×2, `test_ship_threshold_above_vbatpor` ×2, `test_calibrated_accuracy_after_aging`, `test_ship_threshold_after_aging` | the calibrated VSYS reading drifts by tens of mV over −10…60 °C and with ageing, against the old ±10 mV budget and 3.48 V SHIP threshold | Every protective threshold is a true-cell value compared against VBAT_est; SHIP below VBAT_est 3.465 V, i.e. a 3.54 V reading (was 3.48 V, then 3.53 V); documented drift about ±24 mV at 15–35 °C fresh, +48/−55 mV fresh over −10…60 °C, +30/−36 mV aged at 25 °C, +73/−79 mV aged at −10/60 °C; production calibration MUST take its reference from a DMM at TP1 or with board current < 5 mA (hardware/sim, VSENSE-1/4/5) | `test_calibrated_accuracy_fresh_15_35c_with_fw_rule` ×3, `test_calibrated_accuracy_over_temperature_with_fw_rule` ×2, `test_ship_threshold_above_vbatpor_with_fw_rule` ×2, `test_calibrated_accuracy_after_aging_with_fw_rule`, `test_ship_threshold_after_aging_with_fw_rule`, `test_calibrated_accuracy_aged_over_temperature_with_fw_rule` ×2, `test_ship_threshold_aged_over_temperature_with_fw_rule` ×2 (worst true VBAT at the SHIP reading 3.4676 V against VBATPOR max 3.46 V; 3.4577 V at the earlier 3.53 V), and 8 of the 11 `test_read_margin_covers_over_read_with_fw_rule` thresholds (below) |
+| `test_calibrated_accuracy_over_temperature` ×2, `test_ship_threshold_above_vbatpor` ×2, `test_calibrated_accuracy_after_aging`, `test_ship_threshold_after_aging` | the calibrated VSYS reading drifts by tens of mV over −10…60 °C and with ageing, against the old ±10 mV budget and 3.48 V SHIP threshold | Every protective threshold is a true-cell value compared against VBAT_est = 0.979 × reading (R1'); SHIP below VBAT_est 3.465 V, i.e. a 3.5393 V reading (was 3.48 V, then 3.53 V, then 3.54 V under the flat 75 mV margin); documented drift about ±24 mV at 15–35 °C fresh, +48/−55 mV fresh over −10…60 °C, +30/−36 mV aged at 25 °C, +73/−79 mV aged at −10/60 °C; production calibration MUST take its reference from a DMM at TP1 or with board current < 5 mA (hardware/sim, VSENSE-1/4/5) | `test_calibrated_accuracy_fresh_15_35c_with_fw_rule` ×3, `test_calibrated_accuracy_over_temperature_with_fw_rule` ×2, `test_ship_threshold_above_vbatpor_with_fw_rule` ×2, `test_calibrated_accuracy_after_aging_with_fw_rule`, `test_ship_threshold_after_aging_with_fw_rule`, `test_calibrated_accuracy_aged_over_temperature_with_fw_rule` ×2, `test_ship_threshold_aged_over_temperature_with_fw_rule` ×2 (worst true VBAT at the SHIP reading 3.4669 V against VBATPOR max 3.46 V; 3.4577 V at the earlier 3.53 V), and the 12 `test_read_margin_covers_over_read_with_fw_rule` thresholds (below). The re-derived drift at the 3.5393 V reading (fresh 15–35 °C ±23.65 mV; fresh −10…60 °C +47.78 / −54.02 mV; aged 25 °C +29.58 / −35.86 mV; aged −10 / 60 °C +72.43 / −78.28 mV) stays inside every documented figure |
 | `test_raw_gain_production_window`, `test_uncalibrated_error_bringup` | the ±3 % / ±2 % windows ignore the SAADC ±3 % gain error | Production test 8 MUST use a ±5.5 % raw-gain window and bring-up B-8.5 a ±5.5 % uncalibrated pass (hardware/sim, VSENSE-2/3) | `test_raw_gain_production_window_with_fw_rule`, `test_uncalibrated_error_bringup_with_fw_rule` |
 
 Retired with the current rules (each failed under the earlier rule wording and now passes because the rule is
 applied, numbers in the guard column): the six PI-2 reading-high cases, the two NEW-1 supplement cases at −10 °C,
-MD-3 at −10 °C, the MD-2 case with an aged-unit reading, and four VSENSE cases at −10 / 60 °C (the fresh-unit
-accuracy over temperature and the aged-unit SHIP threshold over temperature).
+MD-3 at −10 °C, the MD-2 case with an aged-unit reading, four VSENSE cases at −10 / 60 °C (the fresh-unit
+accuracy over temperature and the aged-unit SHIP threshold over temperature), and the three read-margin cases of
+rule R1' (below).
 
 **Not allowed by the rule** (4): `test_usb_low_pack_with_fw_rule[nominal-total0.40-avg]`, `[worst-total0.40-avg]`,
 `[nominal-total0.40-inst-lowpack]` and `[worst-total0.40-inst-lowpack]` run what NF-1 forbids, as the evidence for
 its wording: the 0.40 A taken as the limiter's average (VLED 3.156 V worst / 3.258 V nominal at a 3.48 V pack), and
 the instantaneous 0.40 A at a 3.30 V pack, below the VBAT_est ≥ 3.48 V condition (3.164 / 3.202 V).
 
-**Firmware rule still insufficient** (3): `test_read_margin_covers_over_read_with_fw_rule[OLED-BST-2-3.75]`,
-`[PI-2-row-3.80]` and `[PI-2-row-3.90]`. The fixed 75 mV margin covers the worst calibrated over-read (aged board at
-−10 / 60 °C, calibrated with the board under 5 mA) only up to a true 3.72 V; at 3.75 / 3.80 / 3.90 V it is
-75.66 / 76.99 / 79.63 mV, so VBAT_est can exceed the true VBAT by 0.7–4.6 mV there. The other eight thresholds pass
-(3.21, 3.465, 3.48, 3.53, 3.54, 3.60, 3.65 and 3.70 V; the thinnest is 3.70 V, +0.35 mV). This is open in
-firmware.md §18 item 12, with the fix options.
+**Retired by rule R1'** (3): the flat reading margin VBAT_est = reading − 75 mV covered the worst calibrated
+over-read only up to a true 3.72 V, because the over-read is a gain error that grows with VSYS. Firmware.md §12.4
+now uses VBAT_est = 0.979 × reading (R1'), which covers a 2.1 % over-read; the worst simulated is 2.070 % of the
+reading (2.114 % of the true value), at 3.21 V. The three strict xfails of `test_read_margin_covers_over_read_with_fw_rule` now pass and are retired. The
+worst corner of all three is an aged board at −10 / 60 °C, calibrated with the board under 5 mA:
+
+| Case | Before (flat 75 mV) | After (R1') |
+|---|---|---|
+| `[OLED-BST-2-3.75]` | over-read 75.66 mV, VBAT_est 0.66 mV above the true value | VBAT_est 3.745322 V, 4.68 mV below the true value |
+| `[PI-2-row-3.80]` | over-read 76.99 mV, 1.99 mV above | VBAT_est 3.795568 V, 4.43 mV below |
+| `[PI-2-row-3.90]` | over-read 79.63 mV, 4.63 mV above | VBAT_est 3.896062 V, 3.94 mV below |
+
+The guard now runs 12 thresholds (a new `[PI-3-B-variant-3.91]` row joins the eleven), each over 11 264 corner
+values (fresh unit at −10 / 15 / 25 / 35 / 60 °C, aged unit at −10 / 25 / 60 °C, both calibration references), and
+every one passes:
+
+| VBAT_est threshold (V) | 3.21 | 3.465 | 3.48 | 3.53 | 3.54 | 3.60 | 3.65 | 3.70 | 3.75 | 3.80 | 3.90 | 3.91 | 4.20 (info) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Reading (V) | 3.2789 | 3.5393 | 3.5546 | 3.6057 | 3.6159 | 3.6772 | 3.7283 | 3.7794 | 3.8304 | 3.8815 | 3.9837 | 3.9939 | 4.2901 |
+| Worst over-read (mV) | 67.87 | 71.40 | 71.60 | 72.30 | 72.44 | 73.27 | 73.96 | 74.65 | 75.66 | 76.99 | 79.63 | 79.90 | 87.58 |
+| Margin left (mV) | +0.97 | +2.87 | +2.98 | +3.35 | +3.43 | +3.87 | +4.24 | +4.62 | +4.68 | +4.43 | +3.94 | +3.89 | +2.46 |
+
+The thresholds are NEW-1 (3.21), SHIP (3.465), the PI-2 rows (3.48 also NF-1 on USB; 3.53 / 3.60 / 3.65 also the
+derating edges, 3.60 NEW-2), MD-2 (VSYS_est 3.54), OLED-BST-2 (3.75) and PI-3 (3.91); 4.20 V is no threshold,
+only the full-cell point, computed with the same model but not a suite check. "Margin left" is the true
+value minus the worst VBAT_est at that true value; the thinnest is 3.21 V. The guards that take the true VBAT from
+a VBAT_est now use the R1' bound itself, true = VBAT_est (`fw_vtrue_min` in `test_power_integrity.py`), not the
+VBAT_est + 3 mV the flat margin allowed. One consequence is recorded rather than failed: the PI-3 threshold keeps
++7.9 mV of VLED margin at the bound (table above), above the 3.3 V limit but short of its 10 mV design margin, which
+VBAT_est 3.92 V would restore; firmware.md §18 item 12 keeps it as the one residual.
 
 The suite's other firmware rules have no xfail of their own and live in firmware.md only: HFXO before
 every LED frame (LED-DATA-V2), SYS_REG 4.4 V (LED-DATA-V3/LDO-2), the ≥ 30 ms wait after LED_PWR_EN low
@@ -215,6 +242,18 @@ POF blanking after LED_PWR_EN or OLED_VCC_EN (checked in the NEW-1 guards and
 OLED_VCC_EN toggling during moves below VBAT_est 3.6 V (NEW-2), the OLED brown-out latch (OLED-V3), the cold-charge
 and press-blanking TS rules (charger_ts-3, charger_ts-v2), QSPI sleep pull-downs (SLP-4) and USB suspend
 (V-2, V-3).
+
+Three wording rules of firmware.md are **documented, not simulated**: no deck or guard exercises them, and they
+stay as written.
+
+* NF-1: once CHG_STAT reports CV or done, the cell has reached VBATREG and the ≥ 3.90 V row (full ring) applies on
+  USB (firmware.md §6.3). The suite runs the 3.48 V row and the 0.40 A instantaneous sum, not the CV/done case.
+* On USB, VBAT_est is the last battery-only estimate of this power-up, and an unknown VBAT_est counts as below
+  every threshold (firmware.md §12.4, §13.3). The guards set the pack voltage directly; none models the stale or
+  missing estimate.
+* A POFWARN inside the 10 ms blanking after LED_PWR_EN or OLED_VCC_EN does not count toward the NF-3 VLED fault
+  latch (firmware.md §12.4, SPEC §5.1). The NEW-1 guards check +3V3 after the blanking, but no test runs the latch
+  logic.
 
 ## CI
 

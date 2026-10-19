@@ -247,7 +247,8 @@ FW_VOCV_EMPTY = 3.30       # 0 % SoC point of the docs/firmware.md 12.4 OCV tabl
 # (+17.9 mV). Below it the
 # table rows apply in amperes (the ">= 3.90 V full ring" row means the C ring's 0.72 A, 60 lit B channels)
 FW_PK_B_FULL, FW_PK_B_V = 1.0, 3.91
-# "no supplement" profile on USB (pack absent, BUVLO_STAT = 1 or CHG_STAT = precharge), firmware.md 6.3 / 13.3, PI-4:
+# "no supplement" profile on USB (pack absent, or BUVLO_STAT = 1, which also covers precharge: CHG_STAT has no precharge
+# code and reports it as CC), firmware.md 6.3 / 13.3, PI-4:
 # ILIM 100 mA phase: LEDs <= 20 mA cue, OLED off, no flash erase, BLE TX 0 dBm, total <= 70 mA;
 # ILIM 500 mA phase: no actuator, LEDs <= 100 mA peak-limited, OLED C7 <= 08h, total <= 400 mA
 FW_NOSUP_LED100, FW_NOSUP_TOTAL100 = 0.020, 0.070

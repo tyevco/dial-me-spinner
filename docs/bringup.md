@@ -98,7 +98,7 @@ Inspect under 10–20× magnification, with the JLC X-ray images ([assembly §3.
 | main | Nothing ferrous added near the track: no shield cans, no stray screws or washers (B-9.6) | OK |
 | both | Side-entry JST SH link connectors `SM12B-SRSS-TB` (main J1 on the bottom, r 19.5, θ 330°; base J3 on the top, r ≈ 15.5, θ 120°): seated flat, entry facing the board centre, pin 1 as expected (assembly §6) | OK |
 | base | USB-C shell legs soldered through; SMF5.0A D1 cathode band toward VBUS (assembly §3.4); switch SW1 centred and square; battery connector J2 (side-entry SH `SM04B-SRSS-TB`, r 17, θ 222°, mouth radially outward) seated flat, BAT+/GND silk legible | OK |
-| both | Flux residue, solder balls, especially around the 0.5 mm ZIF, the DSBGA and the VSYS_SENSE node (R1/R2/C5): 4.5 nA of leakage there uses up the whole ±10 mV (25 °C) calibrated budget (SPEC §3; hardware/sim, VSENSE-2) | Clean |
+| both | Flux residue, solder balls, especially around the 0.5 mm ZIF, the DSBGA and the VSYS_SENSE node (R1/R2/C5): 4.5 nA of leakage there uses up the whole ±10 mV (25 °C) calibrated budget (SPEC §3; hardware/sim, VSENSE-4) | Clean |
 
 ---
 
@@ -325,9 +325,10 @@ Take the calibration reference from the DMM at TP1 (VSYS at the divider), not fr
 the board current below 5 mA while calibrating: the BATFET, link and path resistance otherwise store a permanent
 gain error (hardware/sim, VSENSE-5). The calibrated reading holds about ±10 mV at 25 °C and ±24 mV at 15–35 °C on a
 fresh board; over −10…60 °C it drifts by about +48/−55 mV, after ageing by +30/−36 mV at 25 °C and +73/−79 mV at
-−10 or 60 °C. That is why firmware compares every threshold that protects a datasheet limit against
-VBAT_est = reading − 75 mV and enters SHIP below a 3.54 V reading (VBAT_est 3.465 V), not at 3.53 V or 3.48 V
-(firmware.md §12.4; hardware/sim, VSENSE-1, VSENSE-4).
+−10 or 60 °C. The error is a gain error that grows with VSYS, to about 2.1 % of the reading. That is why firmware
+compares every threshold that protects a datasheet limit against VBAT_est = 0.979 × reading (rule R1') and enters
+SHIP below a 3.5393 V reading (VBAT_est 3.465 V), not at the 3.54 V of the former flat 75 mV margin, nor at 3.53 V or
+3.48 V (firmware.md §12.4, which lists every threshold as a reading; hardware/sim, VSENSE-1, VSENSE-4).
 
 On USB this reads SYS (4.4 V once firmware has set SYS_REG, 4.5 V at power-on), not the battery. Use the BQ25180
 CHG_STAT field while charging; firmware keeps the last battery-only VBAT_est for its USB rules (firmware.md §12.4).
@@ -755,7 +756,7 @@ SPIM2 as the LED-driver fallback ([`firmware.md`](firmware.md) §7.1).
 | Current (battery side, VSYS 3.7 V): black with VCC on | ≈ 5 mA |
 | Typical dark UI | ≈ 14–26 mA |
 | Full white **only at `C7` = 0x08, briefly** | Well under the ≈ 146 mA maximum-contrast figure ([display research]) |
-| Below VBAT_est 3.75 V (rested reading less 75 mV), and while the LED current exceeds its 150 mA sustained cap | Firmware MUST hold `C7` ≤ 08h and ≤ 30 % white area: at low VSYS the boost has almost no headroom over the full-white current, about 33–40 mA at 3.0 V (SPEC §5.3; hardware/sim, OLED-BST-2) |
+| Below VBAT_est 3.75 V (0.979 × the rested reading, i.e. a reading below 3.8304 V), and while the LED current exceeds its 150 mA sustained cap | Firmware MUST hold `C7` ≤ 08h and ≤ 30 % white area: at low VSYS the boost has almost no headroom over the full-white current, about 33–40 mA at 3.0 V (SPEC §5.3; hardware/sim, OLED-BST-2) |
 | Sleep: `AE`, `AB 00`, VCC_EN low, RES# held high | OLED + boost ≈ 17.6 µA typ at 25 °C, including ≈ 5.4 µA of D21 leakage; 46 µA maximum at 25 °C, 72 µA at 60 °C (architecture §8.2; measured in B-10) |
 | Wake: `AB 01`, VCC on, ≥ 200 ms, `AF`, full redraw | Image back in about 0.2–0.4 s |
 | Listen at near-black | No audible PFM whine (about 15 kHz at 1.5 mA). If present, see the CFF note above |
@@ -785,8 +786,8 @@ phase's inductance (LCR meter): the coast energy that VSYS must absorb when a mo
 
 | Check | Expected |
 |---|---|
-| Full steps at 100 PPS, ≤ 50 % amplitude | Smooth motion. Measure the carriage travel per full step with a dial indicator: the slider moves 0.02 mm per full step (M2×0.4 lead), and the 0.75 inclined slot of the link plate makes that 0.015 mm at the carriage ([`mechanical.md`](mechanical.md) §7) |
-| Full stroke | 7.5 mm of carriage = 500 full steps by mechanical.md §7. [`firmware.md`](firmware.md) §3.1 (`stroke-steps = <375>`), and with it the step counts in B-9.10d and B-12, still assume 0.02 mm per full step at the carriage, so 375 steps would move it only ≈ 5.6 mm. Record the measured travel and correct firmware.md and these step counts together |
+| Full steps at 100 PPS, ≤ 50 % amplitude | Smooth motion. Measure the carriage travel per full step with a dial indicator: the slider moves 0.02 mm per full step (M2×0.4 lead), and the 0.75 inclined slot of the link plate makes that 0.015 mm at the carriage ([`mechanical.md`](mechanical.md) §7; [`firmware.md`](firmware.md) §3.1 `carriage-um-per-step = <15>`) |
+| Full stroke | 7.5 mm of carriage = 500 full steps (mechanical.md §7, `hardware/mechanical/calcs_output.txt` §4; firmware.md §3.1 `stroke-steps = <500>`). Record the measured travel; if it differs, correct `stroke-steps` and the step counts of firmware.md §5.4, B-9.10d and B-12 together |
 | Phase current at 100 % | ≈ 185 mA (3.7 V) to 225 mA (4.5 V) |
 | Supply peak | ≤ 0.45 A |
 | After every move, and on every stop path including FAULT and abort | Brake (IN1 = IN2 = 1 on U40 and U41 for ≥ 3 ms), then all IN low and nSLEEP low, so hold power is zero (the lead screw self-locks) ([detent research]). Firmware MUST brake before sleep: coasting both coils dumps their energy into VSYS, and on USB after charge termination nothing but the VSYS capacitors absorbs it. Never run full-current full steps on USB power (SPEC §5.6; hardware/sim, MD-1) |
@@ -814,16 +815,17 @@ reading on every unit for rev B (sensor further from the magnet, or a DRV5032 va
 
 **B-9.10d Homing and stroke.** Use the firmware homing procedure (firmware.md §5.4, phases H0–H5).
 
-1. From an unknown position, approach PARK at run current until HOME asserts. That edge lies ≈ 190–230 steps
-   before the stop, so it does **not** mark the stop. Run in, then finish at **80 PPS and 50 % current** into the
+1. From an unknown position, approach PARK at run current until HOME asserts. That edge lies ≈ 253–307 steps
+   (3.8–4.6 mm) before the stop, so it does **not** mark the stop. Run in, then finish at **80 PPS and 50 % current** into the
    park stop with 20 steps of overdrive. Park is force-free, so stalling there is safe. HOME must read asserted
    after the stall; back off 4 steps.
 2. Define s = 0 at the park stop (after the back-off the carriage sits at s = 4, x_park). Step out to CLICK
-   (s = 375) and back. On the way back, HOME must assert inside the edge window around the learned assert step
+   (s = 500) and back. On the way back, HOME must assert inside the edge window around the learned assert step
    (firmware.md §5.4 rule 2; 32 steps wide at 80 PPS, 60 at 446 PPS). Otherwise re-home; after
    3 failures go to FAULT and stay in FREE ([detent research]).
-3. Speed profile: ≤ 300–500 PPS through the magnetically loaded 0–4 mm zone, ≤ 800–1000 PPS beyond. Expect
-   ≈ 0.6–0.9 s per full stroke ([detent verifier]).
+3. Speed profile: ≤ 300–500 PPS through the magnetically loaded 0–4 mm zone (267 full steps), ≤ 800–1000 PPS
+   beyond (233 steps). Expect ≈ 0.8–1.2 s per full stroke (mechanical.md §7: 0.83–1.18 s; the firmware profile of
+   firmware.md §5.3, 446 PPS in the loaded zone, takes about 0.9–1.1 s).
 
 **Robustness:** 50 round trips with the rotor resting in a detent well. HOME must read asserted after every park
 stall, and every HOME edge must fall inside its window (no E_DET_STEPS; firmware test 19 runs 20 cycles).
@@ -834,7 +836,9 @@ The NFCT drives the cover coil through J11 (main top, r 21.5, θ 222°), tuned b
 which suits a coil of about 1.4–1.5 µH (SPEC §5.2). NFCPINS must read NFC mode (B-7.3).
 
 1. Before soldering the coil, measure its inductance. If it is outside 1.4–1.5 µH, recompute C16/C17 with the
-   `mcu` sheet formula Ctune = 2 / ((2π × 13.56 MHz)² × L) − Cp − Cint (Cint ≈ 4 pF) **[TVP]**.
+   `mcu` sheet formula Ctune = 2 / ((2π × 13.56 MHz)² × L) − Cp − Cint (Cint ≈ 4 pF) **[TVP]**. Expect a retune:
+   the coil of SPEC §8 is estimated at ≈ 1.75 µH over the board (Wheeler, `mechanical.md` §9), which wants
+   ≈ 150–160 pF per side.
 2. Run an NFC-A Type 2 tag image (NCS `nfc_t2t`, e.g. a text-record sample) **[TVP: sample name in the NCS
    version used]**. A phone must read the NDEF record through the top cover; record the best phone position and
    the largest reliable distance.
@@ -1013,7 +1017,7 @@ Prerequisites: B-9.6c (encoder on the rotor) and B-9.10d (homing).
 
 **B-12.2 Detent phase (CLICK, offset 0).**
 
-1. Step 375 from park.
+1. Step to CLICK (s = 500, x = 0) from park.
 2. Let the ring settle in a detent and record the rest angle.
 3. Click through all 24 detents by hand, three times.
 
@@ -1031,26 +1035,31 @@ same electrical phase.
 
 | Offset (mm) | Full steps from click | Simulated T (mN·m) | Slip mass at r = 35 (g) | f_n (Hz, I = 1.25e-4) |
 |---|---|---|---|---|
-| 0 | 0 | 16.4 | 47.8 | 8.9 |
-| 0.5 | 25 | 15.4 | 44.9 | 8.7 |
-| 1.0 | 50 | 12.8 | 37.3 | 7.9 |
-| 1.5 | 75 | 9.4 | 27.4 | 6.8 |
-| 2.0 | 100 | 6.2 | 18.1 | 5.5 |
-| 2.5 | 125 | 3.7 | 10.8 | 4.2 |
-| 3.0 | 150 | 2.0 | 5.8 | 3.1 |
-| 4.0 | 200 | 0.55 | 1.6 | 1.6 |
-| 5.0 | 250 | 0.14 | 0.4 | 0.8 |
-| ≥ 7.5 (FREE) | 375 | ≤ 0.003 | — | — |
+| 0 | 0 | 16.5 | 48.1 | 9.0 |
+| 0.5 | 33 | 13.7 | 40.0 | 8.2 |
+| 1.0 | 67 | 11.4 | 33.3 | 7.5 |
+| 1.5 | 100 | 9.5 | 27.7 | 6.8 |
+| 2.0 | 133 | 5.65 | 16.5 | 5.2 |
+| 2.5 | 167 | 3.36 | 9.8 | 4.0 |
+| 3.0 | 200 | 2.0 | 5.8 | 3.1 |
+| 4.0 | 267 | 0.53 | 1.5 | 1.6 |
+| 5.0 | 333 | 0.14 | 0.4 | 0.8 |
+| ≥ 7.5 (FREE) | 500 | ≤ 0.003 | — | — |
 
-The simulated column is the detent research's magpylib model, verified to within about 1 %, but run at
-R_t = 30 mm on the flywheel underside. SPEC uses R = 29.0 mm on the top face, so expect about ±10–20 %. Gap
-sensitivity is about −10 % torque per +0.1 mm, and magnet grade spread about ±10 % ([detent research/verifier]).
+The simulated column is the verified LUT of `hardware/mechanical/calcs_output.txt` §4 (the same LUT as
+`mechanical.md` §7 and `firmware.md` §5.1), and the step column uses its 0.015 mm per full step. The points at 0,
+1.5, 3.0, 5.0 and 7.5 mm are the detent research's magpylib model, verified to within about 1 %; the others are
+log-linear interpolations between them (the earlier table here used the research's own intermediate values, up
+to 12 % higher at 0.5–1.0 mm). The model ran at R_t = 30 mm on the flywheel underside. SPEC uses R = 29.0 mm on
+the top face, so expect about ±10–20 %. Gap sensitivity is about −10 % torque per +0.1 mm, and magnet grade spread
+about ±10 % ([detent research/verifier]).
 
 Pass:
 
 * Torque falls monotonically with offset.
-* T(0) within ±25 % of 16.4 mN·m.
-* The default user setting gives 10–12 mN·m (≈ 1.2–1.4 mm offset).
+* T(0) within 12.3–20.5 mN·m (±25 % of 16.4 mN·m, the figure this window was set from; the LUT gives 16.5).
+* The EC11-like setting (s = 85 %, firmware.md §5.1; the default s = 100 % is full click) gives 10–12 mN·m
+  (≈ 0.9–1.4 mm offset, 58–91 full steps, by the LUT above).
 
 Store the measured LUT and map strength 0–100 % onto it.
 
@@ -1061,7 +1070,7 @@ Store the measured LUT and map strength 0–100 % onto it.
   bin (χ² test). The model gives ≤ 3 µN·m residual cogging ([detent research]).
 
 **B-12.5 Ringing (informative).** At full click, release the ring from about 7° inside a well and count cycles
-until it is below 0.5°. With about 0.15 N·mm of bearing friction, expect roughly 80 cycles (≈ 9 s at 8.9 Hz). The
+until it is below 0.5°. With about 0.15 N·mm of bearing friction, expect roughly 80 cycles (≈ 9 s at 9.0 Hz). The
 detent is under-damped and SPEC has no friction shoe, so firmware must decide the landing detent at the first
 velocity reversal ([detent verifier]). Record the count.
 

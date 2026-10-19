@@ -25,10 +25,12 @@ A ~70 mm BLE dial spinner with three parts:
 The magnet track does double duty:
 * **Detents**: a stationary N52 Ø3×2 mm magnet sits 1.0 mm above the track
   under the main board. It gives 24 detents of 15°. The magnet is mounted on a
-  carriage that a micro actuator slides **radially inward in-plane**: 0 mm offset
-  is full click, ≥7.5 mm offset (r ≤ 21.5 mm) is free spin, and positions in
-  between give variable strength. The actuator holds position with zero power
-  (self-locking lead screw).
+  carriage that a micro actuator slides **radially inward in-plane** along the
+  θ = 90° radius: 0 mm offset is full click, ≥7.5 mm offset (r ≤ 21.5 mm) is
+  free spin, and positions in between give variable strength. The actuator
+  itself lies on a chord (y = 15.5 mm) and drives the carriage through an
+  inclined-slot link, so it sweeps θ ≈ 35–160° (§8 bottom-side rules). It holds
+  position with zero power (self-locking lead screw).
 * **Encoder**: a TI TMAG5273A2 3D Hall sensor on the main-board underside reads
   the same track: 24 electrical periods per revolution, atan2 interpolation,
   and µA wake-on-rotation.
@@ -84,15 +86,16 @@ VBUS ── link ── R12 4.7 Ω ── VBUS_NRF → nRF VBUS pad (USB detect)
   GND, with 100 nF on VSYS_SENSE, into AIN0 (P0.02). That is ~1.3 µA, read with
   the internal 0.6 V reference at gain 1/6. Keep the VSYS_SENSE node away from
   other copper and clean: 4.5 nA of leakage on it uses up the whole ±10 mV
-  (25 °C) calibrated-accuracy budget (hardware/sim, VSENSE-4,
-  test_pin_leakage_sensitivity). The calibrated reading can still be up to
-  about 73 mV high (+73/−79 mV on an aged unit at −10 / 60 °C, at the 3.54 V
-  SHIP reading; the over-read grows with VSYS, to about 88 mV at 4.2 V), so
-  firmware compares every VBAT/VSYS threshold that protects a datasheet
-  limit, as a true-cell value, against VBAT_est = calibrated reading − 75 mV
-  (VSYS_est likewise); SHIP is entered below VBAT_est 3.465 V, a reading of
-  3.54 V. The 75 mV covers the worst over-read only up to a true 3.72 V (open:
-  docs/firmware.md §12.4, §18 item 12; hardware/sim, VSENSE-1/4/5).
+  (25 °C) calibrated-accuracy budget (hardware/sim, VSENSE-4, the ageing and
+  leakage finding; test_pin_leakage_sensitivity). The calibrated reading can
+  still be up to about 73 mV high (+73/−79 mV on an aged unit at −10 / 60 °C,
+  at the 3.5393 V SHIP reading). The over-read is a gain error that grows
+  with VSYS, to about 2.1 % of the reading (88 mV at 4.2 V), so firmware
+  compares every VBAT/VSYS threshold that protects a datasheet limit, as a
+  true-cell value, against VBAT_est = 0.979 × calibrated reading (VSYS_est
+  likewise; rule R1'), which covers a 2.1 % over-read at every threshold;
+  SHIP is entered below VBAT_est 3.465 V, a reading of 3.5393 V
+  (docs/firmware.md §12.4; hardware/sim, VSENSE-1/4/5).
 * **Charger (base)**: BQ25180YBGR. IN 2.2 µF/25 V 0805 X7R + SMF5.0A TVS (an 0603
   X5R loses too much to DC bias to keep ≥ 1 µF effective; hardware/sim, USB-3),
   SYS 10 µF/25 V, BAT 4.7 µF. The TS/MR pin takes a 10 kΩ B3435 NTC
@@ -223,7 +226,8 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 * J10 TC2030-IDC-NL footprint (`Connector:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical`):
   1 VTref (+3V3), 2 SWDIO, 3 NRESET, 4 SWDCLK, 5 GND, 6 SWO. R11 (10 kΩ NRESET pull-up) is DNP.
 * NFC tag antenna on the NFCT (P0.09 = NFC1, P0.10 = NFC2; UICR NFCPINS stays in NFC mode): C16/C17 180 pF C0G
-  (C78636) from NFC1/NFC2 to GND, sized for a coil of ~1.4–1.5 µH and retuned on the prototype for the coil's real L.
+  (C78636) from NFC1/NFC2 to GND, sized for a coil of ~1.4–1.5 µH and retuned on the prototype for the coil's real L:
+  the coil of §8 is estimated at ≈ 1.75 µH, which wants ≈ 150–160 pF per side, so expect to retune once it is measured.
   The 13.56 MHz flex coil lives in the top cover; its tail solders to the flat pads J11 (NFC_COIL, no part fitted) on
   the top side at r = 21.5 mm, θ = 222° (a 2.95 mm header does not fit under the display glass). Route NFC1/NFC2 as a
   pair, away from the TMAG5273 and the LED data line. Firmware emulates an NFC-A Type 2 / Type 4 tag (nRF Connect SDK
@@ -271,10 +275,10 @@ Boost:
 * Firmware rules (details in docs/firmware.md §7.2, §7.4 and §13.3):
   * Firmware MUST never set OLED_VCC_EN while the BQ25180 input limit is 100 mA (TMR_ILIM = 0xC9) unless the
     battery can supplement SYS (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a battery-only reading in this power-up; at
-    −10 °C the boost surge needs about a 3.204 V cell to keep the BAT pin above BUVLO). It raises OLED_VCC_EN only after ILIM = 500 mA
-    and until then shows the charging cue on the LEDs (≤ 20 mA). A dead battery cannot supplement SYS and the 100 mA
-    input cannot carry the boost inrush, so otherwise the unit reboot-loops exactly in the "battery empty, plug in"
-    case (hardware/sim, NEW-1, OLED-V1).
+    −10 °C the boost surge needs about a 3.204 V cell to keep the BAT pin above BUVLO). Otherwise it raises
+    OLED_VCC_EN only after ILIM = 500 mA, and until then shows the charging cue on the LEDs (≤ 20 mA). A dead battery
+    cannot supplement SYS and the 100 mA input cannot carry the boost inrush, so without this rule the unit
+    reboot-loops exactly in the "battery empty, plug in" case (hardware/sim, NEW-1, OLED-V1).
   * Firmware MUST NOT toggle OLED_VCC_EN during an actuator move when VBAT_est < 3.6 V; it enables the OLED before the
     park move. The OLED turn-on surge on top of a stroke eats the BQ25180 BAT-pin margin to BUVLO at a low cell
     (hardware/sim, NEW-2).
@@ -335,19 +339,24 @@ Boost:
     channels × I_ch + OLED boost input + actuator, not an average) ≤ 0.40 A; below 3.48 V, or with VBAT_est unknown,
     only the charging cue (hardware/sim, PI-2, NF-1).
   * When the pack cannot supplement SYS on USB (pack absent, which counts until a battery-only reading in this
-    power-up gives a VBAT_est, BUVLO_STAT = 1 or CHG_STAT = precharge), firmware MUST
+    power-up gives a VBAT_est, or STAT1 BUVLO_STAT = 1), firmware MUST
     run the "no supplement" profile: at ILIM 100 mA, LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase,
     BLE TX 0 dBm, total ≤ 70 mA; at ILIM 500 mA, no actuator moves, LEDs ≤ 100 mA peak-limited, OLED C7 ≤ 08h, total
     ≤ 400 mA. The POF handler sheds the OLED as well as the LEDs and motor (after the 10 ms POF blanking of §5.1).
     Otherwise both USB budgets exceed the
-    ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4).
+    ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). BUVLO_STAT also covers precharge:
+    CHG_STAT has no precharge code (it reports precharge as CC, 01), and with VLOWV = BUVLO = 3.0 V
+    (docs/firmware.md §13.1) BUVLO_STAT stays 1 through precharge, because it clears only at 3.11–3.19 V rising,
+    above VLOWV's 3.1 V maximum (SLUSE99C §7.5).
 
 ### 5.5 `sensors` — encoder, IMU, piezo
 * U30 TMAG5273A2QDBVR (C3715882), **bottom side**, θ = 270°, long axis radial, placed so that the **Hall
   element** (offset 0.40 mm toward pin 3 and 0.12 mm toward the pin 1–3 edge from the body centre) is at r = 29.0 mm. Pins: 1 SCL, 2 GND, 3 TEST → GND, 4 VCC, 5 INT, 6 SDA. VCC gets
   100 nF + 1 µF. 4.7 kΩ pull-ups on TMAG_SCL/SDA, 47 kΩ on TMAG_INT_N.
-  U32 TPD4E05U06DQAR (C138714) next to the TMAG5273 clamps TMAG_SCL, TMAG_SDA and TMAG_INT_N: the touchable,
-  electrically floating 316L ring passes 2.4 mm below.
+  U32 TPD4E05U06DQAR (C138714) next to the TMAG5273 clamps TMAG_SCL, TMAG_SDA and TMAG_INT_N: the touchable 316L
+  ring passes 2.4 mm below. The ring is bonded to GND through the conductive epoxy, the 608 races and the spindle
+  (plated H1–H3, §5.1). That is a static bleed path (the final test accepts < 10 MΩ, docs/mechanical.md §12), not a
+  low-impedance return for a discharge, so U32 stays.
   The optional DRV5012AEDMRR (C2655038) fallback wake-sensor footprint was not captured on rev A (the only DNP
   parts are R11, C43 and U43).
 * U31 LIS2DW12TR (C189624): CS → +3V3 (I2C mode), SA0 → +3V3 (address 0x19,
@@ -414,21 +423,23 @@ dimensions are in mm.
 |---|---|---|
 | 0.0–1.0 | 3× rubber/micro-suction feet | r = 28 |
 | 1.0–2.5 | base cup floor (PA12/PETG) | cup OD Ø70, wall 1.6, wall top z = 14.3 |
-| 2.5–9.0 | LiPo bay, protected 603450-class pack **≤ 6.0 thick** (≥ 1 mm swelling gap to the board) | long axis along **θ = 0°/180°** (|x| ≤ 27.5, |y| ≤ 17.25); leads exit at the θ = 180° end |
+| 2.5–8.5 | LiPo bay: protected pack **≤ 6.0 thick** at the drawing maximum incl. PCM, so its top stays at z ≤ 8.5, ≥ 1 mm below the base board (z 9.5) as the swelling gap. The BOM pick is a 503450/523450-class pack, ≤ 5.6 mm (docs/mechanical.md §13) | long axis along **θ = 0°/180°** (−27.5 ≤ x ≤ 27.5, −17.25 ≤ y ≤ 17.25); leads exit at the θ = 180° end |
 | 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf, centred on the chord y = +23.5 (θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33) | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 1.75 mm from the pack side (y = 17.25); coax rises to the spindle side slot. Base-board planes and pours keep ≥ 5 mm away: no plane or pour on B.Cu, In1 or In2 for y > 15.4, no F.Cu pour for y > 17; B.Cu/In2 tracks and vias may come to y ≈ 17.5 (≈ 3.8 mm) |
 | 9.5–11.1 | **base board** (Ø46 disc + USB tab to r = 35 at θ = 0°, 4-layer 1.6 mm) | supports: **one M2 boss at r = 20, θ = 270°** (outside the pack, 1.9 mm of FR4 to the edge), a printed **rib** under the θ = 90° edge (y 17.75–18.75, between the pack and the antenna shelf; no boss fits there) and the USB-C shell clamped in the cup wall |
 | 11.1–12.6 | press switch TS-1187A (1.5 tall) at the base-board centre | |
-| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, ±18°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30 with a **through-notch at θ = 0° for the USB-C** (x ≥ 26.5, |y| ≤ 5.6; the receptacle top is at z 14.36)). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
+| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, ±18°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30 with a **through-notch at θ = 0° for the USB-C** (x ≥ 26.5, −5.6 ≤ y ≤ 5.6; the receptacle top is at z 14.36)). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
 | 12.8–29.1 | hollow spindle Ø8 × 1.0 wall (316 or titanium), bore Ø6 for link harness + antenna coax | clamped to the lower plate and to the main board; side slots at z ≈ 14.5–16 (below the carrier web) and just under the main board let the harness/coax in and out |
 | 15.6–25.6 | **rotor**: 316L ring OD 70 / ID 54, on a PA12-GF carrier web (z 17–19, r 11–27) holding the 608 outer race | ring top face z = 25.6 carries the 48-magnet track (Ø2×2, pockets 2.05 deep, R_t = 29.0) |
 | 18.0–25.0 | 608 bearing on the spindle; ≥ 2.5–3 N wave-spring axial preload | outer race r = 11 |
-| 19–29.1 | "bowl" under the main board, r 12–27: detent actuator (micro linear stepper, chord placement near θ = 90°) | stationary, hangs from the main-board bottom |
-| 26.6–28.6 | detent magnet Ø3×2 N52 on carriage, 1.0 mm above the track; slides r = 29.0 (click) → 21.5 (free) along θ = 90° | carriage plate 0.5 mm, rail fixed to the main-board bottom |
+| 19–29.1 | "bowl" under the main board, r 12–27: detent actuator (micro linear stepper on the chord y = 15.5 near θ = 90°, driving the carriage through an inclined-slot link; it sweeps θ ≈ 35–160°) | stationary, hangs from the main-board bottom; bottom-side rules below |
+| 26.6–28.6 | detent magnet Ø3×2 N52 on carriage, 1.0 mm above the track; the carriage slides radially r = 29.0 (click) → 21.5 (free) along the θ = 90° radius | carriage plate 0.5 mm, rail fixed to the main-board bottom |
 | 29.1–30.7 | **main board** Ø64 (r ≤ 32), 4-layer 1.6 mm | centre Ø5 hole + 3× **plated GND** M2 at r = 6.5 (spindle flange; the ring's ESD bleed path runs ring → conductive epoxy → 608 races → spindle → GND), 2× NPTH M2 at r = 17 θ = 60°/120° (actuator bracket) |
 | 30.7–31.6 | LEDs (48× WS2812C-2020) at r = 28.5 | |
 | 31.6–34.2 | LED light box (white interior, opaque exterior) r 27–30 | |
-| 33.0–34.7 | OLED glass 33.8 × 34.0 (active-area centre on axis) on a bracket; FPC folded under to the ZIF | |
-| 34.2–36.0 | diffuser ring (opal PMMA, r 27–30) + top cover (stationary) with Ø30 OLED window, cover OD r = 32.5 | the 13.56 MHz NFC flex coil sits in the cover; its tail solders to J11 on the main-board top |
+| 31.8–32.8 | OLED bracket: rim under the glass edge + 3 spokes to the hub screws (M2 brass through H1–H3) | **0.5 mm rim relief** over J11 and the NFC tail: the rim underside is raised from z 31.8 to 32.3 across the pads (±2.0 mm, r 20.1–24.7 along θ = 222°), leaving 0.5 mm of rim under the glass |
+| 33.0–34.7 | OLED glass 33.8 × 34.0 (active-area centre on axis) on the bracket rim; FPC folded under to the ZIF | centred with a corner jig at assembly (the cover no longer locates it) |
+| 34.2–36.0 | diffuser ring (opal PMMA, r 27–30) + top cover (stationary) with Ø30 OLED window, cover OD r = 32.5 | the cover ceiling is at z 35.0 inside r 26.35 and carries the NFC coil (next row) |
+| 34.80–34.95 | **NFC coil**: annular 2-layer flex, ID 31 / OD 52.5 × 0.15, copper turns in r 24.9–26.15, bonded (0.05 PSA) under the top-cover ceiling, 0.10 above the OLED glass | ≈ 1.75 µH estimate for 4 turns over the In1 GND plane (Wheeler, TVP); C16/C17 stay 180 pF C0G and are retuned once L is measured (the estimate wants ≈ 150–160 pF per side). Tail: a 2.0 mm tongue at **θ = 222°** that folds down at r 24.7 beside the glass and laps onto J11 (r 21.5, θ 222°) under the bracket-rim relief (docs/mechanical.md §9) |
 
 The ring's visible surfaces are the knurled side (z 15.6–25.6) and a top rim
 band at r 32.5–35. Overall size is Ø70 × 36 mm.
@@ -438,7 +449,10 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   magnet track, so pours there add eddy drag). F.Cu/In1.Cu pours are allowed,
   since the track is 3.5–5 mm away. Traces and pads are allowed everywhere.
 * Bottom side keep-outs:
-  * sector θ = 60°–120°, r 12–32: actuator and detent carriage, no components;
+  * sector θ = 60°–120°, r 12–32: detent carriage, rails and the middle of the actuator's sweep, no components;
+  * the wider actuator corridor θ 30°–160°, r 8.5–27 (rule below): parts at most 1.3 mm tall. The carriage moves
+    along the θ = 90° radius, but the chord-mounted actuator sweeps θ ≈ 35–160°; where the two areas overlap, the
+    no-component keep-out applies;
   * the spindle flange area r ≤ 8.5.
 * TMAG5273 on the **bottom** side at (r = 29, θ = 270°). Its long axis is
   radial. Nothing ferromagnetic and no inductor may sit within 10 mm of it.
@@ -461,14 +475,18 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   spindle's top slot.
 * Rotating hub zone: bottom-side parts over r 9.5–12.5 must keep their bottom at z ≥ 26.3 (hang ≤ 2.8 mm).
 * Actuator corridor: bottom-side parts in θ 30°–160°, r 8.5–27 must be ≤ 1.3 mm tall (chip passives and test pads;
-  J40, U11 and the parts already there were checked in hardware/mechanical/calcs_output.txt §11).
+  J40, U11 and the parts already there were checked in hardware/mechanical/calcs_output.txt §11); inside θ 60°–120°,
+  r 12–27 the no-component keep-out above applies.
 * Top side: keep r ≤ 4.6 free for the spindle's M4 nut (OD 7); other top parts stay inside the LED-cap ring
   (r ≤ 25.3) — beyond it are the light box (r 27–30) and the top-cover skirt.
 * The piezo BZ1 goes on the **bottom** side at r = 22, θ = 22° (sound vents through the board).
 * The TC2030 pads (J10) go on the top side under the OLED glass at r = 12, θ = 150°, so they are
   reachable before the OLED is fitted.
-* The NFC coil pads J11 sit on the top side at r = 21.5, θ = 222°; NFC1/NFC2 run as a pair, away from the TMAG5273
-  and the LED data line.
+* The NFC coil pads J11 sit on the top side at r = 21.5, θ = 222°, under the OLED-bracket rim relief; NFC1/NFC2 run
+  as a pair, away from the TMAG5273 and the LED data line.
+* Assembly order at the display: solder the NFC coil tail to J11 **before** the OLED bracket goes on (the joint ends
+  up under the bracket rim), then fit the bracket, then place the glass on the rim with a corner jig, then the cover
+  with the coil (docs/mechanical.md §12 step 14).
 * Assembly: parts on both sides (the module, TMAG5273, piezo, J1 and J40 among the bottom parts); three fiducials per
   side (FID1–FID6).
 
