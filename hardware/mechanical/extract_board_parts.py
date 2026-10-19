@@ -55,6 +55,7 @@ HEIGHTS = [
     (r"SWPA3015", 1.50, ""),
     (r"AFC01", 2.00, "ZIF, verify"),
     (r"SOD-123", 1.35, ""),
+    (r"CP_EIA-\d+-(\d\d)", "eia", "tantalum, height from the EIA code"),
     (r"D_SMF", 1.10, ""),
     (r"TYPE-C-31-M-12", 3.26, "HRO"),
     (r"TS-1187A", 1.50, "XKB, actuator top"),
@@ -65,7 +66,10 @@ PLUG_EXT = {"JST_SH": 3.0, "S2B-PH": 4.5}      # mated housing beyond the header
 
 def height_for(fpname):
     for rx, h, note in HEIGHTS:
-        if re.search(rx, fpname):
+        m = re.search(rx, fpname)
+        if m:
+            if h == "eia":
+                return int(m.group(1)) / 10.0, note
             return h, note
     return 1.0, "UNKNOWN height, default 1.0"
 

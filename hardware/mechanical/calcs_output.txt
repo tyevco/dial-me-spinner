@@ -305,7 +305,7 @@ ref  value         height         under                clearance
 D21  B5819W        top z 32.05    rim/spoke            pocketed: +0.20, rim left 0.55
 J20  OLED_ZIF30    top z 32.70    glass                +0.30                         
 C3   10u           top z 31.60    rim/spoke            +0.20                         
-C32  4.7u/25V Ta   top z 31.70    rim/spoke            pocketed: +0.20, rim left 0.90
+C32  4.7u/25V Ta   top z 32.50    rim/spoke            pocket cut through            
 U20  TPS61040DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
 U21  TPS22917DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
 C38  4.7u/25V      top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
@@ -322,7 +322,7 @@ The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller
   bore Ø6                         28.3 mm^2: 12 wires 3.87 + coax 1.00 -> fill 17 %
   The 12 wires pass the 1.9-tall slot as a 2 x 6 ribbon (4.5 x 1.5).  SHR-12V-S housings (~14 x 3) cannot pass:
   route pre-crimped single wires (contacts only) and insert them into the housings afterwards.
-  harness path (J3 plug -> J1 plug, as modelled) 85 mm -> cut 12 wires to 100 mm (+15 slack)
+  harness path (J3 plug -> J1 plug, as modelled) 43 mm -> cut 12 wires to 58 mm (+15 slack)
   coax path (antenna feed -> u.FL) 63 mm; 146153-0100 has 100 mm -> 37 mm to stow (one gentle loop in the base, theta 100-150, away from the antenna)
   battery leads path 20 mm
   window 0.7 mm chem.-strengthened glass  Ø30 simply supported,  4.4 N centre: deflection 0.025 mm (gap to OLED glass 0.6 mm)

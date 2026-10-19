@@ -82,7 +82,7 @@ BB_Z1       = BB_Z0 + BB_T;         // 11.1
 BB_R        = 23.0;
 BB_TAB_HW   = 6.5;
 BB_TAB_X    = 34.6;
-BB_BOSS     = [0, -21];             // SPEC M2 boss at r 21, theta 270
+BB_BOSS     = [for (h = BASE_HOLES) if (h[1] < -10) h][0];   // theta-270 M2 boss at the PCB hole (SPEC r 21; PCB now r 20)
 BB_BOSS90   = [0, 21];              // SPEC boss at theta 90: sits on the antenna -> replaced by RIB (DEV)
 RIB_Y       = [17.75, 18.75];       // DEV: support rib under the board edge, between pack and antenna
 RIB_HX      = 6.0;
@@ -562,9 +562,9 @@ HARN_D = 1.8;     // 5x 28 AWG (OD 0.75) + 7x 32 AWG (OD 0.55): 2 x 6 ribbon, 4.
 HARN_PTS = [
     bp_point(J3P, 0, J3P[7] - 1.05, BB_Z1 + 1.5), bp_point(J3P, 0, J3P[7] - 2.5, 15.1),
     concat(pol(7.5, BOT_SLOT_A + 8), [15.3]), concat(pol(3.6, BOT_SLOT_A), [15.4]), [0, 0, 15.4],
-    [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]), concat(pol(8.8, TOP_SLOT_A), [27.95]),
-    [2.5, -13.2, 28.0], [8.0, -13.7, 28.0], [23.5, -14.2, 28.0], [24.6, -8.5, 28.0], [23.6, -2.8, 28.0],
-    bp_point(J1P, 0, J1P[8] + 2.0, 27.7), bp_point(J1P, 0, J1P[8] + 1.05, 27.7)];   // ends at the plug back face
+    [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]), [0, -9.4, 27.6],
+    [2.5, -9.6, 27.6], [5.5, -8.6, 27.6], [8.6, -7.0, 27.6],                 // between the hub flange and C1/R1
+    bp_point(J1P, 0, J1P[8] + 1.0, 27.6)];   // ends at the J1 plug back face (route for the current PCB)
 module harness() color(c_wire) chain(HARN_PTS, HARN_D);
 // antenna coax (Ø1.13): feed end -> riser outside the base board -> bottom slot -> bore -> top slot -> u.FL
 COAX_PTS = [
@@ -677,7 +677,8 @@ module oled_bracket()
         translate([0, OLED_YC - OLED_L / 2 - 1, MB_Z1]) translate([-9.0, 0, 0]) cube([18, 4.5, 3]);   // FPC fold relief
         // pockets over every top-side part taller than 0.95 mm (0.3 mm all round, 0.2 above)
         for (p = MAIN_PARTS) if (p[1] == "T" && p[10] > 0.95) translate([p[2], p[3], p[9] - 0.1]) rotate(p[4])
-            translate([p[5] - 0.31, p[7] - 0.31, 0]) cube([p[6] - p[5] + 0.62, p[8] - p[7] + 0.62, p[10] + 0.31]);
+            translate([p[5] - 0.31, p[7] - 0.31, 0])
+                cube([p[6] - p[5] + 0.62, p[8] - p[7] + 0.62, p[9] + p[10] + 0.6 > BRK_Z1 ? 5 : p[10] + 0.31]);
     }
 
 module oled_glass() {

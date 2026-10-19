@@ -21,17 +21,18 @@ The same hardware serves three uses:
 > been built or tested.** The schematics of both boards pass ERC with no errors
 > or warnings. Both boards are placed by `layout.py` and autorouted with
 > Freerouting, and `release.py` writes the fab outputs into `hardware/fab/`
-> only after DRC and schematic parity pass. No prototype has been built, no
-> firmware has been written, and the mechanical model is still being updated
-> to the generated boards. Every runtime, force and spin-time figure in the
-> docs is a calculation or simulation that still has to be verified on a
-> prototype.
+> only after DRC and schematic parity pass. No prototype has been built and no
+> firmware has been written. The mechanical model's clash check of the
+> generated boards still lists placement items to fix before ordering
+> ([mechanical §3](docs/mechanical.md)). Every runtime, force and spin-time
+> figure in the docs is a calculation or simulation that still has to be
+> verified on a prototype.
 
 ## Features (rev A design)
 
 | | |
 |---|---|
-| Size | Ø70 × 36 mm. Stationary centre, spinning 316L stainless ring (124 g, OD 70 / ID 54 / 10 mm) on a single 608 bearing |
+| Size | Ø70 × 36 mm. Stationary centre, spinning 316L stainless ring (≈ 117 g, OD 70 / ID 54 / 10 mm) on a single 608 bearing |
 | Detents | 24 clicks per turn, strength continuously variable from 0 to about 16.5 mN·m, or free spin with no perceptible cogging. Switched by a micro linear stepper with a self-locking lead screw (zero holding power) |
 | Rotation sensing | TI TMAG5273 3D Hall sensor reading the same 48-magnet track. Interpolated angle, about 0.05–0.1° after self-calibration, plus µA-level wake on rotation |
 | Display | 1.5 in 128×128 RGB PMOLED (SSD1351) behind a Ø30 mm round window |
@@ -91,7 +92,8 @@ hardware/
                          ORDER-NOTES.md (DNP list, bottom-side parts, board-only
                          parts), PDFs, renders
   mechanical/            enclosure and rotor CAD (OpenSCAD), calculations, renders
-                         and STLs; being updated to the generated boards
+                         and STLs; board parts imported from the generated PCBs
+                         (extract_board_parts.py) for the clash check
 firmware/                (planned) nRF Connect SDK / Zephyr application
 ```
 
@@ -171,8 +173,10 @@ footprint.
   schematic-parity gate: Gerbers, the JLCPCB BOM and CPL (rotations corrected
   per LCSC part), ORDER-NOTES.md, PDFs and renders. Assembly, bring-up,
   mechanical and firmware-plan documents.
-* **In progress:** updating the mechanical model and docs/mechanical.md to the
-  generated boards and the revised SPEC §8.
+* **In progress:** the PCB placement items that the mechanical model's clash
+  check reports (module u.FL against the rotor hub, battery-connector height,
+  R42 under the cover skirt; mechanical §3B) and the SPEC items in mechanical
+  §3A.
 * **Not done:** no prototype has been built or tested, and no firmware code has
   been written. Every item marked "to verify on prototype" in the docs is
   still open.
@@ -181,11 +185,12 @@ footprint.
     and [§13](docs/assembly.md#13-open-items-and-tvp-list-assembly) (module
     u.FL clearance to the rotor hub, LED-cavity silk, boost-inductor spacing),
     then order both boards from `hardware/fab/`: two-sided assembly for the
-    main board, the MDBT50Q through JLC Global Sourcing or consignment, the
-    DNP list from ORDER-NOTES.md;
+    main board, top side only for the base board, the MDBT50Q through JLC
+    Global Sourcing or consignment, the DNP list from ORDER-NOTES.md;
   * a printed mechanical mock-up to check the antenna shelf, the harness and
     coax path and the ring's ESD bleed path, and to measure the RF antenna
-    (VNA/RSSI), spin-down and detent feel;
+    (VNA/RSSI), spin-down and detent feel, plus a bench test of the stepper's
+    free-mode cogging before the PCB is frozen;
   * bring-up of the first prototype ([docs/bringup.md](docs/bringup.md)) and
     the items to verify on it;
   * firmware, following [docs/firmware.md](docs/firmware.md).

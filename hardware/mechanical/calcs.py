@@ -859,8 +859,9 @@ def main(plots=True):
         under_glass = np.any((np.abs(xs) <= 16.9) & (np.abs(ys) <= 17.0))
         if in_rim or in_spoke:
             if p["h"] > 0.95:
+                left = BRK_TOP - top - 0.2
                 top_rows.append((p["ref"], p["value"][:14], f"top z {top:.2f}", "rim/spoke",
-                                 f"pocketed: +0.20, rim left {BRK_TOP - top - 0.2:.2f}"))
+                                 f"pocketed: +0.20, rim left {left:.2f}" if left >= 0.4 else "pocket cut through"))
             elif 31.8 - top < 0.3:
                 top_rows.append((p["ref"], p["value"][:14], f"top z {top:.2f}", "rim/spoke", f"{31.8 - top:+.2f}"))
         elif under_glass and 33.0 - top < 0.6:
