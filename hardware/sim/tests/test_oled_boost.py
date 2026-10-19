@@ -132,6 +132,18 @@ def u21_ct_ready(vsys: float) -> float:
     return vsys - (vdel + vsys + 1.0)
 
 
+def cout_effective(d) -> float:
+    """Every FITTED capacitor between +13V_OLED and GND in the netlist (so a part left off or a changed value is
+    seen), at its minimum tolerance; parts >= 1 uF get the X5R DC-bias derating at 13 V."""
+    tot = 0.0
+    for ref in d.on_net("+13V_OLED", "C"):
+        if not d.fitted(ref) or ref in d._shorted or set(d.pins[ref].values()) != {"+13V_OLED", "GND"}:
+            continue
+        c = d.value(ref) * (1 - d.tol(ref))
+        tot += c * (DERATE_13V if d.value(ref) >= 1e-6 else 1.0)
+    return tot
+
+
 def ipeak_eq1(vin: float, l_h: float, ilim: float = 0.450) -> float:
     """TPS61040 SLVS413L 6.3.1 eq. 1: Ipeak = ILIM + VIN / L x 100 ns (ILIM max 450 mA, 5.5)."""
     return ilim + vin / l_h * 100e-9
@@ -172,10 +184,11 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
     ron = u21_ron(temp) if ron is None else ron
     dcr = (L20_DCR_TYP if dcr is None else dcr) * (1 + CU_TCR * (temp - 20))
     sc = dict(scale or {})
-    if derate:
-        for ref in ("C30", "C39"):
-            sc[ref] = sc.get(ref, 1.0) * DERATE_13V
-        sc["C38"] = sc.get("C38", 1.0) * DERATE_VSYS
+    if derate:   # X5R bulk caps (>= 1 uF) on the boost output and input, found from the netlist
+        for net, k in (("+13V_OLED", DERATE_13V), ("OLED_VIN", DERATE_VSYS)):
+            for ref in d.on_net(net, "C"):
+                if set(d.pins[ref].values()) == {net, "GND"} and d.value(ref) >= 1e-6:
+                    sc[ref] = sc.get(ref, 1.0) * k
     n = {k: d.node(k) for k in ("VSYS", "OLED_VIN", "OLED_BST_SW", "OLED_BST_FB", "+13V_OLED", "OLED_LSW_CT",
                                 "OLED_VCC_EN", "+3V3")}
     deck = spicelib.Deck(title)
@@ -231,15 +244,29 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
                "n_u21_vin": vsys, n["+13V_OLED"]: v0, n["OLED_BST_FB"]: vfb0,
                n["OLED_LSW_CT"]: u21_ct_ready(vsys), n["OLED_VCC_EN"]: 3.3, "xu20.cnt": 600, "xu21.en": 1}
         deck += ".ic " + " ".join(f"v({k})={v:.6g}" for k, v in ics.items())
+    elif init == "off":
+        # long after OLED_VCC_EN went low: U21 open (CT = VIN), OLED_VIN drained to 0 V (worst case for the FB pin
+        # abs max), VCC held below VCI by the panel ESD path (SSD1351 8.9 note (1)) and settling from there
+        v0 = 3.3 - 0.5 if vcc0 is None else vcc0
+        r26, r27 = d.value("R26"), d.value("R27")
+        ics = {n["VSYS"]: vsys, n["OLED_VIN"]: 0, n["OLED_BST_SW"]: 0, "n_l20_dcr": 0, "n_d21_a": 0,
+               "n_u21_vin": vsys, n["+13V_OLED"]: v0, n["OLED_BST_FB"]: v0 * r27 / (r26 + r27),
+               n["OLED_LSW_CT"]: vsys, n["OLED_VCC_EN"]: 0, "xu20.cnt": 0, "xu21.en": 0}
+        deck += ".ic " + " ".join(f"v({k})={v:.6g}" for k, v in ics.items())
     return deck
 
 
-def run(deck, tstop, uic=True, tmax=None):
+def run(deck, tstop, uic=True, tmax=None, may_miss=()):
+    """Run a transient; `may_miss` lists WHEN-measures that legitimately find no crossing (they come back as
+    +inf so that the check, not the harness, reports the failure)."""
     extra = " ".join(x for x in (tmax or "", "uic" if uic else "") if x)
     deck.tran(STEP, f"{tstop:.6g}", 0, extra)
     res = deck.run(timeout=900)
     assert not res["_errors"], "\n".join(res["_errors"][:10]) + "\n" + res["_log"][-3000:]
-    assert not res.get("_missing"), f"missing measures {res.get('_missing')}\n" + res["_log"][-3000:]
+    missing = [m for m in res.get("_missing", []) if m not in may_miss]
+    assert not missing, f"missing measures {missing}\n" + res["_log"][-3000:]
+    for m in may_miss:
+        res.setdefault(m, float("inf"))
     return res
 
 
@@ -297,7 +324,7 @@ def startup(d, title, *, vsys, tstop, derate, **kw):
     deck.meas("tran swpk MAX v(n_oled_bst_sw)")
     deck.meas(f"tran iu21avg AVG i(vprb_u21) FROM=20u TO={tstop:.6g}")
     deck.meas(f"tran vend AVG v(n_p13v_oled) FROM={tstop - 0.3e-3:.6g} TO={tstop:.6g}")
-    return run(deck, tstop, uic=False)
+    return run(deck, tstop, uic=False, may_miss=("tup", "tvin90"))
 
 
 # =============================================================================================== tests
@@ -308,8 +335,7 @@ def test_static_ratings(main, check):
     hi = lambda r: d.value(r) * (1 + d.tol(r))   # noqa: E731
     check("L20 min (tolerance)", lo("L20"), 2.2e-6, None, "H", "TPS61040 SLVS413L 5.3 / 7.2.2.1: L 2.2-47 uH")
     check("L20 max (tolerance)", hi("L20"), None, 47e-6, "H", "TPS61040 SLVS413L 7.2.2.1: L 2.2-47 uH")
-    cout = sum(lo(r) * DERATE_13V for r in ("C30", "C39")) + lo("C31")
-    check("COUT effective at 13 V (min tol, DC bias)", cout, 1e-6, None, "F",
+    check("COUT effective at 13 V (fitted netlist caps, min tol, DC bias)", cout_effective(d), 1e-6, None, "F",
           "TPS61040 SLVS413L 5.3: COUT >= 1 uF (Samsung CL21A106 DC-bias -71 % at 13 V)")
     check("R27 (R2 of the divider)", d.value("R27"), None, 200e3, "ohm", "TPS61040 SLVS413L 7.2.2.2: R2 <= 200 kOhm")
     check("R26 (R1 of the divider)", d.value("R26"), None, 2.2e6, "ohm", "TPS61040 SLVS413L 7.2.2.2: R1 <= 2.2 MOhm")
@@ -513,39 +539,59 @@ def test_load_steps(main, check):
     soft_checks(check, rows)
 
 
-def test_shutdown_vcc_discharge(main, check):
-    """OLED_VCC_EN low (after AEh, display off): U21 opens, the boost drains C38 into VCC until UVLO and stops,
-    VCC then floats down through the divider (no active discharge, never pulled to ground), and with the
-    switch open nothing feeds VSYS into VCC."""
-    t_off, t_end = 50e-6, 0.1
+def test_shutdown_vcc_float(main, check):
+    """OLED_VCC_EN low (after AEh, display off): U21 opens at once, so VSYS stops feeding the boost (ISD only).
+    The TPS61040 (EN = VIN) keeps regulating from the charge left on C38 until OLED_VIN falls to its UVLO, so VCC
+    stays near 13 V for tens of ms; it must not overshoot, and it is never actively discharged (it floats, SSD1351
+    8.9 note (2)).  3 ms window: before OLED_VIN reaches UVLO (the model has no UVLO hysteresis, so that regime
+    is not simulated - see test_off_state for the end state)."""
+    t_off, t_end = 50e-6, 3e-3
 
     def one(job):
         vs, temp = job
         deck = build(main, f"shutdown {vs} V {temp} C", vsys=vs, temp=temp, icc=0.0, derate=False,
                      en="off_at", t_en=t_off)
-        deck.meas("tran vinlate MAX v(n_oled_vin) FROM=20m TO=100m")
         deck.meas("tran vccmax MAX v(n_p13v_oled)")
-        deck.meas("tran vccend FIND v(n_p13v_oled) AT=100m")
-        deck.meas("tran iu21late AVG i(vprb_u21) FROM=20m TO=100m")
-        return job, run(deck, t_end, tmax="1u")
+        deck.meas(f"tran vccend FIND v(n_p13v_oled) AT={t_end:.6g}")
+        deck.meas(f"tran iu21late AVG i(vprb_u21) FROM={t_off + 0.2e-3:.6g} TO={t_end:.6g}")
+        return job, run(deck, t_end)
     rows = []
-    for (vs, temp), r in pmap(one, [(VSYS_USB, 60.0), (3.0, 25.0)]):
+    for (vs, temp), r in pmap(one, [(VSYS_USB, 60.0), (3.0, 25.0), (3.0, -10.0)]):
         tag = f"VSYS {vs} V, {temp:g} C"
-        rows += [(f"OLED_VIN max 20-100 ms after OLED_VCC_EN low, {tag}", r["vinlate"], None, UVLO_MAX, "V",
-                  SRC_UVLO),
-                 (f"VCC max during turn-off, {tag}", r["vccmax"], None, VCC_MAX, "V", SRC_VCC),
-                 (f"VCC 100 ms after turn-off (floats, not pulled below VCI), {tag}", r["vccend"], 3.3, None,
+        rows += [(f"VCC max during turn-off, {tag}", r["vccmax"], None, VCC_MAX, "V", SRC_VCC),
+                 (f"VCC 3 ms after turn-off (floats, not pulled toward GND), {tag}", r["vccend"], 3.3, None,
                   "V", SRC_FLOAT + "; note (5) never pulled to ground"),
                  (f"VSYS current into U21 while off, {tag}", r["iu21late"], None, U21_ISD_MAX, "A", SRC_ISD)]
-    # long-term state with OLED_VCC_EN low at the highest VSYS: VCC is held only by the panel ESD path from VCI
-    deck = build(main, "off DC", vsys=VSYS_USB, icc=0.0, en="off", init="cold")
-    deck.op()
-    deck.print_op("v(n_p13v_oled)", "v(n_p3v3)", "i(vprb_u21)")
-    r = deck.run()
-    assert not r["_errors"], r["_log"][-2000:]
-    rows += [("VCC with OLED_VCC_EN low (DC), VSYS 4.6 V", r["op_0"], None, r["op_1"], "V",
-              SRC_FLOAT + ": must not exceed VCI (+3V3)"),
-             ("VSYS current into U21 with OLED_VCC_EN low (DC)", r["op_2"], None, U21_ISD_MAX, "A", SRC_ISD)]
+    soft_checks(check, rows)
+
+
+SRC_FB_ABS = "TPS61040 SLVS413L 5.1 abs max: FB <= VIN + 0.3 V (architecture.md risk R31)"
+
+
+def test_off_state(main, check):
+    """Long-term state with OLED_VCC_EN low: OLED_VIN drained to 0 V (worst case), VCC held by the panel's
+    VCI -> VCC ESD path.  No path from VSYS may lift VCC above VCI, U21 draws only its shutdown current, and the
+    divider must not put the TPS61040 FB pin more than 0.3 V above its (unpowered) VIN.  Highest VSYS; the ESD
+    diode drop falls with temperature, so 60 C gives the highest VCC and FB."""
+    def one(job):
+        vs, temp = job
+        deck = build(main, f"off {vs} V {temp} C", vsys=vs, temp=temp, icc=0.0, derate=False, en="off",
+                     init="off")
+        deck.meas("tran vccmax MAX v(n_p13v_oled) FROM=1m TO=5m")
+        deck.meas("tran fbx MAX v(n_oled_bst_fb,n_oled_vin) FROM=1m TO=5m")
+        deck.meas("tran iu21 AVG i(vprb_u21) FROM=1m TO=5m")
+        deck.meas("tran v3v3 AVG v(n_p3v3) FROM=1m TO=5m")
+        deck.tran("1u", "5m", 0, "uic")
+        r = deck.run(timeout=900)
+        assert not r["_errors"] and not r.get("_missing"), r["_log"][-3000:]
+        return job, r
+    rows = []
+    for (vs, temp), r in pmap(one, [(VSYS_USB, 60.0), (VSYS_USB, 25.0), (3.0, -10.0)]):
+        tag = f"VSYS {vs} V, {temp:g} C"
+        rows += [(f"VCC with OLED_VCC_EN low, {tag}", r["vccmax"], None, r["v3v3"], "V",
+                  SRC_FLOAT + ": must not exceed VCI (+3V3)"),
+                 (f"FB - OLED_VIN with the boost off, {tag}", r["fbx"], None, 0.3, "V", SRC_FB_ABS),
+                 (f"VSYS current into U21 with OLED_VCC_EN low, {tag}", r["iu21"], None, U21_ISD_MAX, "A", SRC_ISD)]
     soft_checks(check, rows)
 
 

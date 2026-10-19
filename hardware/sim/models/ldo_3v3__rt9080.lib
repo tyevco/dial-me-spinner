@@ -109,7 +109,7 @@ Berr err 0 V = V(ss) - V(VOUT,GND)
 Rerr err 0 1G
 * pass-current-dependent bias = (IQ + IG(I)) / IG(600 mA); lags 1 us (breaks the algebraic ip -> bias -> ip loop).
 * Used only to scale GRO and GFF.
-Gbias 0 bias cur = ((IQ + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-abs(V(ip))/0.3m)) + 8.2e-4*abs(V(ip))))/758u - V(bias))*1n/1u
+Gbias 0 bias cur = ((IQ + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-sqrt(V(ip)*V(ip)+1e-18)/0.3m)) + 8.2e-4*sqrt(V(ip)*V(ip)+1e-18)))/758u - V(bias))*1n/1u
 Cbias bias 0 1n
 Rbias bias 0 1T
 * slow high-gain path: first-order lag TAU1 with back-calculation anti-windup (target <= (iav + 5 mA)/GLF)
@@ -144,8 +144,10 @@ Rmn mn 0 1G
 Bip ip 0 V = V(ena)*0.5*(V(mn) + sqrt(V(mn)*V(mn) + 1e-12))
 Rip ip 0 1G
 Bpass VIN VOUT I = V(ip)
-* ground-pin current: IQ (less the divider share) plus IG(I); shutdown 0.1 uA (Table 14 ISHDN)
-Bgnd VIN GND I = V(ena)*(IQ - IDIV - IG0 + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-abs(V(ip))/0.3m)) + 8.2e-4*abs(V(ip)))) + (1-V(ena))*0.1u
+* ground-pin current: IQ (less the divider share) plus IG(I); shutdown 0.1 uA (Table 14 ISHDN). ip >= 0 (softplus),
+* and the magnitude is the smooth sqrt(ip^2 + (1 nA)^2): an abs() kink at ip = 0 stalled the solver whenever U1 sat
+* reverse-biased (pass current ~0); a bare ip overflows exp() on negative Newton iterates
+Bgnd VIN GND I = V(ena)*(IQ - IDIV - IG0 + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-sqrt(V(ip)*V(ip)+1e-18)/0.3m)) + 8.2e-4*sqrt(V(ip)*V(ip)+1e-18))) + (1-V(ena))*0.1u
 * internal feedback divider (inside the DS IQ)
 Bdiv VOUT GND I = IDIV*V(VOUT,GND)/VNOM
 * active discharge when disabled (80 ohm)

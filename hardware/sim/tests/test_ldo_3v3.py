@@ -778,7 +778,8 @@ def _reverse_run(main, base, case):
         tstop = t_ev + 1e-3
     lines, n_out = ldo_lines(main, "n_vsys", corner=HIGH, temp=60, vdep=True, cap_sign={r: 1 for r in out_caps(main)})
     deck += lines
-    deck += [f"ILOAD {n_out} 0 {ACTIVE_MIN}", f"BDIF ndif 0 V=v({n_out})-v(n_vsys)"]
+    # awake-floor load as a resistor (an ideal current source would drag the unpowered rail negative at t = 0)
+    deck += [f"RLOAD {n_out} 0 {ldo_vnom(main) / ACTIVE_MIN:.6g}", f"BDIF ndif 0 V=v({n_out})-v(n_vsys)"]
     deck.tran("0.1u", f"{tstop:.6g}", extra="1u")
     deck.meas(f"tran vpre FIND v({n_out}) AT={t_ev - 2e-6}")
     deck.meas(f"tran vrev MAX v(ndif) FROM={t_ev - 2e-6} TO={tstop:.6g}")

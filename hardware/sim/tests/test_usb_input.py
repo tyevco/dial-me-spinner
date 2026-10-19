@@ -25,6 +25,17 @@ placement of 2026-10-19 (FALLBACK_MM) is used instead.
 
 Models: hardware/sim/models/usb_input__*.lib (each cites its datasheet). Values of every R/C come from
 the netlists (Design.value), so a schematic change shows up on the next run.
+
+Independent verification (2026-10-19), changes made:
+  * models: the ground port of the USBLC6 / BQ25180-IN / nRF models was named GND, which ngspice treats as global
+    ground even inside a subcircuit, so a wrong connection of that pin was invisible (renamed VSS); USBLC6 Transil
+    forward conduction added; nRF VBUS pad capacitance added (the C12-left-off ESD case did not converge).
+  * builder: Design.remove(U2) was ignored; D1 left off crashed the DC / hot-plug decks instead of being simulated;
+    U2/D1 pins on another net landed on unconnected nodes; cached hot-plug / ESD runs ignored main-board faults;
+    parts added to the simulated nets were silently dropped (now NetlistError, test_netlist_coverage).
+  * new: test_data_line_dc_levels (USB 2.0 Table 7-7 VOH / VOL through U2, catches U2 pin-wiring errors) and the
+    verifier fault tests at the end of the file (C12 x10, C1 left off, R2 x10, U2 VBUS->GND, U2 GND->VBUS, C12 left
+    off, U2 left off with the second-stage fix).
 """
 
 from __future__ import annotations
@@ -1021,3 +1032,101 @@ def test_fault_tvs_reversed(base, main, parts, check):
     op = dc_point(base, main, 5.0, CABLES["1m_1uH_50m"][2], 0.0)
     check("FAULT D1 reversed: D1 DC current at VBUS 5 V far above IT (detected)", abs(op["itvs"]), TVS_IT[0], None, "A",
           TVS_IT[1])
+
+
+# ============================================================================================ fault injection (verifier)
+def rewire(d: Design, ref: str, func: str, net: str) -> Design:
+    """Wrong-connection fault: a copy of `d` with pin `func` of `ref` moved to `net` (pins and pin functions kept
+    consistent, so Net.lines maps the pin onto the builder's node for that net)."""
+    d = copy.deepcopy(d)
+    pins = [pn for pn, fn in _pin_funcs(d, ref).items() if fn == func]
+    if not pins:
+        raise NetlistError(f"{ref} has no pin function {func!r}")
+    for pn in pins:
+        d.pins[ref][pn] = net
+    d.funcs[ref][func] = net
+    return d
+
+
+def _pin_funcs(d: Design, ref: str) -> dict:
+    """{pin number: pin function} of a part, from the netlist nodes."""
+    return {pin: fn for net, nodes in d.nets.items() for r, pin, fn in nodes if r == ref}
+
+
+@pytest.mark.fault
+def test_fault_c12_x10_breaks_vbus_capacitance(base, main, parts, check):
+    """Value off by 10x on the other board: C12 fitted as 47 uF instead of 4.7 uF. The Type-C sink capacitance check
+    (which spans both boards) must catch it."""
+    c12 = one([r for r in caps_on(main, parts.main_vbus_nets)], "main VBUS capacitor")
+    main.override(c12, "47u/16V")
+    c = vbus_capacitance(base, main, 0.0, {}, 1.0)
+    check(f"FAULT {c12}=47u: sink VBUS capacitance exceeds the Type-C limit (detected)", c, TYPEC_VBUS_CAP[0], None,
+          "F", TYPEC_VBUS_CAP[1])
+
+
+@pytest.mark.fault
+def test_fault_c1_left_off_breaks_cin(base, main, parts, check):
+    """Part left off: no C1. The BQ25180 effective-CIN check at 5 V must catch it."""
+    c1 = one(caps_on(base, {parts.vbus_b}), "IN capacitor")
+    base.remove(c1)
+    c = vbus_capacitance(base, main, 5.0, {}, 1.0, only_cin=True)
+    check(f"FAULT {c1} left off: CIN below the BQ25180 minimum (detected)", c, None, BQ_CIN[0][0], "F", BQ_CIN[1])
+
+
+@pytest.mark.fault
+def test_fault_rd_x10(base, parts, check):
+    """Value off by 10x: R2 (Rd on CC2) fitted as 51 k. In the CC2 orientation a Default-USB source sees vOPEN and
+    never turns VBUS on."""
+    rd = one(base.on_net(parts.cc[1], "R"), "Rd on CC2")
+    base.override(rd, "51k")
+    v = cc_voltage(base, "CC2", "default", "rp5v", (-1, -1), {})
+    check(f"FAULT {rd}=51k: CC2 voltage above the Default vRd window (detected)", v, TYPEC_SRC_WIN["default"][1], None,
+          "V", "USB Type-C R2.0 Table 4-32 vRd max 1.50 V / vOPEN >= 1.65 V")
+
+
+@pytest.mark.fault
+def test_fault_u2_vbus_pin_on_gnd(base, main, parts, check):
+    """Wrong connection: U2 pin 5 (VBUS) tied to GND. The upper steering diodes then clamp D+/D- at ~0.7 V: the
+    data-line VOH check must catch it (no transient check does)."""
+    bad = rewire(base, parts.esd, "VBUS", "GND")
+    v = data_line_dc(bad, main, 5.0, "J")
+    check(f"FAULT {parts.esd} VBUS pin on GND: D+ high level at J1 below VOH (detected)", v["hi_j1"], None,
+          USB2_VOH[0], "V", USB2_VOH[1])
+
+
+@pytest.mark.fault
+def test_fault_u2_gnd_pin_on_vbus(base, main, parts, check):
+    """Wrong connection: U2 pin 2 (GND) tied to VBUS (pins 2/5 swapped in the symbol). The lower steering diodes then
+    pull D+/D- up to ~VBUS - 1 V: the data-line VOL check must catch it."""
+    bad = rewire(base, parts.esd, "GND", parts.vbus_b)
+    v = data_line_dc(bad, main, 5.0, "J")
+    check(f"FAULT {parts.esd} GND pin on VBUS: D- low level at J1 above VOL (detected)", v["lo_j1"], USB2_VOL[0], None,
+          "V", USB2_VOL[1])
+
+
+@pytest.mark.fault
+def test_fault_c12_left_off_esd(base, main, parts, check):
+    """Part left off: no C12 at the nRF VBUS pad. A +8 kV strike on VBUS then reaches the pad through the harness
+    unfiltered; the nRF VBUS check of test_esd_vbus must catch it (the model has no positive VBUS clamp, so the
+    value is an upper bound, but any value above 5.8 V is a violation)."""
+    c12 = one([r for r in caps_on(main, parts.main_vbus_nets)], "main VBUS capacitor")
+    main.remove(c12)
+    r = esd(base, main, "vj1", 8.0, **ESD_WORST)
+    check(f"FAULT {c12} left off: nRF VBUS peak on +8 kV at VBUS above abs max (detected)", r["vnrf_max"],
+          NRF_VBUS_ABS[0][1], None, "V", NRF_VBUS_ABS[1])
+
+
+@pytest.mark.fault
+@pytest.mark.parametrize("sig,kv", [("dp", 8.0), ("dm", -8.0)])
+def test_fault_u2_left_off_with_second_stage(base, main, parts, check, sig, kv):
+    """Part left off: no U2 at J1. In today's design this is masked: test_esd_data_lines_nrf_pad_current already
+    fails (strict xfail, USB-2). With the recommended second-stage array at U10 in place (what-if, typical clamps, as in
+    test_esd_fix_preview_second_stage, which passes) the pad-current check must catch a missing U2."""
+    base.remove(parts.esd)
+    net = Net(base, main, tvs="clampmax", esd="typ")
+    dk = esd_deck(net, f"{sig}j1", kv)
+    if not main_esd2(main, parts):
+        dk += [f"Xesd2 dpnrf 0 dmnrf vnrf USBIN_USBLC6_2 {net.esd_params()}"]
+    r = run(dk)
+    check(f"FAULT {parts.esd} left off (2nd stage fitted): nRF {sig.upper()} pad current on {kv:+.0f} kV (detected)",
+          max(r[f"inrf{sig}_max"], -r[f"inrf{sig}_min"]), NRF_PAD_LIMIT[0], None, "A", NRF_PAD_LIMIT[1])

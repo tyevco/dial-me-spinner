@@ -32,7 +32,7 @@ CX, CY = 100.0, 100.0
 
 # (footprint-name regex, height mm, note).  First match wins.
 HEIGHTS = [
-    (r"MountingHole|TestPoint|Tag-Connect|Fiducial", None, "no body"),
+    (r"MountingHole|TestPoint|Tag-Connect|Fiducial|NFC_Coil_Pads", None, "no body"),
     (r"WS2812", 0.90, "SPEC 30.7-31.6"),
     (r"C_0402", 0.55, "0402 MLCC max"),
     (r"R_0402", 0.40, ""),
