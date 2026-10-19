@@ -1558,7 +1558,7 @@ def test_proposed_peak_cap_fix(main, base, check, vbat):
     down (R3) and the others the derived budget rounded, which the *_with_fw_rule guards check.)"""
     s = System(main, base, WORST)
     icc = OLED_ICC_MAX if vbat >= FW_V_DERATE else OLED_ICC_DIM
-    peak = 0.95 * led_peak_budget(s, vbat, icc)
+    peak = FW_PK_DERATE * led_peak_budget(s, vbat, icc)
     cap = FW_LED_BURST if vbat >= FW_V_FULL else FW_LED_LOW
     loads = Loads(oled_icc=icc, led_ipk=peak / (3 * s.n_led), led_duty=min(1.0, cap / max(peak, 1e-6)))
     r = run_tran(s.deck(f"peak-capped {vbat}", loads, vbat=vbat), stop=1.2e-3)
