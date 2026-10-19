@@ -44,7 +44,11 @@
 *                    smooth fit of Fig. "Ground Current vs Load Current" (VIN 4.3 V, VOUT 3.3 V, 25 C: 57 uA @ 1 mA,
 *                    105 @ 10 mA, 205 @ 50 mA, 270 @ 100 mA, 760 @ 600 mA; fit within -13..+3 %). Below 1 mA the DS
 *                    has no data: IG fades ~linearly to 0 (ASSUMPTION; bench-verify the sleep current).
-*   Feedback divider Internal VOUT -> GND load IDIV = 0.5 uA, counted inside IQ (value not published, ASSUMPTION).
+*   Feedback divider Internal VOUT -> GND load IDIV = 0.5 uA at VNOM, counted inside IQ (value not published,
+*                    ASSUMPTION). The GND pin subtracts the divider current that actually flows (IDIV*VOUT/VNOM)
+*                    and its IG, so the no-load input current is IQ at every accuracy / temperature / line corner:
+*                    the DS IQ is the whole no-load input current, divider included (it subtracted the VNOM share
+*                    before, which put a +2 % part at IQ + 12 nA, above the DS IQ max).
 *   Discharge        80 ohm output pull-down when disabled (Table 14 RDISCHG, section 17.7).
 *   Body diode       VOUT -> VIN (abs max VOUT - VIN <= 0.3 V, section 10). No reverse channel current. The diode
 *                    parameters (IS 1e-12, N 1.2, RS 0.2 ohm) are ASSUMED (not published): they set how far above
@@ -91,8 +95,6 @@
 .param DVT={(0.42e-3*(TEMPC-25) - 4.8e-6*(TEMPC-25)*(TEMPC-25))/3.32}
 .param RDS0={0.517*RDSK*(1+0.0028*(TEMPC-25))}
 .param TAUA={1/(6.283185*FA)}
-* IG at the divider current, removed from the GND pin so that the no-load input current equals IQ
-.param IG0={3.0e-4*pwr(IDIV*IDIV+1e-14, 0.125)*(1-exp(-IDIV/0.3m)) + 8.2e-4*IDIV}
 * enable (EN threshold and minimum operating input), 0..1
 Bena ena 0 V = 0.25*(1+tanh((V(EN,GND)-VENTH)/0.02))*(1+tanh((V(VIN,GND)-VINMIN)/0.02))
 Rena ena 0 1G
@@ -144,10 +146,14 @@ Rmn mn 0 1G
 Bip ip 0 V = V(ena)*0.5*(V(mn) + sqrt(V(mn)*V(mn) + 1e-12))
 Rip ip 0 1G
 Bpass VIN VOUT I = V(ip)
-* ground-pin current: IQ (less the divider share) plus IG(I); shutdown 0.1 uA (Table 14 ISHDN). ip >= 0 (softplus),
+* divider current as it flows (Bdiv below), as a node: the GND pin removes it and its IG from IQ
+Bidv idv 0 V = IDIV*V(VOUT,GND)/VNOM
+Ridv idv 0 1G
+* ground-pin current: IQ less the divider share (current divider current and its IG, so the no-load input
+* current is IQ exactly) plus IG(I); shutdown 0.1 uA (Table 14 ISHDN). ip >= 0 (softplus),
 * and the magnitude is the smooth sqrt(ip^2 + (1 nA)^2): an abs() kink at ip = 0 stalled the solver whenever U1 sat
 * reverse-biased (pass current ~0); a bare ip overflows exp() on negative Newton iterates
-Bgnd VIN GND I = V(ena)*(IQ - IDIV - IG0 + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-sqrt(V(ip)*V(ip)+1e-18)/0.3m)) + 8.2e-4*sqrt(V(ip)*V(ip)+1e-18))) + (1-V(ena))*0.1u
+Bgnd VIN GND I = V(ena)*(IQ - V(idv) - (3.0e-4*pow(V(idv)*V(idv)+1e-14, 0.125)*(1-exp(-sqrt(V(idv)*V(idv)+1e-18)/0.3m)) + 8.2e-4*sqrt(V(idv)*V(idv)+1e-18)) + (3.0e-4*pow(V(ip)*V(ip)+1e-14, 0.125)*(1-exp(-sqrt(V(ip)*V(ip)+1e-18)/0.3m)) + 8.2e-4*sqrt(V(ip)*V(ip)+1e-18))) + (1-V(ena))*0.1u
 * internal feedback divider (inside the DS IQ)
 Bdiv VOUT GND I = IDIV*V(VOUT,GND)/VNOM
 * active discharge when disabled (80 ohm)
