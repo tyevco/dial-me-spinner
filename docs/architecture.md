@@ -785,12 +785,13 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 mode (VDDH = SYS, REG0 DC/DC → 3.0 V)?** SPEC chose normal mode, and the
 reasons are sound:
 
-1. **LED logic margin.** At VLED up to 4.5 V the WS2812-V6 needs a data high of
-   up to 2.7 V. A 3.0 V REG0 rail can be as low as 2.7 V (−10 % tolerance),
-   where the guaranteed VOH is VDD − 0.4 ≈ 2.3 V: a **negative margin of about
-   −0.4 V, so high-voltage mode fails outright** without a level shifter. At
-   3.3 V (RT9080 ±2 %) the worst-case VOH is about 2.83 V, a margin of about
-   0.1–0.2 V ([§6.4](#64-led-ring-and-audio)).
+1. **LED logic margin.** At VLED up to about 4.49 V (SYS_REG 4.4 V at +2 %)
+   the WS2812-V6 needs a data high of up to about 2.69 V. A 3.0 V REG0 rail
+   can be as low as 2.7 V (−10 % tolerance), where the guaranteed VOH is
+   VDD − 0.4 ≈ 2.3 V: a **negative margin of about −0.4 V, so high-voltage
+   mode fails outright** without a level shifter. At 3.3 V (RT9080 ±2 %) the
+   worst-case DC margin is about +116 mV with SYS_REG at 4.4 V
+   ([§6.4](#64-led-ring-and-audio)).
 2. **No REG0 load limits.** In high-voltage mode, external loads on VDD are
    limited to 25 mA with TX ≤ +4 dBm, 5 mA above +4 dBm, and 1 mA in System OFF.
    Rev A transmits at **+8 dBm by default** ([§6.6](#66-mcu-module-rfantenna-and-firmware-platform),
@@ -805,7 +806,7 @@ reasons are sound:
 The cost is small (recomputed in [§8](#8-power-budget-and-battery-life)):
 * about 0.8 mA in desk-active use (≈ 3 %);
 * about 1.2 mA in game use (≈ 1 %);
-* about 3 µA in sleep (the LDO quiescent current plus the divider, ≈ 10 % of
+* about 3 µA in sleep (the LDO quiescent current plus the divider, ≈ 8 % of
   the floor);
 * the free VDDHDIV5 battery measurement is lost, hence the divider.
 
