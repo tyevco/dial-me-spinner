@@ -618,7 +618,7 @@ def main(plots=True):
     ring_rows = []
     ring_curves = {}
     T_SHOE = 1.6
-    for off, label in ((0.0, "full click (16.5 mN*m)"), (1.5, "default 9.5 mN*m (1.5 mm)")):
+    for off, label in ((0.0, "full click (16.5 mN*m)"), (1.5, "1.5 mm offset (9.5 mN*m)")):
         t1 = detent_torque(off)
         for shoe in (0.0, T_SHOE):
             ts, ths, peaks, tset = ring_down(I_r, t1, mb, m_shoe_mnm=shoe, theta0_deg=6.0)

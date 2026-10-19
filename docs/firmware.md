@@ -1394,14 +1394,16 @@ sits in standby at 0.45 mA):
   T_max = 16.5·k_unit mN·m. Interpolate x from the LUT in ln(T), round to whole
   full steps, and **end every move on a full step**. s = 0 means FREE.
   * The **default is s = 100 %** (x = 0, T ≈ 16.5 mN·m, 0.47 N at the 35 mm
-    rim). That is where the optional friction shoe engages (design intent
-    x ≤ 0.5 mm, [§5.6](#56-friction-shoe-interplay)), so the default click is
-    damped. It follows architecture.md §6.2 ("default to the strongest
-    setting") and the detent verifier's correction.
+    rim), inside the optional friction shoe's engagement window (offsets
+    ≤ 1.5 mm as drawn, mechanical.md §7; [§5.6](#56-friction-shoe-interplay)), so
+    the default click is damped. It follows architecture.md §6.2 ("default to
+    the strongest setting") and the detent verifier's correction.
   * An EC11-like s = 85 % (T ≈ 11 mN·m at x ≈ 1.15 mm, 77 steps) becomes the
-    default only if the factory-measured `shoe_x_max` is at least 1.3 mm.
-    Otherwise 85 % stays a user choice and is undamped: about 10 s of rocking
-    after a spin with bearing friction alone (§5.6).
+    default only if the factory-measured `shoe_x_max` is at least 1.3 mm. A
+    unit built to the drawing (1.5 mm window) meets that, so 85 % is the
+    expected default there and 100 % the fallback for a short window or no
+    shoe. With a short window 85 % stays a user choice and is undamped: about
+    10 s of rocking after a spin with bearing friction alone (§5.6).
 * **Physics** at strength T1, with I = 1.3·10⁻⁴ kg·m² and N = 24:
   * In-well natural frequency f_n = √(N·T1/I)/2π: 8.8 Hz at 16.5 mN·m,
     6.7 Hz at 9.5 mN·m, 3.1 Hz at 2 mN·m.
@@ -1652,9 +1654,10 @@ ringing settles in about 8–12 cycles. SPEC does not fix it, and bearing
 friction is the dominant unknown. Firmware therefore treats the shoe as
 optional and **learned**:
 
-* **Engagement offset** `shoe_x_max` is a factory or setting value (design
-  intent ≤ 0.5 mm, which covers the s = 100 % default; ≥ 1.3 mm would also
-  cover the EC11-like 85 % setting, [§5.1](#51-coordinates-and-strength-lut)). Firmware
+* **Engagement offset** `shoe_x_max` is a factory or setting value (drawn
+  window ≤ 1.5 mm, mechanical.md §7: an 8° rail ramp lifts the pad between
+  1.5 and 2.3 mm. It covers the s = 100 % default, and at ≥ 1.3 mm also the
+  EC11-like 85 % setting, [§5.1](#51-coordinates-and-strength-lut)). Firmware
   confirms it by measuring the Coulomb term a during short spin-downs at a few
   offsets. A step of about 8–12 rad/s² marks the shoe.
 * The **predictor** keeps separate priors for shoe-on and shoe-off

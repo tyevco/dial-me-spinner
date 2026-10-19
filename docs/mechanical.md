@@ -383,7 +383,8 @@ The bold columns are the verified LUT points; the rest are log-linear interpolat
 default is full click (s = 100 %, x = 0, about 16.5 mN·m by the LUT; firmware.md §5.1), where the friction shoe damps
 it. An offset of 1.5 mm gives 9.5 mN·m. An EC11 encoder is about 10–12 mN·m; the EC11-like s = 85 % (x ≈ 1.15 mm,
 77 full steps) gives about 11 mN·m, inside that range, and becomes the default only if the factory-measured
-`shoe_x_max` is at least 1.3 mm (firmware.md §5.1). In FREE (7.5 mm) the magnet's residual cogging is 2.7 µN·m.
+`shoe_x_max` is at least 1.3 mm (firmware.md §5.1). The drawn shoe window (1.5 mm, below) meets that, so 85 % is the
+expected default on a unit built to it. In FREE (7.5 mm) the magnet's residual cogging is 2.7 µN·m.
 **That is not the whole free-mode cogging:** the stepper's steel can and lead screw sit 3.1–4.6 mm from the track
 (A12), and their cogging is unknown and possibly comparable to the bearing drag. Do not expect "no preferred rest
 angle" until §15 #2 passes.

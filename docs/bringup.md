@@ -824,7 +824,7 @@ reading on every unit for rev B (sensor further from the magnet, or a DRV5032 va
    (firmware.md §5.4 rule 2; 32 steps wide at 80 PPS, 60 at 446 PPS). Otherwise re-home; after
    3 failures go to FAULT and stay in FREE ([detent research]).
 3. Speed profile: ≤ 446 PPS through the magnetically loaded 0–4 mm zone (267 full steps; firmware.md §5.3),
-   ≤ 800–1000 PPS beyond (233 steps). Expect ≈ 0.8–1.2 s per full stroke (mechanical.md §7: 0.83–1.18 s; the
+   then the 521–781 PPS ramp beyond it (233 steps; 1042 PPS only after a thrust test, firmware.md §5.3). Expect ≈ 0.8–1.2 s per full stroke (mechanical.md §7: 0.83–1.18 s; the
    firmware profile of firmware.md §5.3, 446 PPS in the loaded zone, takes about 0.9–1.1 s).
 
 **Robustness:** 50 round trips with the rotor resting in a detent well. HOME must read asserted after every park
@@ -1058,7 +1058,8 @@ Pass:
 
 * Torque falls monotonically with offset.
 * T(0) within 12.3–20.5 mN·m (±25 % of 16.4 mN·m, the figure this window was set from; the LUT gives 16.5).
-* The EC11-like setting (s = 85 %, firmware.md §5.1; the default s = 100 % is full click) gives 10–12 mN·m
+* The EC11-like setting (s = 85 %, firmware.md §5.1: the default when the measured shoe window is ≥ 1.3 mm,
+  otherwise the default is s = 100 %, full click) gives 10–12 mN·m
   (≈ 0.9–1.4 mm offset, 58–91 full steps, by the LUT above).
 
 Store the measured LUT and map strength 0–100 % onto it.
