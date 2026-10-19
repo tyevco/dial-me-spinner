@@ -626,7 +626,8 @@ def test_startup_inrush_and_overshoot(main, check):
 @pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, OLED-V2): the OLD floor for the "
                    "VCC-to-AFh wait (firmware.md 7.2 step 23 'never below 5 ms') is shorter than the worst-case VCC "
                    "rise (~6.3 ms at VSYS 3.0 V with a weak TPS61040, L20 -20 %, C37 +10 %); 4.9 ms even with typical "
-                   "parts. firmware.md now says never below 10 ms: see test_startup_time_vs_firmware_floor_with_fw_rule")
+                   "parts. firmware.md now says never below 10 ms: see "
+                   "test_startup_time_vs_firmware_floor_with_fw_rule")
 def test_startup_time_vs_firmware_floor(main, check):
     """The slowest start (see startup_worst) against the shortest wait the OLD firmware.md allowed before AFh."""
     r = startup_worst(main)
@@ -678,7 +679,8 @@ def test_usb_500ma_oled_enable(main, check):
 @pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, NEW-1 / OLED-V1): with USB at the 100 mA "
                    "pre-enumeration limit and a dead / absent battery (no supplement), the boost start-up (~0.25 A "
                    "for ~2 ms) pulls VSYS to ~2.3-2.5 V; the OLD firmware.md 13.3 / 6.3 allowed the OLED on in that "
-                   "state. The rule now keeps OLED_VCC_EN low: see test_usb_100ma_dead_battery_oled_enable_with_fw_rule")
+                   "state. The rule now keeps OLED_VCC_EN low: see "
+                   "test_usb_100ma_dead_battery_oled_enable_with_fw_rule")
 def test_usb_100ma_dead_battery_oled_enable(main, check):
     """USB at the 100 mA input-limit code (98 mA max, the most favourable), battery below BUVLO, OLED_VCC_EN raised
     as the OLD firmware did."""
