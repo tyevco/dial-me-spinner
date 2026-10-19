@@ -27,7 +27,7 @@ XTAL_SYM = "XTAL_SC-20S"
 
 STOCK_MCU = "RF_Module:MDBT50Q-U1MV2"
 MCU_SYM = "MDBT50Q-U1MV2_byport"
-MCU_FP = "RF_Module:Raytac_MDBT50Q"
+MCU_FP = "dial_spinner:Raytac_MDBT50Q_UFL"
 
 
 def _mcu_symbol():
@@ -99,6 +99,22 @@ def footprints(fpgen, lib_dir):
     fp.line(silk, -0.25, -0.85, 0.25, -0.85)
     fp.line(silk, -0.25, 0.85, 0.25, 0.85)
     fp.save(lib_dir)
+
+    # u.FL-only copy of the Raytac footprint: the stock one carries the all-layer keep-out for the
+    # MDBT50Q-1MV2/-P1MV2 on-module antenna. The U1MV2 radiates through its u.FL cable, so that
+    # keep-out would only block the ground plane and the LED ring above it. The small F.Cu
+    # keep-out under the module's RF test area is kept.
+    io = fpgen.pcbnew.PCB_IO_MGR.PluginFind(fpgen.pcbnew.PCB_IO_MGR.KICAD_SEXP)
+    mod = io.FootprintLoad("/usr/share/kicad/footprints/RF_Module.pretty", "Raytac_MDBT50Q")
+    for z in list(mod.Zones()):
+        if z.GetIsRuleArea() and z.GetLayerSet().CuStack().size() > 1:
+            mod.Remove(z)
+    for item in list(mod.GraphicalItems()):
+        if hasattr(item, "GetText") and "KEEP OUT" in item.GetText():
+            mod.Remove(item)
+    mod.SetFPIDAsString(MCU_FP.split(":")[1])
+    mod.SetLibDescription("Raytac MDBT50Q-U1MV2 (u.FL) - stock Raytac_MDBT50Q pads without the on-module antenna keep-out")
+    io.FootprintSave(lib_dir, mod)
 
 
 def build(d):

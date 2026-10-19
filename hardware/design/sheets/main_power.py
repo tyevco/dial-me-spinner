@@ -14,7 +14,7 @@ SYMBOLS = [
         name="RT9080-33GJ5",
         ref="U",
         footprint="Package_TO_SOT_SMD:SOT-23-5",
-        datasheet="https://www.richtek.com/assets/product_file/RT9080/DS9080-07.pdf",
+        datasheet="https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf",
         description="600 mA, 2 uA Iq low-dropout regulator, 3.3 V fixed",
         pins=[
             (1, "VIN", "power_in", "L"),
@@ -31,11 +31,12 @@ def build(d):
     d.sheet(*SHEET)
 
     d.group("Board-to-board link (to base board through the spindle)",
-            "JST SH 12-way vertical; identical pinout on the base board (SPEC §2)")
+            "JST SH 12-way SIDE-entry on the bottom at r = 17.5 (a vertical header would hit the rotor hub);\n"
+            "the harness lies flat under the board into the spindle bore. Identical pinout on the base board (SPEC §2)")
     d.add("J1", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
-          "Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical",
+          "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
-          fields={"MPN": "BM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160398"})
+          fields={"MPN": "SM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160411"})
     d.add("C1", "Device:C", "22u", C0805, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "LCSC": "C45783"})
 
@@ -52,26 +53,33 @@ def build(d):
 
     d.group("VSYS sense", "2.2M/1M always-on divider (~1.3 uA) into AIN0; 100 nF holds the sample")
     d.add("R1", "Device:R", "2.2M", R0402, pins={"1": "VSYS", "2": "VSYS_SENSE"},
-          fields={"MPN": "0402WGF2204TCE", "LCSC": "C22935"})
+          fields={"MPN": "0402WGF2204TCE", "LCSC": "C11490"})
     d.add("R2", "Device:R", "1M", R0402, pins={"1": "VSYS_SENSE", "2": "GND"},
           fields={"MPN": "0402WGF1004TCE", "LCSC": "C26083"})
     d.add("C5", "Device:C", "100n", C0402, pins={"1": "VSYS_SENSE", "2": "GND"},
           fields={"MPN": "CL05B104KO5NNNC", "LCSC": "C1525"})
 
-    d.group("LED rail load switch", "VSYS -> VLED, ~2 ms soft start (CT 1 nF), QOD discharge")
+    d.group("LED rail load switch", "VSYS -> VLED; CT 1 nF to VIN (TPS22917 pin table) ~4 ms rise; QOD discharge through R4")
     d.add("U2", "Power_Management:TPS22917DBV", "TPS22917DBVR", "Package_TO_SOT_SMD:SOT-23-6",
-          pins={"VIN": "VSYS", "GND": "GND", "ON": "LED_PWR_EN", "CT": "LSW_CT", "QOD": "VLED", "VOUT": "VLED"},
+          pins={"VIN": "VSYS", "GND": "GND", "ON": "LED_PWR_EN", "CT": "LSW_CT", "QOD": "LSW_QOD", "VOUT": "VLED"},
           fields={"MPN": "TPS22917DBVR", "Manufacturer": "Texas Instruments", "LCSC": "C2681320"})
     d.add("C6", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL10A106KP8NNNC", "LCSC": "C19702"})
-    d.add("C7", "Device:C", "1n/50V", C0402, pins={"1": "LSW_CT", "2": "GND"},
+    d.add("C7", "Device:C", "1n/50V", C0402, pins={"1": "LSW_CT", "2": "VSYS"},
           fields={"MPN": "0402B102K500NT", "LCSC": "C1523"})
     d.add("R3", "Device:R", "100k", R0402, pins={"1": "LED_PWR_EN", "2": "GND"},
           fields={"MPN": "0402WGF1003TCE", "LCSC": "C25741"})
+    d.add("R4", "Device:R", "100", R0402, pins={"1": "VLED", "2": "LSW_QOD"},
+          fields={"MPN": "0402WGF1000TCE", "LCSC": "C25076"},
+          description="QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); ~4 ms with 44 uF")
     d.add("C8", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "LCSC": "C45783"})
     d.add("C9", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "LCSC": "C45783"})
+
+    d.group("Power flags", "VSYS, VBUS and GND enter this board only through the passive link connector J1")
+    for i, net in enumerate(["VSYS", "VBUS", "GND"], start=1):
+        d.add(f"#FLG0{i}", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": net}, in_bom=False, on_board=False)
 
     d.group("Test points")
     for i, net in enumerate(["VSYS", "+3V3", "VLED", "GND"], start=1):

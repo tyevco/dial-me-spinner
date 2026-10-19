@@ -44,7 +44,17 @@ class Placer:
         return "B" if fp.IsFlipped() else "F"
 
     def mark(self, fp):
-        self.occupied[self.side(fp)].append((fp.GetReference(), _bbox_mm(fp)))
+        box = _bbox_mm(fp)
+        self.occupied[self.side(fp)].append((fp.GetReference(), box))
+        # through-hole / NPTH pads (e.g. Tag-Connect alignment holes) block the other side too
+        if any(p.GetAttribute() != pcbnew.PAD_ATTRIB_SMD for p in fp.Pads()):
+            other = "B" if self.side(fp) == "F" else "F"
+            for p in fp.Pads():
+                if p.GetAttribute() == pcbnew.PAD_ATTRIB_SMD:
+                    continue
+                bb = p.GetBoundingBox()
+                self.occupied[other].append((fp.GetReference(), (TO_MM(bb.GetLeft()) - 0.4, TO_MM(bb.GetTop()) - 0.4,
+                                                                  TO_MM(bb.GetRight()) + 0.4, TO_MM(bb.GetBottom()) + 0.4)))
 
     def free(self, fp):
         side = self.side(fp)

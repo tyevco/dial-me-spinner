@@ -66,16 +66,25 @@ def export_netlist(sch_path, out_path):
 
 
 class BoardBuilder:
-    def __init__(self, copper_layers=4, extra_fp_libs: dict | None = None):
-        self.board = pcbnew.BOARD()
-        self.board.SetCopperLayerCount(copper_layers)
+    def __init__(self, copper_layers=4, extra_fp_libs: dict | None = None, board=None):
+        if board is None:
+            board = pcbnew.BOARD()
+            board.SetCopperLayerCount(copper_layers)
+        self.board = board
         self.fp_libs = dict(extra_fp_libs or {})
-        self.footprints: dict[str, pcbnew.FOOTPRINT] = {}
+        self.footprints: dict[str, pcbnew.FOOTPRINT] = {fp.GetReference(): fp for fp in board.GetFootprints()}
         self.nets: dict[str, pcbnew.NETINFO_ITEM] = {}
+        for name, ni in board.GetNetsByName().items():
+            self.nets[str(name)] = ni
+
+    @classmethod
+    def load(cls, path, extra_fp_libs=None):
+        return cls(extra_fp_libs=extra_fp_libs, board=pcbnew.LoadBoard(path))
 
     # -- design rules ---------------------------------------------------------
-    def rules(self, track=0.15, clearance=0.15, via=0.45, via_drill=0.25, edge=0.3, hole_clear=0.25):
+    def rules(self, track=0.15, clearance=0.15, via=0.45, via_drill=0.25, edge=0.3, hole_clear=0.2):
         ds = self.board.GetDesignSettings()
+        ds.m_MinResolvedSpokes = 1
         ds.m_TrackMinWidth = MM(0.1)
         ds.m_MinClearance = MM(0.1)
         ds.m_ViasMinSize = MM(0.4)
@@ -194,6 +203,42 @@ class BoardBuilder:
         ol.NewOutline()
         for x, y in pts:
             ol.Append(MM(x), MM(y))
+        self.board.Add(z)
+        return z
+
+    def edge_band_keepout(self, outline_pts, inset=0.45, outset=1.0, name="EDGE_KEEPOUT"):
+        """Rule area (no tracks/vias) in a band along the board edge, so autorouters keep clear."""
+        base = pcbnew.SHAPE_POLY_SET()
+        base.NewOutline()
+        for x, y in outline_pts:
+            base.Append(MM(x), MM(y))
+        outer = pcbnew.SHAPE_POLY_SET(base)
+        outer.Inflate(MM(outset), pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS, MM(0.01))
+        inner = pcbnew.SHAPE_POLY_SET(base)
+        inner.Inflate(-MM(inset), pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS, MM(0.01))
+        outer.BooleanSubtract(inner)
+        z = pcbnew.ZONE(self.board)
+        z.SetIsRuleArea(True)
+        z.SetLayerSet(pcbnew.LSET.AllCuMask())
+        z.SetDoNotAllowTracks(True)
+        z.SetDoNotAllowVias(True)
+        z.SetDoNotAllowPads(False)
+        z.SetDoNotAllowCopperPour(False)
+        z.SetDoNotAllowFootprints(False)
+        z.SetZoneName(name)
+        ol = z.Outline()  # copy into the zone's own polygon set (SetOutline would take ownership)
+        for i in range(outer.OutlineCount()):
+            ol.NewOutline()
+            chain = outer.Outline(i)
+            for k in range(chain.PointCount()):
+                pt = chain.CPoint(k)
+                ol.Append(pt.x, pt.y)
+            for h in range(outer.HoleCount(i)):
+                ol.NewHole()
+                hc = outer.Hole(i, h)
+                for k in range(hc.PointCount()):
+                    pt = hc.CPoint(k)
+                    ol.Append(pt.x, pt.y, -1, h)
         self.board.Add(z)
         return z
 

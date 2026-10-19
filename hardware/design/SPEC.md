@@ -40,7 +40,7 @@ The magnet track does double duty:
 | **main** (`hardware/kicad/main`) | Ø64 mm disc, centre hole Ø5 plus 3× M2 on r = 6.5 mm (spindle flange) | 4 (1.6 mm, ENIG) | nRF52840 module, 32 kHz crystal, QSPI flash, 3V3 LDO, OLED ZIF, 13 V boost, 48 RGB LEDs, LED load switch, TMAG5273, LIS2DW12, piezo, 2× DRV8837, DRV5032 home Hall, motor connector, link connector, SWD Tag-Connect |
 | **base** (`hardware/kicad/base`) | Ø40 mm disc plus a tab to the USB-C at θ = 0° | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
 
-**Link** = 12-way JST SH (1.0 mm), vertical `BM12B-SRSS-TB` (KiCad `Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical`) on both boards. A
+**Link** = 12-way JST SH (1.0 mm): side-entry `SM12B-SRSS-TB` (C160411) on the main-board bottom at r = 17.5 mm, entry facing the centre, so it clears the rotor hub; vertical `BM12B-SRSS-TB` (C160398) on the base board. A
 12-wire harness runs through the spindle bore. Pinout (identical on both
 boards):
 
@@ -65,7 +65,7 @@ boards):
 USB-C VBUS ──TVS── BQ25180 IN ──(power path)── SYS = VSYS (4.5 V on USB / VBAT on battery)
                          └── BAT ── 1S LiPo (protected pack, ~1000 mAh) + NTC on TS
 VSYS ─┬─ RT9080-33 (or TPS7A02-33) LDO ── +3V3  (always on: nRF VDD+VDDH, flash, TMAG, IMU, OLED logic, pull-ups, DRV VCC, DRV5032)
-      ├─ TPS22917 load switch (LED_PWR_EN) ── VLED → 48× WS2812C-2020-V6
+      ├─ TPS22917 load switch (LED_PWR_EN) ── VLED → 48× WS2812C-2020-V6 (+ DNP SN74LV1T34 data level-shifter option)
       ├─ AO3401A disconnect (OLED_VCC_EN) ── OLED_VIN → TPS61040 boost ── +13V_OLED → SSD1351 VCC
       └─ DRV8837 ×2 VM (motor), sleep ≤ 0.24 µA
 VBUS ── link ── nRF VBUS pad (USB detect)
@@ -110,7 +110,7 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 | P1.01 | OLED_RES_N | 1 MΩ pull-down |
 | P1.02 | OLED_VCC_EN | boost input disconnect enable, 100 kΩ pull-down |
 | P0.06 | LED_DIN_MCU | I2S SDOUT → 220 Ω → LED_DIN (first LED DI) |
-| P1.04 | LED_PWR_EN | TPS22918 ON, 100 kΩ pull-down |
+| P1.04 | LED_PWR_EN | TPS22917 ON, 100 kΩ pull-down |
 | P0.24, P0.25 | TMAG_SCL, TMAG_SDA | dedicated TWIM0, 4.7 kΩ pull-ups to +3V3 |
 | P0.27 | TMAG_INT_N | 47 kΩ pull-up (open-drain INT) |
 | P0.08, P1.09 | I2C_SCL, I2C_SDA | system TWIM1 (IMU 0x19, BQ25180 0x6A via link), 4.7 kΩ pull-ups |
@@ -133,8 +133,9 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 * J1 link connector (pinout §2).
 * U LDO VSYS → +3V3 (§3). VSYS bulk 22 µF 0805 plus 10 µF at the LDO.
 * VSYS_SENSE divider (§3).
-* U TPS22917DBVR (C2681320; KiCad `Power_Management:TPS22917DBV`; TPS22918 C131941 is pin-compatible): VIN = VSYS (10 µF), ON = LED_PWR_EN (100 kΩ
-  pull-down), CT = 1 nF/50 V, QOD tied to VOUT, VOUT = VLED (2× 22 µF 0805).
+* U TPS22917DBVR (C2681320; KiCad `Power_Management:TPS22917DBV`): VIN = VSYS (10 µF), ON = LED_PWR_EN (100 kΩ
+  pull-down), CT = 1 nF/50 V **from CT to VIN** (TPS22917 pin table; ≈ 4 ms rise), QOD → 100 Ω → VOUT, VOUT = VLED (2× 22 µF 0805).
+  The TPS22918 is *not* a drop-in: its CT goes to GND.
 * TP pads for VSYS, +3V3, GND.
 
 ### 5.2 `mcu` — nRF52840 module, crystal, flash, debug
@@ -178,7 +179,8 @@ Boost:
 * LED_DIN_MCU → 220 Ω (R40; limits DIN clamp injection if P0.06 is ever high while VLED is off) → LED_DIN (D101.DIN),
   with 100 kΩ pull-down (R41) on LED_DIN. D148.DOUT (LED_D48) goes to TP40 with a 100 kΩ pull-down (R42), since V6 DI/DO are swappable.
   Firmware: drive P0.06 low and send an all-zero frame before switching VLED off; never drive P0.06 high while VLED is off.
-* A level-shifter footprint is not needed at 3.3 V logic. Do not add one.
+* Level shifting: none fitted by default (3.3 V drive). A DNP SN74LV1T34 (U43, powered from VLED) with a fitted 0 Ω bypass (R43)
+  is provided because the guaranteed VIH margin is only 0.1–0.2 V when VSYS = 4.5 V on USB (fit U43, remove R43 if the bench test fails).
 
 ### 5.5 `sensors` — encoder, IMU, piezo
 * U TMAG5273A2QDBVR (C3715882), **bottom side**, θ = 270°, long axis radial, placed so that the **Hall
@@ -235,12 +237,12 @@ dimensions are in mm.
 |---|---|---|
 | 0.0–1.0 | 3× rubber/micro-suction feet | r = 28 |
 | 1.0–2.5 | base cup floor (PA12/PETG) | cup OD Ø70, wall 1.6, wall top z = 14.3 |
-| 2.5–9.0 | LiPo bay, protected 603450-class pack ≤ 6.3 thick | long axis along θ = 90°/270° |
-| 1.0–2.0 | **2.4 GHz flex antenna** (Molex 146153-0050) lying on the floor, along the chord x = −26 (θ ≈ 180°) | ≥ 13 mm below the ring, ≥ 4.5 mm from the battery side; coax up through the spindle |
-| 9.5–11.1 | **base board** (Ø40 disc + USB tab to r = 35 at θ = 0°, 1.6 mm) | 3× M2 bosses at r = 15 (θ = 60°/180°/300°) |
+| 2.5–9.0 | LiPo bay, protected 603450-class pack **≤ 6.0 thick** (≥ 1 mm swelling gap to the board) | long axis along **θ = 0°/180°** (|x| ≤ 27.5, |y| ≤ 17.25); leads exit at the θ = 180° end |
+| 5.5–6.0 | **2.4 GHz flex antenna** (Molex **146153-0100**, 100 mm coax) on a printed shelf along the chord y = +26 (θ ≈ 90°), outer edge ≤ r 33 | ≈ 9.5 mm below the ring, ≈ 6 mm above the desk, ≥ 4 mm from the pack side (y = 17.25); coax rises to the spindle side slot |
+| 9.5–11.1 | **base board** (Ø46 disc + USB tab to r = 35 at θ = 0°, 1.6 mm) | 2× M2 bosses at r = 21, θ = 90°/270° (outside the pack); the USB-C shell clamped in the cup wall is the 3rd support |
 | 11.1–12.6 | press switch TS-1187A (1.5 tall) at the base-board centre | |
-| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly), r ≤ 30, centre boss over the switch (pre-gap 0.15) | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
-| 12.8–29.1 | hollow spindle Ø8 × 1.0 wall (316 or titanium), bore Ø6 for link harness + antenna coax | clamped to the lower plate and to the main board |
+| 12.8–14.3 | FA lower plate (PA12, stationary, part of the floating assembly): a **3-spoke spider** (spokes at θ = 60°/180°/300°, hub r ≤ 6 with the centre boss over the switch, pre-gap 0.15, outer ring r 26–30). The open sectors centred on θ = 0°/120°/240° clear the tall base-board parts | 3 guide pins + springs at r = 29, θ = 60°/180°/300°, preload ≈ 4 N up against stops |
+| 12.8–29.1 | hollow spindle Ø8 × 1.0 wall (316 or titanium), bore Ø6 for link harness + antenna coax | clamped to the lower plate and to the main board; side slots at z ≈ 14.5–16 (below the carrier web) and just under the main board let the harness/coax in and out |
 | 15.6–25.6 | **rotor**: 316L ring OD 70 / ID 54, on a PA12-GF carrier web (z 17–19, r 11–27) holding the 608 outer race | ring top face z = 25.6 carries the 48-magnet track (Ø2×2, pockets 2.05 deep, R_t = 29.0) |
 | 18.0–25.0 | 608 bearing on the spindle; ≥ 2.5–3 N wave-spring axial preload | outer race r = 11 |
 | 19–29.1 | "bowl" under the main board, r 12–27: detent actuator (micro linear stepper, chord placement near θ = 90°) | stationary, hangs from the main-board bottom |
@@ -271,8 +273,18 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   be ≥ 10 mm from the TMAG5273.
 * MDBT50Q module on the **bottom** side, r 8–22, sector θ ≈ 180°–250°. Its u.FL
   end faces the centre so the coax runs straight into the spindle bore.
-* The link connector J1 (vertical JST SH) sits on the **bottom** side next to
-  the centre hole.
+* The link connector J1 (side-entry JST SH) sits on the **bottom** side at r = 17.5 mm, θ = 330°, entry facing the centre.
+  The harness lies flat against the board bottom (above the rotor hub, which tops out at z ≈ 25) into the spindle bore.
 * The piezo goes on the **bottom** side (sound vents through the board).
 * The TC2030 pads go on the top side under the OLED glass, so they are
   reachable before the OLED is fitted.
+
+**Base-board placement rules (§8)**
+* The space above the base board is only 1.7 mm, or 1.2 mm when the dial is pressed, wherever an FA spoke or the hub passes over it. Put every part taller than 1.0 mm in the open sectors (θ = 0° ± 40°, 120° ± 40°, 240° ± 40°, r > 6). That means:
+  * USB-C J1 at θ = 0° on the tab;
+  * USBLC6 U2 and SMF5.0A near J1;
+  * link J3 (**side-entry** SH SM12B, ~3 mm tall, entry facing the centre) at r ≈ 15.5, θ = 120°. A vertical header plus plug would reach the rotor web;
+  * battery J2 (PH, top side) at r ≈ 17, θ ≈ 212°. The pack leads come up past the board edge from the pack end at θ = 180°.
+* Nothing on the base-board bottom side: the battery sits 0.5 mm below it. The only exception is pads/test points.
+* SW1 sits exactly at the centre, under the FA boss.
+
