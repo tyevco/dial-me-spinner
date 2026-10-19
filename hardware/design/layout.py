@@ -610,6 +610,7 @@ def pours_base(bb):
 BOARDS = {
     "main": dict(layers=4, fixed=main_fixed, anchors=main_anchor_sides, inside=main_inside,
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
+                 light_power=("+3V3", "VBUS", "+13V_OLED"),  # +3V3 < 0.1 A, VBUS sense 2.4 mA, +13V_OLED < 30 mA
                  post_fixed=main_post_fixed,
                  # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
                  pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM")},
@@ -671,7 +672,11 @@ def generate(board, pours=True):
     power = [n for n in nets if n in ("VSYS", "VLED", "VBUS", "VBAT", "+3V3", "GND", "+13V_OLED", "OLED_VIN")
              or n.endswith("/VSYS")]
     pt = cfg["power_track"]
-    bb.netclass("Power", [n for n in power if n != "GND"], track=pt, clearance=0.13, via=0.5, via_drill=0.25)
+    light = [n for n in power if n in cfg.get("light_power", ())]  # low-current rails: 0.2 mm eases the dense areas
+    bb.netclass("Power", [n for n in power if n != "GND" and n not in light], track=pt, clearance=0.13, via=0.5,
+                via_drill=0.25)
+    if light:
+        bb.netclass("Supply", light, track=0.2, clearance=0.13, via=0.45, via_drill=0.25)
     bb.netclass("Ground", ["GND"], track=pt, clearance=0.13, via=0.5, via_drill=0.25)
     fixed = cfg["fixed"](comps)
     bb.place_from_netlist(comps, nets, fixed, default=(CX, CY, 0.0, "F"))
