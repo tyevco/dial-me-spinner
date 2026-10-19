@@ -303,8 +303,10 @@ Full detail, drawings and tolerances are in [docs/mechanical.md](mechanical.md);
 hand assembly is in [docs/assembly.md](assembly.md).
 The essentials:
 
-* **Topology: a mushroom on a spindle.** A stationary hollow Ø8 × 1.0 mm spindle
-  is clamped to the FA lower plate and to the main board. The rotor spins
+* **Topology: a mushroom on a spindle.** A stationary, hollow, turned 316L Ø8
+  spindle carries everything: one M4 nut on its spigot clamps the main board, the
+  brass hub, the bearing's inner race and the FA lower plate against its bottom
+  flange (SPEC §8). The rotor spins
   around it on **one 608 bearing**. The OLED, LED ring, diffuser and top cover
   sit on top and never rotate. All wiring, and the antenna coax, pass through
   the spindle bore. They enter and leave it through side slots (SPEC §8:

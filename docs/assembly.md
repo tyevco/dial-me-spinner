@@ -145,8 +145,8 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    must be exposed copper (no mask). Place them so they can be probed with the boards linked by the harness on the
    bench (B-6). On the main board, TP2–TP4 are on the top and are reachable only before the OLED and cover go on.
    The spare-GPIO pads TP10–TP13 (TP_SPARE1..4: P0.03, P0.04, P1.11, P1.13) are on the top too, near the module's
-   west pad row (r 12–20, θ 193–205°) under the OLED glass, so like J10 they are reachable only before the display
-   is fitted. **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
+   west pad row (r 12–20, θ 193–205°): TP10 and TP11 under the OLED glass, TP12 and TP13 just beyond its west edge,
+   so like J10 they are reachable only before the display and the cover are fitted. **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
    **Base-board TPs and J2 are unreachable once Stage C has fitted the FA lower plate and the rotor**, which is
    why §7.2 adds a battery breakout.
 8. **Module u.FL clearance to the rotor: done.** The mated u.FL plug stands about 2.5 mm proud of the module and
