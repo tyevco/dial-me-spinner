@@ -140,6 +140,15 @@ def build(d):
           pins={"1": "TMAG_SCL", "6": "TMAG_SDA", "5": "TMAG_INT_N", "4": "+3V3", "2": "GND", "3": "GND"},
           fields={"MPN": "TMAG5273A2QDBVR", "Manufacturer": "Texas Instruments", "LCSC": "C3715882"})
 
+    d.group("Encoder ESD (floating 316L ring 2.4 mm below)",
+            "The flywheel is a touchable, electrically floating metal ring passing under U30.\n"
+            "U32 clamps TMAG_SCL/SDA/INT_N right at U30 (short GND return via next to U30).")
+    d.add("U32", "Power_Protection:TPD4E05U06DQA", "TPD4E05U06DQAR", "Package_SON:USON-10_2.5x1.0mm_P0.5mm",
+          pins={"1": "TMAG_SCL", "2": "TMAG_SDA", "4": "TMAG_INT_N", "5": None, "3": "GND",
+                "6": None, "7": None, "9": None, "10": None},
+          fields={"MPN": "TPD4E05U06DQAR", "Manufacturer": "Texas Instruments", "LCSC": "C138714"},
+          datasheet="https://www.ti.com/lit/ds/symlink/tpd4e05u06.pdf")
+
     d.group("Encoder bus pull-ups (dedicated TWIM0)",
             "4.7k SCL/SDA; 47k on open-drain INT (10 us pulses / latched)")
     d.add("R50", "Device:R", "4.7k", R0402, pins={"1": "+3V3", "2": "TMAG_SCL"},
@@ -182,10 +191,13 @@ def build(d):
             "Complementary PWM on BUZZ_A/BUZZ_B (one nRF PWM instance): +/-3.3 Vo-p (max +/-12.5).\n"
             "Murata land pattern: two 1.3 x 3.4 mm pads at x = +/-4.35 mm (custom footprint).\n"
             "Sound exits via 2 mm slots in the bottom face at the non-terminal edges: keep them clear.")
-    d.add("R57", "Device:R", "100", R0402, pins={"1": "BUZZ_A", "2": "BZ_P"},
-          fields={"MPN": "0402WGF1000TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25076"})
-    d.add("R58", "Device:R", "100", R0402, pins={"1": "BUZZ_B", "2": "BZ_N"},
-          fields={"MPN": "0402WGF1000TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25076"})
+    d.add("R57", "Device:R", "470", R0402, pins={"1": "BUZZ_A", "2": "BZ_P"},
+          fields={"MPN": "0402WGF4700TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25117"})
+    d.add("R58", "Device:R", "470", R0402, pins={"1": "BUZZ_B", "2": "BZ_N"},
+          fields={"MPN": "0402WGF4700TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25117"})
+    d.add("R59", "Device:R", "1M", R0402, pins={"1": "BZ_P", "2": "BZ_N"},
+          description="Bleeds piezo charge from shock while the drive pins are disconnected in sleep",
+          fields={"MPN": "0402WGF1004TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C26083"})
     d.add("BZ1", "Device:Speaker_Crystal", "PKMCS0909E4000-R1", "dial_spinner:" + PIEZO_FP,
           pins={"1": "BZ_P", "2": "BZ_N"},
           datasheet=PIEZO_DS, description="Murata 4 kHz SMD piezo sounder, external drive, 9x9x1.9 mm",
