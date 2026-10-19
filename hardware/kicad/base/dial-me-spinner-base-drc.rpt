@@ -1,18 +1,10 @@
 ** Drc report for dial-me-spinner-base.kicad_pcb **
-** Created on 2026-10-19T01:50:31+0000 **
+** Created on 2026-10-19T01:59:16+0000 **
 ** Report includes: Errors **
 
 ** Found 0 DRC violations **
 
-** Found 2 unconnected pads **
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(110.5923 mm, 105.8000 mm): Pad B2 [VSYS] of U1 on F.Cu
-    @(91.4847 mm, 95.4296 mm): Pad 1 [VSYS] of C4 on F.Cu
-[unconnected_items]: Missing connection between items
-    Local override; error
-    @(110.5923 mm, 105.8000 mm): Track [VSYS] on F.Cu, length 0.7000 mm
-    @(113.0923 mm, 106.5750 mm): Pad 1 [VSYS] of C2 on F.Cu
+** Found 0 unconnected pads **
 
 ** Found 0 Footprint errors **
 

@@ -208,24 +208,20 @@ def build(d):
           fields={"MPN": "BAV99,215", "Manufacturer": "Nexperia", "LCSC": "C2500"})
 
     # ------------------------------------------------------------------ boost
-    d.group("Boost input: disconnect VSYS -> OLED_VIN, CIN, inductor", _pad(
-            "OLED_VCC_EN low (also through MCU reset, R25) -> Q21 off -> Q20 off: VCC floats, boost draws 0 uA.\n"
+    d.group("Boost input: load switch VSYS -> OLED_VIN, CIN, inductor", _pad(
+            "OLED_VCC_EN low (also through MCU reset, R25) -> U21 off: VCC floats, boost draws 0 uA.\n"
             "Without it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\n"
-            "C37 (gate-source, not in SPEC) slows Q20 turn-on to limit inrush into CIN/COUT; DNP if not wanted.\n"
+            "U21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp, ~10 mA inrush into ~16 uF; QOD open.\n"
+            "(Replaces the AO3401A/2N7002 disconnect, which had no real dV/dt control - review SCH-1.)\n"
             "LAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track.", 180))
-    d.add("Q20", "Transistor_FET:AO3401A", "AO3401A", SOT23,
-          pins={"S": "VSYS", "D": "OLED_VIN", "G": "OLED_PFET_G"},
-          fields={"MPN": "AO3401A", "Manufacturer": "Alpha & Omega Semiconductor", "LCSC": "C15127"})
-    d.add("R23", "Device:R", "100k", R0402, pins={"1": "OLED_PFET_G", "2": "VSYS"},
-          fields={"MPN": "0402WGF1003TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25741"})
-    d.add("C37", "Device:C", "10n", C0402, pins={"1": "OLED_PFET_G", "2": "VSYS"},
-          fields={"MPN": "CL05B103KB5NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C15195"})
-    d.add("R24", "Device:R", "10k", R0402, pins={"1": "OLED_PFET_G", "2": "OLED_GATE_DRV"},
-          fields={"MPN": "0402WGF1002TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25744"})
-    d.add("#FLG20", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "OLED_VIN"}, in_bom=False, on_board=False)
-    d.add("Q21", "Transistor_FET:2N7002", "2N7002", SOT23,
-          pins={"D": "OLED_GATE_DRV", "G": "OLED_VCC_EN", "S": "GND"},
-          fields={"MPN": "2N7002", "Manufacturer": "Jiangsu Changjing (CJ)", "LCSC": "C8545"})
+    d.add("U21", "Power_Management:TPS22917DBV", "TPS22917DBVR", "Package_TO_SOT_SMD:SOT-23-6",
+          pins={"VIN": "VSYS", "GND": "GND", "ON": "OLED_VCC_EN", "CT": "OLED_LSW_CT", "QOD": None, "VOUT": "OLED_VIN"},
+          fields={"MPN": "TPS22917DBVR", "Manufacturer": "Texas Instruments", "LCSC": "C2681320"})
+    d.add("C37", "Device:C", "1n/50V", C0402, pins={"1": "OLED_LSW_CT", "2": "VSYS"},
+          fields={"MPN": "0402B102K500NT", "Manufacturer": "FH", "LCSC": "C1523"})
+    d.add("C41", "Device:C", "10u", "Capacitor_SMD:C_0603_1608Metric", pins={"1": "VSYS", "2": "GND"},
+          description="U21 VIN bypass",
+          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
     d.add("C38", "Device:C", "4.7u/25V", C0805, rot=0, pins={"1": "GND", "2": "OLED_VIN"},
           description="Boost input capacitor (place at U20 VIN/GND)",
           fields={"MPN": "CL21A475KAQNNNE", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C1779"})

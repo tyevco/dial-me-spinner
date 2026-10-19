@@ -62,7 +62,7 @@ def build(d):
             "QOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\n"
             "would back-power the ring through its ESD diode.")
     d.add("R40", "Device:R", "220", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN_R"}, fields=RES_220R)
-    d.add("R41", "Device:R", "100k", R0402, pins={"1": "LED_DIN", "2": "GND"}, fields=RES_100K)
+    d.add("R41", "Device:R", "100k", R0402, pins={"1": "LED_DIN_R", "2": "GND"}, fields=RES_100K)
 
     d.group("Optional VLED-referenced level shifter (DNP)",
             "Default: R43 0R fitted, U43 not fitted (3.3 V drive; margin 0.1-0.2 V at VSYS 4.5 V on USB).\n"

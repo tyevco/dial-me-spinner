@@ -1779,6 +1779,196 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Power_Management:TPS22917DBV"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "U"
+				(at -6.35 6.35 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "TPS22917DBV"
+				(at 2.54 6.35 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
+				(at 0 12.7 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tps22917.pdf"
+				(at 1.27 -17.78 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "1V to 5.5V, 2A, 80mΩ Ultra-Low Leakage Load Switch, SOT23-6"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "high-side power distribution switch"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_fp_filters" "SOT?23*"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "TPS22917DBV_0_1"
+				(rectangle
+					(start -7.62 5.08)
+					(end 7.62 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "TPS22917DBV_1_1"
+				(pin power_in line
+					(at -10.16 2.54 0)
+					(length 2.54)
+					(name "VIN"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -10.16 0 0)
+					(length 2.54)
+					(name "CT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 -2.54 0)
+					(length 2.54)
+					(name "ON"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -7.62 90)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_out line
+					(at 10.16 2.54 180)
+					(length 2.54)
+					(name "VOUT"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin open_collector line
+					(at 10.16 0 180)
+					(length 2.54)
+					(name "QOD"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Regulator_Switching:TPS61040DBV"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -1945,559 +2135,6 @@
 						)
 					)
 					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
-		(symbol "Transistor_FET:2N7002"
-			(pin_names
-				(offset 0)
-				(hide yes)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(property "Reference" "Q"
-				(at 5.08 1.905 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-				)
-			)
-			(property "Value" "2N7002"
-				(at 5.08 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-				)
-			)
-			(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
-				(at 5.08 -1.905 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-						(italic yes)
-					)
-					(justify left)
-					(hide yes)
-				)
-			)
-			(property "Datasheet" "https://www.onsemi.com/pub/Collateral/NDS7002A-D.PDF"
-				(at 5.08 -3.81 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-					(hide yes)
-				)
-			)
-			(property "Description" "0.115A Id, 60V Vds, N-Channel MOSFET, SOT-23"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "ki_keywords" "N-Channel Switching MOSFET"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "ki_fp_filters" "SOT?23*"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(symbol "2N7002_0_1"
-				(polyline
-					(pts (xy 0.254 1.905) (xy 0.254 -1.905))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.254 0) (xy -2.54 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 2.286) (xy 0.762 1.27))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 0.508) (xy 0.762 -0.508))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 -1.27) (xy 0.762 -2.286))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 -1.778) (xy 3.302 -1.778) (xy 3.302 1.778) (xy 0.762 1.778))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 1.016 0) (xy 2.032 0.381) (xy 2.032 -0.381) (xy 1.016 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(circle
-					(center 1.651 0)
-					(radius 2.794)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 2.54 2.54) (xy 2.54 1.778))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 2.54 1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(circle
-					(center 2.54 -1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(polyline
-					(pts (xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 2.921 0.381) (xy 3.683 0.381))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 3.302 0.381) (xy 2.921 -0.254) (xy 3.683 -0.254) (xy 3.302 0.381))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "2N7002_1_1"
-				(pin input line
-					(at -5.08 0 0)
-					(length 2.54)
-					(name "G"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 2.54 5.08 270)
-					(length 2.54)
-					(name "D"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 2.54 -5.08 90)
-					(length 2.54)
-					(name "S"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
-		(symbol "Transistor_FET:AO3401A"
-			(pin_names
-				(hide yes)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(property "Reference" "Q"
-				(at 5.08 1.905 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-				)
-			)
-			(property "Value" "AO3401A"
-				(at 5.08 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-				)
-			)
-			(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
-				(at 5.08 -1.905 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-						(italic yes)
-					)
-					(justify left)
-					(hide yes)
-				)
-			)
-			(property "Datasheet" "http://www.aosmd.com/pdfs/datasheet/AO3401A.pdf"
-				(at 5.08 -3.81 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(justify left)
-					(hide yes)
-				)
-			)
-			(property "Description" "-4.0A Id, -30V Vds, P-Channel MOSFET, SOT-23"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "ki_keywords" "P-Channel MOSFET"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "ki_fp_filters" "SOT?23*"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(symbol "AO3401A_0_1"
-				(polyline
-					(pts (xy 0.254 1.905) (xy 0.254 -1.905))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.254 0) (xy -2.54 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 2.286) (xy 0.762 1.27))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 1.778) (xy 3.302 1.778) (xy 3.302 -1.778) (xy 0.762 -1.778))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 0.508) (xy 0.762 -0.508))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 0.762 -1.27) (xy 0.762 -2.286))
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 1.651 0)
-					(radius 2.794)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 2.286 0) (xy 1.27 0.381) (xy 1.27 -0.381) (xy 2.286 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(polyline
-					(pts (xy 2.54 2.54) (xy 2.54 1.778))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 2.54 1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(circle
-					(center 2.54 -1.778)
-					(radius 0.254)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(polyline
-					(pts (xy 2.54 -2.54) (xy 2.54 0) (xy 0.762 0))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 2.794 -0.508) (xy 2.921 -0.381) (xy 3.683 -0.381) (xy 3.81 -0.254))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts (xy 3.302 -0.381) (xy 2.921 0.254) (xy 3.683 0.254) (xy 3.302 -0.381))
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "AO3401A_1_1"
-				(pin input line
-					(at -5.08 0 0)
-					(length 2.54)
-					(name "G"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 2.54 5.08 270)
-					(length 2.54)
-					(name "D"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 2.54 -5.08 90)
-					(length 2.54)
-					(name "S"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -3167,7 +2804,7 @@
 		)
 		(uuid "aada34d8-9e9e-520d-80c5-ea79428023ea")
 	)
-	(text "Boost input: disconnect VSYS -> OLED_VIN, CIN, inductor"
+	(text "Boost input: load switch VSYS -> OLED_VIN, CIN, inductor"
 		(exclude_from_sim no)
 		(at 15.24 162.56 0)
 		(effects
@@ -3177,9 +2814,9 @@
 			)
 			(justify left top)
 		)
-		(uuid "d805819c-d648-5d11-b383-fdf558bd98f4")
+		(uuid "73b580d2-0d3a-5119-97fd-d5de44a71392")
 	)
-	(text "OLED_VCC_EN low (also through MCU reset, R25) -> Q21 off -> Q20 off: VCC floats, boost draws 0 uA.                                                                                  \nWithout it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\nC37 (gate-source, not in SPEC) slows Q20 turn-on to limit inrush into CIN/COUT; DNP if not wanted.\nLAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track."
+	(text "OLED_VCC_EN low (also through MCU reset, R25) -> U21 off: VCC floats, boost draws 0 uA.                                                                                             \nWithout it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\nU21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp, ~10 mA inrush into ~16 uF; QOD open.\n(Replaces the AO3401A/2N7002 disconnect, which had no real dV/dt control - review SCH-1.)\nLAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track."
 		(exclude_from_sim no)
 		(at 15.24 166.37 0)
 		(effects
@@ -3189,11 +2826,11 @@
 			)
 			(justify left top)
 		)
-		(uuid "a5d93272-2767-5c43-97f3-062d0f43a869")
+		(uuid "cf311cfa-8337-539b-9c7f-962c07ed139c")
 	)
 	(rectangle
 		(start 12.7 160.02)
-		(end 198.12 265.43)
+		(end 198.12 261.62)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -3201,7 +2838,7 @@
 		(fill
 			(type none)
 		)
-		(uuid "3203eb8b-11b8-5c4c-9cda-5403c2d0f669")
+		(uuid "fd3a5eb3-3ed3-5c85-af75-4e18bc092ac2")
 	)
 	(text "13 V boost: TPS61040, rectifier, FB divider"
 		(exclude_from_sim no)
@@ -7552,15 +7189,15 @@
 		)
 	)
 	(symbol
-		(lib_id "Transistor_FET:AO3401A")
-		(at 38.1 195.58 0)
+		(lib_id "Power_Management:TPS22917DBV")
+		(at 43.18 195.58 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "91451217-a99e-5212-bfc8-8f638bb23af6")
-		(property "Reference" "Q20"
+		(uuid "d298b958-746e-5c17-af83-364da18633eb")
+		(property "Reference" "U21"
 			(at 33.02 187.2 0)
 			(effects
 				(font
@@ -7569,7 +7206,7 @@
 				(justify right bottom)
 			)
 		)
-		(property "Value" "AO3401A"
+		(property "Value" "TPS22917DBVR"
 			(at 33.02 189.5 0)
 			(effects
 				(font
@@ -7578,8 +7215,8 @@
 				(justify right bottom)
 			)
 		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
-			(at 38.1 195.58 0)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7587,8 +7224,8 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "http://www.aosmd.com/pdfs/datasheet/AO3401A.pdf"
-			(at 38.1 195.58 0)
+		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tps22917.pdf"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7596,8 +7233,8 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "-4.0A Id, -30V Vds, P-Channel MOSFET, SOT-23"
-			(at 38.1 195.58 0)
+		(property "Description" "1V to 5.5V, 2A, 80mΩ Ultra-Low Leakage Load Switch, SOT23-6"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7605,8 +7242,8 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "AO3401A"
-			(at 38.1 195.58 0)
+		(property "MPN" "TPS22917DBVR"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7614,8 +7251,8 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Alpha & Omega Semiconductor"
-			(at 38.1 195.58 0)
+		(property "Manufacturer" "Texas Instruments"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7623,8 +7260,8 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C15127"
-			(at 38.1 195.58 0)
+		(property "LCSC" "C2681320"
+			(at 43.18 195.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7633,60 +7270,51 @@
 			)
 		)
 		(pin "1"
-			(uuid "8b4705ff-ac27-51c4-b96b-7a6b872a95e3")
+			(uuid "1d784233-0bca-51bb-a4f4-386a0f29ca44")
+		)
+		(pin "4"
+			(uuid "8606e0f2-9a50-5a34-828b-040b1451a8e0")
 		)
 		(pin "3"
-			(uuid "a914d79c-cc09-5d8e-ad40-f97c8c566379")
+			(uuid "04725be7-ec3f-5fb4-85be-88ad439f44b1")
 		)
 		(pin "2"
-			(uuid "94441e4b-cbb4-5400-baa6-4bda85dea13b")
+			(uuid "3caccd07-af17-5d7f-a0ac-37adcd4e7cac")
+		)
+		(pin "6"
+			(uuid "f1e01b55-e7af-5c29-9191-d292b5130f02")
+		)
+		(pin "5"
+			(uuid "5f9ba597-c716-5e1a-8d0f-88409270bfbf")
 		)
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "Q20")
+					(reference "U21")
 					(unit 1)
 				)
 			)
 		)
 	)
 	(wire
-		(pts (xy 33.02 195.58) (xy 30.48 195.58))
+		(pts (xy 33.02 193.04) (xy 30.48 193.04))
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "3d0b5896-8c7d-5603-a93e-acd79b1cb104")
-	)
-	(label "OLED_PFET_G"
-		(at 30.48 195.58 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "e8d88e55-a729-5f91-9801-f5794121536f")
-	)
-	(wire
-		(pts (xy 40.64 190.5) (xy 40.64 187.96))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "7d50a565-71ea-548c-9f26-562d8f9e3ace")
+		(uuid "2b67c094-b3e8-5d3f-857e-ee5c308b62fe")
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 40.64 187.96 0)
+		(at 30.48 193.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "872d8986-5182-543a-bdc6-e6612516d863")
+		(uuid "ac1def11-deca-5a7a-ad4f-a6a1a0b5ac69")
 		(property "Reference" "#PWR04035"
-			(at 40.64 187.96 0)
+			(at 30.48 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7694,17 +7322,17 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "OLED_VIN"
-			(at 40.64 184.66 0)
+		(property "Value" "VSYS"
+			(at 27.18 193.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify bottom)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
-			(at 40.64 187.96 0)
+			(at 30.48 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7713,7 +7341,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 40.64 187.96 0)
+			(at 30.48 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7722,7 +7350,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 40.64 187.96 0)
+			(at 30.48 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7731,7 +7359,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "96c87427-7804-5999-8211-d40e8aaec5d2")
+			(uuid "eac6dc8e-2094-525b-a222-426f675df5b7")
 		)
 		(instances
 			(project "dial-me-spinner-main"
@@ -7743,24 +7371,72 @@
 		)
 	)
 	(wire
-		(pts (xy 40.64 200.66) (xy 40.64 203.2))
+		(pts (xy 33.02 195.58) (xy 30.48 195.58))
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "e1e7d86e-9172-5184-800d-194579ae16be")
+		(uuid "847c9271-9068-59db-9008-ccab134626ab")
+	)
+	(label "OLED_LSW_CT"
+		(at 30.48 195.58 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0099c57e-3569-5cfa-95e9-b47691a5320c")
+	)
+	(wire
+		(pts (xy 33.02 198.12) (xy 30.48 198.12))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "908f13b2-d94f-5ef6-8d4b-53e390099e19")
+	)
+	(global_label "OLED_VCC_EN"
+		(shape input)
+		(at 30.48 198.12 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f624cb91-8778-588a-be67-0d19c3587d4a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 30.48 198.12 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(wire
+		(pts (xy 43.18 203.2) (xy 43.18 205.74))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "66e02207-7c80-55e6-a8e8-12de80b16ef2")
 	)
 	(symbol
-		(lib_id "power:VCC")
-		(at 40.64 203.2 180)
+		(lib_id "power:GND")
+		(at 43.18 205.74 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "1d6fbd66-0ac1-5c65-af94-019e39218355")
+		(uuid "409bfe92-ce96-534e-8218-c3092881185a")
 		(property "Reference" "#PWR04036"
-			(at 40.64 203.2 0)
+			(at 43.18 205.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7768,17 +7444,17 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "VSYS"
-			(at 40.64 206.5 0)
+		(property "Value" "GND"
+			(at 43.18 209.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify bottom)
+				(justify top)
 			)
 		)
 		(property "Footprint" ""
-			(at 40.64 203.2 0)
+			(at 43.18 205.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7787,7 +7463,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 40.64 203.2 0)
+			(at 43.18 205.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7796,7 +7472,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 40.64 203.2 0)
+			(at 43.18 205.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7805,7 +7481,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "0174663d-47f1-5f40-be8b-6f12eb50f1e1")
+			(uuid "2c2fbbd4-2f53-551f-8b4b-2471b852da0c")
 		)
 		(instances
 			(project "dial-me-spinner-main"
@@ -7816,137 +7492,25 @@
 			)
 		)
 	)
-	(symbol
-		(lib_id "Device:R")
-		(at 68.58 182.88 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "9a5968df-fb5a-50ef-b4f4-54a90aa341f0")
-		(property "Reference" "R23"
-			(at 68.58 180.264 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "100k"
-			(at 68.58 185.496 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Resistor"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "0402WGF1003TCE"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Manufacturer" "UNI-ROYAL"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C25741"
-			(at 68.58 182.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "ee44c593-3b0e-5db3-8bd5-5ef9a2a8c803")
-		)
-		(pin "2"
-			(uuid "a54d3aea-f614-551b-83e1-5c0445d97eb1")
-		)
-		(instances
-			(project "dial-me-spinner-main"
-				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "R23")
-					(unit 1)
-				)
-			)
-		)
-	)
 	(wire
-		(pts (xy 64.77 182.88) (xy 62.23 182.88))
+		(pts (xy 53.34 193.04) (xy 55.88 193.04))
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "02a2eba8-e0f0-58c9-b983-f5dd9991764c")
-	)
-	(label "OLED_PFET_G"
-		(at 62.23 182.88 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "abdc94e7-8f5d-5f79-af59-efdb0c02e9d7")
-	)
-	(wire
-		(pts (xy 72.39 182.88) (xy 74.93 182.88))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "1a3fbdc6-07d6-57e1-b52c-caf16635351a")
+		(uuid "618ef6bf-5eff-5816-8cc7-0508e0b808d8")
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 74.93 182.88 270)
+		(at 55.88 193.04 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "660fd47d-5732-5fcc-b27a-06be22cd61b9")
+		(uuid "1a082a31-ecbe-5cbf-a510-79d815dcc50a")
 		(property "Reference" "#PWR04037"
-			(at 74.93 182.88 0)
+			(at 55.88 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7954,8 +7518,8 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "VSYS"
-			(at 78.23 182.88 90)
+		(property "Value" "OLED_VIN"
+			(at 59.18 193.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7964,7 +7528,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 74.93 182.88 0)
+			(at 55.88 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7973,7 +7537,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 74.93 182.88 0)
+			(at 55.88 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7982,7 +7546,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 74.93 182.88 0)
+			(at 55.88 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7991,7 +7555,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "45ee311f-cf7c-5e98-b11b-c579e1dd8810")
+			(uuid "5633221f-68a2-5d08-aa78-28b61b743078")
 		)
 		(instances
 			(project "dial-me-spinner-main"
@@ -8002,9 +7566,13 @@
 			)
 		)
 	)
+	(no_connect
+		(at 53.34 195.58)
+		(uuid "8435abb9-1892-5fcd-8b5f-d29f3148818c")
+	)
 	(symbol
 		(lib_id "Device:C")
-		(at 106.68 185.42 90)
+		(at 93.98 187.96 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8012,15 +7580,15 @@
 		(dnp no)
 		(uuid "821325fd-5e13-52f2-ad4a-8458845d8690")
 		(property "Reference" "C37"
-			(at 106.68 181.788 90)
+			(at 93.98 184.328 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Value" "10n"
-			(at 106.68 189.052 90)
+		(property "Value" "1n/50V"
+			(at 93.98 191.592 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8028,7 +7596,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 106.68 185.42 0)
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8037,7 +7605,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 106.68 185.42 0)
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8046,7 +7614,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 106.68 185.42 0)
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8054,8 +7622,8 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL05B103KB5NNNC"
-			(at 106.68 185.42 0)
+		(property "MPN" "0402B102K500NT"
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8063,8 +7631,8 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 106.68 185.42 0)
+		(property "Manufacturer" "FH"
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8072,8 +7640,8 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C15195"
-			(at 106.68 185.42 0)
+		(property "LCSC" "C1523"
+			(at 93.98 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8097,15 +7665,15 @@
 		)
 	)
 	(wire
-		(pts (xy 102.87 185.42) (xy 100.33 185.42))
+		(pts (xy 90.17 187.96) (xy 87.63 187.96))
 		(stroke
 			(width 0)
 			(type default)
 		)
 		(uuid "6074556c-4393-53bf-bb59-063c5b30949a")
 	)
-	(label "OLED_PFET_G"
-		(at 100.33 185.42 180)
+	(label "OLED_LSW_CT"
+		(at 87.63 187.96 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -8115,7 +7683,7 @@
 		(uuid "7bbdfd8d-a8b2-5916-9e69-81e0e18b62ed")
 	)
 	(wire
-		(pts (xy 110.49 185.42) (xy 113.03 185.42))
+		(pts (xy 97.79 187.96) (xy 100.33 187.96))
 		(stroke
 			(width 0)
 			(type default)
@@ -8124,7 +7692,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 113.03 185.42 270)
+		(at 100.33 187.96 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8132,7 +7700,7 @@
 		(dnp no)
 		(uuid "27cf6177-cebf-58b9-a9f0-a5d59e7639d6")
 		(property "Reference" "#PWR04038"
-			(at 113.03 185.42 0)
+			(at 100.33 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8141,7 +7709,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 116.33 185.42 90)
+			(at 103.63 187.96 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8150,7 +7718,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 113.03 185.42 0)
+			(at 100.33 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8159,7 +7727,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 113.03 185.42 0)
+			(at 100.33 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8168,7 +7736,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 113.03 185.42 0)
+			(at 100.33 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8189,32 +7757,32 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:R")
-		(at 147.32 182.88 90)
+		(lib_id "Device:C")
+		(at 124.46 187.96 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "c2f68b37-c6ba-5da1-a214-f2c70b3fd531")
-		(property "Reference" "R24"
-			(at 147.32 180.264 90)
+		(uuid "3c496fe0-33a8-5d2a-bc4e-f5a09a2a9bd3")
+		(property "Reference" "C41"
+			(at 124.46 184.328 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Value" "10k"
-			(at 147.32 185.496 90)
+		(property "Value" "10u"
+			(at 124.46 191.592 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 147.32 182.88 0)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8223,7 +7791,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 147.32 182.88 0)
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8231,8 +7799,8 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Resistor"
-			(at 147.32 182.88 0)
+		(property "Description" "U21 VIN bypass"
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8240,8 +7808,8 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "0402WGF1002TCE"
-			(at 147.32 182.88 0)
+		(property "MPN" "CL10A106KP8NNNC"
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8249,8 +7817,8 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "UNI-ROYAL"
-			(at 147.32 182.88 0)
+		(property "Manufacturer" "Samsung Electro-Mechanics"
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8258,8 +7826,8 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C25744"
-			(at 147.32 182.88 0)
+		(property "LCSC" "C19702"
+			(at 124.46 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8268,141 +7836,39 @@
 			)
 		)
 		(pin "1"
-			(uuid "689af3d2-1362-5049-a3cd-48bf5dc54d65")
+			(uuid "25e7a029-3730-5606-bf39-bcc90b2bbb71")
 		)
 		(pin "2"
-			(uuid "92ac14f5-174d-51f4-a95a-e90a967e7912")
+			(uuid "9ae54a83-ce11-5ee1-aeb4-68f4241891b6")
 		)
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "R24")
+					(reference "C41")
 					(unit 1)
 				)
 			)
 		)
 	)
 	(wire
-		(pts (xy 143.51 182.88) (xy 140.97 182.88))
+		(pts (xy 120.65 187.96) (xy 118.11 187.96))
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "9329b617-08d8-5654-a7d2-a1e10f9993b8")
-	)
-	(label "OLED_PFET_G"
-		(at 140.97 182.88 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "c041b961-a603-534c-9f84-cc5f7c73378b")
-	)
-	(wire
-		(pts (xy 151.13 182.88) (xy 153.67 182.88))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "94493d8c-4930-5773-8aec-e031b131586c")
-	)
-	(label "OLED_GATE_DRV"
-		(at 153.67 182.88 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "cad39f80-6906-5620-8558-9406b7e70a3b")
-	)
-	(symbol
-		(lib_id "power:PWR_FLAG")
-		(at 177.8 185.42 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board no)
-		(dnp no)
-		(uuid "6660aee9-2698-599c-9feb-2eb15a46c62d")
-		(property "Reference" "#FLG20"
-			(at 180.086 184.15 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "PWR_FLAG"
-			(at 180.086 186.69 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 177.8 185.42 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 177.8 185.42 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 177.8 185.42 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "53774aca-b8ed-5b38-9a3d-02c10bd4fa3a")
-		)
-		(instances
-			(project "dial-me-spinner-main"
-				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#FLG20")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(wire
-		(pts (xy 177.8 185.42) (xy 177.8 187.96))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a0181090-0995-5688-b2c7-47a5782dc8b6")
+		(uuid "737f121d-d549-51eb-a440-f74e6b676af8")
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 177.8 187.96 180)
+		(at 118.11 187.96 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "c17281cf-d709-5dd7-8548-26e482ba3c68")
+		(uuid "245de1e4-75ad-5b43-9253-4762fde0dabe")
 		(property "Reference" "#PWR04039"
-			(at 177.8 187.96 0)
+			(at 118.11 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8410,17 +7876,17 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "OLED_VIN"
-			(at 177.8 191.26 0)
+		(property "Value" "VSYS"
+			(at 114.81 187.96 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify bottom)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
-			(at 177.8 187.96 0)
+			(at 118.11 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8429,7 +7895,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 177.8 187.96 0)
+			(at 118.11 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8438,7 +7904,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 177.8 187.96 0)
+			(at 118.11 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8447,7 +7913,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6a76ebb0-7842-57b6-9400-e9f187cda062")
+			(uuid "5179a2a9-d66c-596d-bf51-4a04d82abf2f")
 		)
 		(instances
 			(project "dial-me-spinner-main"
@@ -8458,172 +7924,25 @@
 			)
 		)
 	)
-	(symbol
-		(lib_id "Transistor_FET:2N7002")
-		(at 38.1 246.38 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "146ac96c-108e-526b-9150-bae10f975b21")
-		(property "Reference" "Q21"
-			(at 33.02 238 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-		)
-		(property "Value" "2N7002"
-			(at 33.02 240.3 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-23"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "https://www.onsemi.com/pub/Collateral/NDS7002A-D.PDF"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "0.115A Id, 60V Vds, N-Channel MOSFET, SOT-23"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "2N7002"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Manufacturer" "Jiangsu Changjing (CJ)"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C8545"
-			(at 38.1 246.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "dda82677-f345-5327-9432-8c1d591a8df3")
-		)
-		(pin "3"
-			(uuid "7fe76acf-ec9d-5d83-904f-03190fa4b762")
-		)
-		(pin "2"
-			(uuid "7471663d-19e2-5ca5-9476-7e074a5366e4")
-		)
-		(instances
-			(project "dial-me-spinner-main"
-				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "Q21")
-					(unit 1)
-				)
-			)
-		)
-	)
 	(wire
-		(pts (xy 33.02 246.38) (xy 30.48 246.38))
+		(pts (xy 128.27 187.96) (xy 130.81 187.96))
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "cc3a33af-c783-5196-b0a8-707fcf542b39")
-	)
-	(global_label "OLED_VCC_EN"
-		(shape input)
-		(at 30.48 246.38 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "adb5425e-825b-5c38-9174-10e0319d9e7e")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 30.48 246.38 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-				(hide yes)
-			)
-		)
-	)
-	(wire
-		(pts (xy 40.64 241.3) (xy 40.64 238.76))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "2942542e-ddf4-5331-a996-c58ed363fc43")
-	)
-	(label "OLED_GATE_DRV"
-		(at 40.64 238.76 90)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "951519d7-3c78-582a-906c-901cddf289e0")
-	)
-	(wire
-		(pts (xy 40.64 251.46) (xy 40.64 254))
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "3d6b9fca-0e04-588d-8211-2e552f5fd477")
+		(uuid "7ed9b26b-45c0-5771-b70a-e217a59d67e8")
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 40.64 254 0)
+		(at 130.81 187.96 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "7c3ef168-6899-5a55-b288-ec0661ecdfe3")
+		(uuid "13abdc31-591f-517a-97a2-b4255205a329")
 		(property "Reference" "#PWR04040"
-			(at 40.64 254 0)
+			(at 130.81 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8632,16 +7951,16 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 40.64 257.3 0)
+			(at 134.11 187.96 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify top)
+				(justify right)
 			)
 		)
 		(property "Footprint" ""
-			(at 40.64 254 0)
+			(at 130.81 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8650,7 +7969,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 40.64 254 0)
+			(at 130.81 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8659,7 +7978,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 40.64 254 0)
+			(at 130.81 187.96 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8668,7 +7987,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d74c3c7c-dcc8-5b07-bea3-a448b7a6696a")
+			(uuid "e3ef4c86-0cdb-5e97-bc72-cb5fc28a4d40")
 		)
 		(instances
 			(project "dial-me-spinner-main"
@@ -8681,7 +8000,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 48.26 233.68 0)
+		(at 144.78 198.12 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8689,7 +8008,7 @@
 		(dnp no)
 		(uuid "1e200a3a-9af7-5458-b77c-5d5e900995ee")
 		(property "Reference" "C38"
-			(at 51.562 232.41 0)
+			(at 148.082 196.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8698,7 +8017,7 @@
 			)
 		)
 		(property "Value" "4.7u/25V"
-			(at 51.562 234.95 0)
+			(at 148.082 199.39 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8707,7 +8026,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8716,7 +8035,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8725,7 +8044,7 @@
 			)
 		)
 		(property "Description" "Boost input capacitor (place at U20 VIN/GND)"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8734,7 +8053,7 @@
 			)
 		)
 		(property "MPN" "CL21A475KAQNNNE"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8743,7 +8062,7 @@
 			)
 		)
 		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8752,7 +8071,7 @@
 			)
 		)
 		(property "LCSC" "C1779"
-			(at 48.26 233.68 0)
+			(at 144.78 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8776,7 +8095,7 @@
 		)
 	)
 	(wire
-		(pts (xy 48.26 229.87) (xy 48.26 227.33))
+		(pts (xy 144.78 194.31) (xy 144.78 191.77))
 		(stroke
 			(width 0)
 			(type default)
@@ -8785,7 +8104,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 48.26 227.33 180)
+		(at 144.78 191.77 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8793,7 +8112,7 @@
 		(dnp no)
 		(uuid "7d8e9409-3381-5e6f-a5a8-d5361ff2e763")
 		(property "Reference" "#PWR04041"
-			(at 48.26 227.33 0)
+			(at 144.78 191.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8802,7 +8121,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 48.26 224.03 0)
+			(at 144.78 188.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8811,7 +8130,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 48.26 227.33 0)
+			(at 144.78 191.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8820,7 +8139,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 48.26 227.33 0)
+			(at 144.78 191.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8829,7 +8148,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 48.26 227.33 0)
+			(at 144.78 191.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8850,7 +8169,7 @@
 		)
 	)
 	(wire
-		(pts (xy 48.26 237.49) (xy 48.26 240.03))
+		(pts (xy 144.78 201.93) (xy 144.78 204.47))
 		(stroke
 			(width 0)
 			(type default)
@@ -8859,7 +8178,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 48.26 240.03 180)
+		(at 144.78 204.47 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8867,7 +8186,7 @@
 		(dnp no)
 		(uuid "8be7bca6-101f-59ac-ac5b-68a4f81bf8c6")
 		(property "Reference" "#PWR04042"
-			(at 48.26 240.03 0)
+			(at 144.78 204.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8876,7 +8195,7 @@
 			)
 		)
 		(property "Value" "OLED_VIN"
-			(at 48.26 243.33 0)
+			(at 144.78 207.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8885,7 +8204,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 48.26 240.03 0)
+			(at 144.78 204.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8894,7 +8213,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 48.26 240.03 0)
+			(at 144.78 204.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8903,7 +8222,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 48.26 240.03 0)
+			(at 144.78 204.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8925,7 +8244,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 76.2 223.52 90)
+		(at 35.56 223.52 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8933,7 +8252,7 @@
 		(dnp no)
 		(uuid "18d71197-b303-5d64-a5b3-711339e559c8")
 		(property "Reference" "R25"
-			(at 76.2 220.904 90)
+			(at 35.56 220.904 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8941,7 +8260,7 @@
 			)
 		)
 		(property "Value" "100k"
-			(at 76.2 226.136 90)
+			(at 35.56 226.136 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8949,7 +8268,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8958,7 +8277,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8967,7 +8286,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8976,7 +8295,7 @@
 			)
 		)
 		(property "MPN" "0402WGF1003TCE"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8985,7 +8304,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8994,7 +8313,7 @@
 			)
 		)
 		(property "LCSC" "C25741"
-			(at 76.2 223.52 0)
+			(at 35.56 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9018,7 +8337,7 @@
 		)
 	)
 	(wire
-		(pts (xy 72.39 223.52) (xy 69.85 223.52))
+		(pts (xy 31.75 223.52) (xy 29.21 223.52))
 		(stroke
 			(width 0)
 			(type default)
@@ -9027,7 +8346,7 @@
 	)
 	(global_label "OLED_VCC_EN"
 		(shape passive)
-		(at 69.85 223.52 180)
+		(at 29.21 223.52 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -9037,7 +8356,7 @@
 		)
 		(uuid "0fb587a9-1be2-5900-ad5e-1a83e8afda16")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 69.85 223.52 180)
+			(at 29.21 223.52 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9048,7 +8367,7 @@
 		)
 	)
 	(wire
-		(pts (xy 80.01 223.52) (xy 82.55 223.52))
+		(pts (xy 39.37 223.52) (xy 41.91 223.52))
 		(stroke
 			(width 0)
 			(type default)
@@ -9057,7 +8376,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 82.55 223.52 90)
+		(at 41.91 223.52 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -9065,7 +8384,7 @@
 		(dnp no)
 		(uuid "b976ec54-c1fe-5265-bb79-ba804a2c8e2e")
 		(property "Reference" "#PWR04043"
-			(at 82.55 223.52 0)
+			(at 41.91 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9074,7 +8393,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 85.85 223.52 90)
+			(at 45.21 223.52 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9083,7 +8402,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 82.55 223.52 0)
+			(at 41.91 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9092,7 +8411,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 82.55 223.52 0)
+			(at 41.91 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9101,7 +8420,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 82.55 223.52 0)
+			(at 41.91 223.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9123,7 +8442,7 @@
 	)
 	(symbol
 		(lib_id "Device:L")
-		(at 96.52 243.84 0)
+		(at 55.88 243.84 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -9131,7 +8450,7 @@
 		(dnp no)
 		(uuid "412b902c-d61a-52f3-bdac-154cf46ef33c")
 		(property "Reference" "L20"
-			(at 97.79 242.57 0)
+			(at 57.15 242.57 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9140,7 +8459,7 @@
 			)
 		)
 		(property "Value" "10u"
-			(at 97.79 245.11 0)
+			(at 57.15 245.11 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9149,7 +8468,7 @@
 			)
 		)
 		(property "Footprint" "Inductor_SMD:L_Sunlord_SWPA3015S"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9158,7 +8477,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9167,7 +8486,7 @@
 			)
 		)
 		(property "Description" "Inductor"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9176,7 +8495,7 @@
 			)
 		)
 		(property "MPN" "SWPA3015S100MT"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9185,7 +8504,7 @@
 			)
 		)
 		(property "Manufacturer" "Sunlord"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9194,7 +8513,7 @@
 			)
 		)
 		(property "LCSC" "C45403"
-			(at 96.52 243.84 0)
+			(at 55.88 243.84 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9218,7 +8537,7 @@
 		)
 	)
 	(wire
-		(pts (xy 96.52 240.03) (xy 96.52 237.49))
+		(pts (xy 55.88 240.03) (xy 55.88 237.49))
 		(stroke
 			(width 0)
 			(type default)
@@ -9226,7 +8545,7 @@
 		(uuid "bf0e4f55-95fd-5c06-be2b-3a9c4ac75bca")
 	)
 	(label "OLED_BST_SW"
-		(at 96.52 237.49 90)
+		(at 55.88 237.49 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -9236,7 +8555,7 @@
 		(uuid "8cce8428-87ed-5544-8555-76370f3012ef")
 	)
 	(wire
-		(pts (xy 96.52 247.65) (xy 96.52 250.19))
+		(pts (xy 55.88 247.65) (xy 55.88 250.19))
 		(stroke
 			(width 0)
 			(type default)
@@ -9245,7 +8564,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 96.52 250.19 180)
+		(at 55.88 250.19 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -9253,7 +8572,7 @@
 		(dnp no)
 		(uuid "f2d82657-f6ce-5046-8870-18be32aac9f8")
 		(property "Reference" "#PWR04044"
-			(at 96.52 250.19 0)
+			(at 55.88 250.19 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9262,7 +8581,7 @@
 			)
 		)
 		(property "Value" "OLED_VIN"
-			(at 96.52 253.49 0)
+			(at 55.88 253.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9271,7 +8590,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 96.52 250.19 0)
+			(at 55.88 250.19 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9280,7 +8599,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 96.52 250.19 0)
+			(at 55.88 250.19 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -9289,7 +8608,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 96.52 250.19 0)
+			(at 55.88 250.19 0)
 			(effects
 				(font
 					(size 1.27 1.27)

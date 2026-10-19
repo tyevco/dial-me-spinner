@@ -1415,7 +1415,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 76.2 63.5 90)
+		(at 78.74 63.5 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1423,7 +1423,7 @@
 		(dnp no)
 		(uuid "03e504a3-e004-5c5f-88cb-4492039c6c4c")
 		(property "Reference" "R41"
-			(at 76.2 60.884 90)
+			(at 78.74 60.884 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1431,7 +1431,7 @@
 			)
 		)
 		(property "Value" "100k"
-			(at 76.2 66.116 90)
+			(at 78.74 66.116 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1439,7 +1439,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1448,7 +1448,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1457,7 +1457,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1466,7 +1466,7 @@
 			)
 		)
 		(property "MPN" "0402WGF1003TCE"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1475,7 +1475,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1484,7 +1484,7 @@
 			)
 		)
 		(property "LCSC" "C25741"
-			(at 76.2 63.5 0)
+			(at 78.74 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1508,15 +1508,15 @@
 		)
 	)
 	(wire
-		(pts (xy 72.39 63.5) (xy 69.85 63.5))
+		(pts (xy 74.93 63.5) (xy 72.39 63.5))
 		(stroke
 			(width 0)
 			(type default)
 		)
 		(uuid "b2037e2d-15d1-561d-8941-d2fdb64adf42")
 	)
-	(label "LED_DIN"
-		(at 69.85 63.5 180)
+	(label "LED_DIN_R"
+		(at 72.39 63.5 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1526,7 +1526,7 @@
 		(uuid "33c185a0-7e3f-5a02-886f-2bd4156eff67")
 	)
 	(wire
-		(pts (xy 80.01 63.5) (xy 82.55 63.5))
+		(pts (xy 82.55 63.5) (xy 85.09 63.5))
 		(stroke
 			(width 0)
 			(type default)
@@ -1535,7 +1535,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 82.55 63.5 90)
+		(at 85.09 63.5 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1543,7 +1543,7 @@
 		(dnp no)
 		(uuid "6e9266ac-d8fc-5318-a9b4-2885df64e1d6")
 		(property "Reference" "#PWR05001"
-			(at 82.55 63.5 0)
+			(at 85.09 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1552,7 +1552,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 85.85 63.5 90)
+			(at 88.39 63.5 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1561,7 +1561,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 82.55 63.5 0)
+			(at 85.09 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1570,7 +1570,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 82.55 63.5 0)
+			(at 85.09 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1579,7 +1579,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 82.55 63.5 0)
+			(at 85.09 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)

@@ -40,7 +40,7 @@ The magnet track does double duty:
 | **main** (`hardware/kicad/main`) | Ø64 mm disc, centre hole Ø5 plus 3× M2 on r = 6.5 mm (spindle flange) | 4 (1.6 mm, ENIG) | nRF52840 module, 32 kHz crystal, QSPI flash, 3V3 LDO, OLED ZIF, 13 V boost, 48 RGB LEDs, LED load switch, TMAG5273, LIS2DW12, piezo, 2× DRV8837, DRV5032 home Hall, motor connector, link connector, SWD Tag-Connect |
 | **base** (`hardware/kicad/base`) | Ø40 mm disc plus a tab to the USB-C at θ = 0° | 2 (1.6 mm, **ENIG**, needed for the 0.4 mm DSBGA) | USB-C, ESD/TVS, BQ25180 charger + ship-mode button network, battery connector, NTC, centre press switch, link connector |
 
-**Link** = 12-way JST SH (1.0 mm): side-entry `SM12B-SRSS-TB` (C160411) on the main-board bottom at r = 17.5 mm, entry facing the centre, so it clears the rotor hub; vertical `BM12B-SRSS-TB` (C160398) on the base board. A
+**Link** = 12-way JST SH (1.0 mm): side-entry `SM12B-SRSS-TB` (C160411) on **both** boards, entry facing the centre (main: bottom side at r = 17.5 mm, clear of the rotor hub; base: r ≈ 15.5 mm, θ = 120°, under the rotor web). Use 28 AWG pre-crimped SH leads for pins 1–4 and 8 (power). A
 12-wire harness runs through the spindle bore. Pinout (identical on both
 boards):
 

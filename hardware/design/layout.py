@@ -354,41 +354,57 @@ def preroute_usb_c(bb, ref):
     track(off(b7, far), b7.GetPosition(), pcbnew.F_Cu, dm)
 
 
-def preroute_bga_escape(bb, ref, length=0.7, power=("VBUS", "VSYS", "VBAT", "GND"), via_nets=("VSYS",)):
-    """Locked escape stubs for a 2-column fine-pitch BGA: each ball goes straight outward, away from
-    the other column, so the autorouter starts outside the 0.4 mm-pitch array."""
+def preroute_bga_escape(bb, ref):
+    """Locked fan-out for the 2x4, 0.4 mm-pitch DSBGA charger (BQ25180 YBG).
+
+    The column holding A1..D1 (INT, SCL, SDA, TS) escapes away from the other column. In the power column, A2 (VBUS)
+    escapes up out of the end row, B2 (VSYS) and C2 (VBAT) escape sideways with staggered lengths, and D2 (GND)
+    escapes out of the other end row into a via, so the autorouter starts outside the array.
+    """
     fp = bb.footprints.get(ref)
     if fp is None:
         return
-    pads = [p for p in fp.Pads() if p.GetNumber() and p.GetNetname()]
-    xs = [p.GetPosition().x for p in pads]
-    ys = [p.GetPosition().y for p in pads]
-    cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
-    along_x = (max(xs) - min(xs)) < (max(ys) - min(ys))  # columns separated in x -> escape along x
-    for p in pads:
-        pos = p.GetPosition()
-        if along_x:
-            d = pcbnew.VECTOR2I(pcbgen.MM(length) * (1 if pos.x > cx else -1), 0)
-        else:
-            d = pcbnew.VECTOR2I(0, pcbgen.MM(length) * (1 if pos.y > cy else -1))
-        k = 1.6 if p.GetNetname() in via_nets else 1.0  # inner power ball: longer stub ending in a via
-        end = pcbnew.VECTOR2I(pos.x + int(d.x * k), pos.y + int(d.y * k))
-        t = pcbnew.PCB_TRACK(bb.board)
-        t.SetStart(pos)
-        t.SetEnd(end)
-        t.SetWidth(pcbgen.MM(0.2 if p.GetNetname() in power else 0.15))
-        t.SetLayer(pcbnew.F_Cu)
-        t.SetNet(p.GetNet())
-        t.SetLocked(True)
-        bb.board.Add(t)
-        if p.GetNetname() in via_nets:
+    pads = {p.GetNumber(): p for p in fp.Pads() if p.GetNumber()}
+    if not all(k in pads for k in ("A1", "A2", "D1", "D2")):
+        return
+    P = {k: (p.GetPosition().x, p.GetPosition().y) for k, p in pads.items()}
+    # unit vectors: 'col' from column 1 to column 2, 'row' from row A to row D
+    cx = (P["A2"][0] - P["A1"][0], P["A2"][1] - P["A1"][1])
+    rx = (P["D1"][0] - P["A1"][0], P["D1"][1] - P["A1"][1])
+    cl, rl = math.hypot(*cx), math.hypot(*rx)
+    col = (cx[0] / cl, cx[1] / cl)
+    row = (rx[0] / rl, rx[1] / rl)
+
+    def add(pad, segs, width, via=False):
+        x, y = P[pad]
+        net = pads[pad].GetNet()
+        for dc, dr in segs:
+            nx = x + pcbgen.MM(dc * col[0] + dr * row[0])
+            ny = y + pcbgen.MM(dc * col[1] + dr * row[1])
+            t = pcbnew.PCB_TRACK(bb.board)
+            t.SetStart(pcbnew.VECTOR2I(int(x), int(y)))
+            t.SetEnd(pcbnew.VECTOR2I(int(nx), int(ny)))
+            t.SetWidth(pcbgen.MM(width))
+            t.SetLayer(pcbnew.F_Cu)
+            t.SetNet(net)
+            t.SetLocked(True)
+            bb.board.Add(t)
+            x, y = nx, ny
+        if via:
             v = pcbnew.PCB_VIA(bb.board)
-            v.SetPosition(end)
-            v.SetWidth(pcbgen.MM(0.5))
+            v.SetPosition(pcbnew.VECTOR2I(int(x), int(y)))
+            v.SetWidth(pcbgen.MM(0.45))
             v.SetDrill(pcbgen.MM(0.25))
-            v.SetNet(p.GetNet())
+            v.SetNet(net)
             v.SetLocked(True)
             bb.board.Add(v)
+
+    for k in ("A1", "B1", "C1", "D1"):             # signals: straight out, away from the power column
+        add(k, [(-0.8, 0)], 0.15)
+    add("A2", [(0, -0.8)], 0.2)                     # VBUS: out of the end row
+    add("B2", [(1.4, 0)], 0.2)                      # VSYS: long sideways stub
+    add("C2", [(0.7, 0), (0.45, 0.45)], 0.2)        # VBAT: short sideways, then angled away from VSYS
+    add("D2", [(0, 0.95)], 0.2, via=True)           # GND: out of the far end row into a via to the B.Cu pour
 
 
 def base_inside(x, y, side):
@@ -410,6 +426,8 @@ def base_fixed(comps):
     put(lambda c: "TS-1187" in mpn(c) or c["value"].upper().startswith("SW_PRESS"), CX, CY, 0.0, "F")
     put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", *pol(15.5, 120.0), 0.0, "F")
     put(lambda c: "PH-SM4" in mpn(c) or "S2B-PH" in mpn(c), *pol(17.0, 212.0), 0.0, "F")
+    # JEITA NTC on the bottom, pressed onto the pack through a thermal pad (the only bottom-side part)
+    put(lambda c: "NCP15" in mpn(c) or "B3435" in c["value"].upper(), *pol(8.0, 200.0), 0.0, "B")
     return P
 
 
@@ -425,6 +443,13 @@ def base_post_fixed(bb, comps, fixed):
         elif "S2B-PH" in m:   # battery leads come from the pack end at θ = 180°
             orient_local_toward(fp, 0.0, 6.0, *pol(30.0, 190.0))
             fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(17.0, 212.0))))
+            for pad in fp.Pads():  # polarity marks: a reversed pack destroys the charger
+                label = {"1": "BAT+", "2": "GND"}.get(pad.GetNumber())
+                if label:
+                    px, py = pcbnew.ToMM(pad.GetPosition().x), pcbnew.ToMM(pad.GetPosition().y)
+                    dx, dy = px - CX, py - CY
+                    dl = math.hypot(dx, dy)
+                    bb.text(pcbnew.F_SilkS, label, px + 2.6 * dx / dl, py + 2.6 * dy / dl, 0.8)
 
 
 def base_anchor_sides(comps):
@@ -437,8 +462,7 @@ def base_anchor_sides(comps):
             sides[ref] = ("F", (22.0, 0.0))
         elif "BSS138" in m:
             sides[ref] = ("F", (9.0, 200.0))
-        elif "NCP15" in m or "B3435" in c["value"].upper() or "NTC" in c["value"].upper():
-            sides[ref] = ("F", (18.0, 270.0))
+
     return sides
 
 
@@ -446,7 +470,7 @@ def base_keepouts():
     def bosses(x, y):
         return any(math.hypot(x - hx, y - hy) < 2.8 for hx, hy in (pol(21.0, a) for a in (90, 270)))
 
-    def bottom(x, y):  # battery directly below: no parts on B
+    def bottom(x, y):  # battery directly below: no parts on B (the NTC is placed explicitly)
         return True
 
     def usb_preroute(x, y):  # locked D+/D- crossing behind the USB-C signal pads
@@ -487,7 +511,7 @@ BOARDS = {
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
                  post_fixed=main_post_fixed),
     "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
-                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.25,
+                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.4,
                  post_fixed=base_post_fixed, post_place=base_post_place),
 }
 
