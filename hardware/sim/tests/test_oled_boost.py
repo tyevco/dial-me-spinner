@@ -35,9 +35,10 @@ Supply corners: VSYS on battery = VBAT 3.0 / 3.7 / 4.2 V (BQ25180 BATFET path); 
 +2 % = 4.59 -> 4.6 V (BQ25180 SLUSE99C VSYS_REG_ACCURACY).  Firmware writes SYS_REG = 0x20 (4.4 V, firmware.md
 13.1 row 8); 4.6 V is kept as the stress corner because 4.5 V is the POR default (before the init write, after a
 BQ reset) and the only other value firmware allows.  The USB-only start-up decks (usb_start) use the firmware's
-4.4 V, the lower start for the VSYS dip.  The firmware low-battery rule (firmware.md 7.4 / 12.4: below rested
-VBAT 3.75 V, and while the LEDs exceed their 150 mA sustained cap, C7 <= 08h and <= 30 % white; hardware/sim
-OLED-BST-2) bounds the panel load there by the 50 %-ON maximum (29 mA); above it the panel may show full white
+4.4 V, the lower start for the VSYS dip.  The firmware low-battery rule (firmware.md 7.4 / 12.4: below VBAT_est
+3.75 V, and while the LEDs exceed their 150 mA sustained cap, C7 <= 08h and <= 30 % white; hardware/sim
+OLED-BST-2; VBAT_est = 0.979 x the calibrated rested reading, rule R1', so the true VBAT is >= VBAT_est) bounds
+the panel load there by the 50 %-ON maximum (29 mA); above it the panel may show full white
 (42 mA max).  The old threshold was 3.60 V: test_headroom_at_firmware_full_white_threshold keeps it as the
 strict-xfail evidence, and icc_max() / the passing headroom, stress and temperature tests keep 3.60 V as their
 (stricter) switch point, so they still assume full white at VSYS 3.6-3.75 V.
@@ -103,9 +104,15 @@ VSYS_USB = 4.6                                # BQ25180 SYS_REG POR default 4.5 
 SYS_REG_FW = 4.4                              # firmware.md 13.1 row 8: SYS_REG = 0x20 -> SYS 4.4 V on USB
 VSYS_FW_OLD = 3.6                             # OLD firmware.md 7.4 full-white threshold (OLED-BST-2 evidence); also
 #                                               the stricter switch point icc_max() keeps for the passing tests
-VSYS_FW_RULE = 3.75                           # firmware.md 7.4 / 12.4: full white only from rested VBAT 3.75 V
+VSYS_FW_RULE = 3.75                           # firmware.md 7.4 / 12.4: full white only from VBAT_est 3.75 V
+# firmware.md 12.4 (VSENSE-1/4/5, rule R1'): VBAT_est = VREAD_GAIN x calibrated rested reading, which covers a reading
+# up to 1 - VREAD_GAIN = 2.1 % high, so VBAT_est 3.75 V (a reading of 3.75 / VREAD_GAIN = 3.8304 V) means a true VBAT
+# >= 3.75 V (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule[OLED-BST-2-3.75]; under the former
+# flat VBAT_est = reading - 75 mV it could be 0.66 mV below).  The guard therefore runs at VSYS 3.75 V.
+VREAD_GAIN = 0.979
 SRC_FW_BST2 = ("firmware rule (hardware/sim, OLED-BST-2): firmware.md 7.4 / 12.4, SPEC 5.3: C7 <= 08h and "
-               "<= 30 % white below rested VBAT 3.75 V and while the LEDs exceed their 150 mA sustained cap")
+               f"<= 30 % white below VBAT_est {VSYS_FW_RULE} V (VBAT_est = {VREAD_GAIN:g} x reading, a reading of "
+               f"{VSYS_FW_RULE / VREAD_GAIN:.4f} V; R1') and while the LEDs exceed their 150 mA sustained cap")
 I_LED_SUST_FW = 0.150                         # firmware.md 6.3 / 7.4: LED sustained cap; up to it the OLED may stay
 #                                               at full white (OLED-BST-2), so the guard also loads VSYS with it
 # VSYS source: BQ25180 RON_BAT 55 mOhm typ (SLUSE99C 7.5) + link harness 8.5 + 5.7 mOhm (architecture.md 4.2)
@@ -114,7 +121,7 @@ R_SRC = 0.055 + 0.0085 + 0.0057
 
 def icc_max(vsys: float) -> float:
     """Panel VCC current the passing tests load the boost with at this VSYS: full white (42 mA) from the OLD 3.60 V
-    threshold up, the 50 %-ON maximum (29 mA) below it.  firmware.md 7.4 now caps the panel below rested VBAT
+    threshold up, the 50 %-ON maximum (29 mA) below it.  firmware.md 7.4 now caps the panel below VBAT_est
     3.75 V (OLED-BST-2), so between 3.60 and 3.75 V this asks for more than firmware allows: kept on purpose (moving
     the switch point to 3.75 V would lower the 3.7 V load in the headroom and stress tests from 42 to 29 mA)."""
     return ICC_100_MAX if vsys >= VSYS_FW_OLD else ICC_50_MAX
@@ -510,7 +517,7 @@ def test_supply_corners_headroom(main, check):
 @pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, OLED-BST-2): at the OLD firmware "
                    "full-white threshold (VBAT 3.60 V) a worst-case TPS61040 + L20 delivers only ~41 mA at VCC 12.5 V, "
                    "less than the 42 mA NHD 100 %-ON maximum; VCC settles near 12.3 V. firmware.md 7.4 now caps the "
-                   "panel below rested VBAT 3.75 V: see test_headroom_at_firmware_full_white_threshold_with_fw_rule")
+                   "panel below VBAT_est 3.75 V: see test_headroom_at_firmware_full_white_threshold_with_fw_rule")
 def test_headroom_at_firmware_full_white_threshold(main, check):
     """Same weak-part stack at VSYS 3.6 V, the lowest voltage at which the OLD firmware still allowed full white."""
     soft_checks(check, _headroom_rows(main, [(VSYS_FW_OLD, icc_max(VSYS_FW_OLD))]))
@@ -518,9 +525,10 @@ def test_headroom_at_firmware_full_white_threshold(main, check):
 
 def test_headroom_at_firmware_full_white_threshold_with_fw_rule(main, check):
     """GUARD for the firmware rule OLED-BST-2 (hardware/sim; firmware.md 7.4 / 12.4, SPEC 5.3): C7 <= 08h and
-    <= 30 % white below rested VBAT 3.75 V, so full white (42 mA NHD 100 %-ON maximum) is allowed only from
-    3.75 V.  Same weak-part stack as test_headroom_at_firmware_full_white_threshold (ILIM 350 mA, toff 550 ns,
-    ton 4 us, RDS 1 ohm, L20 -20 %, DCR max, U21 RON max) at VSYS 3.75 V: at 25 C as there, plus -10 / 60 C.
+    <= 30 % white below VBAT_est 3.75 V, so full white (42 mA NHD 100 %-ON maximum) is allowed only from
+    VBAT_est 3.75 V (a reading of 3.8304 V; VBAT_est = 0.979 x reading, R1', so the true VBAT is >= 3.75 V).  Same
+    weak-part stack as test_headroom_at_firmware_full_white_threshold (ILIM 350 mA, toff 550 ns, ton 4 us, RDS
+    1 ohm, L20 -20 %, DCR max, U21 RON max) at VSYS 3.75 V: at 25 C as there, plus -10 / 60 C.
     The rule lets full white run together with the LEDs up to their 150 mA sustained cap (the ring is on the main
     board, so its current also drops VSYS across the BATFET + harness), so each temperature runs once with no other
     VSYS load (the xfail twin's deck) and once with 150 mA DC on VSYS.
@@ -534,7 +542,7 @@ def test_headroom_at_firmware_full_white_threshold_with_fw_rule(main, check):
                                vsys_load=iled, u20=dict(U20_WEAK), **WEAK_PASSIVES)
     soft_checks(check, [(f"boost current at VCC 12.5 V, weak parts, {temp:g} C, VSYS {vs} V"
                          + (f" + LEDs {iled * 1e3:g} mA on VSYS" if iled else "")
-                         + f" (fw rule OLED-BST-2: full white only from rested VBAT 3.75 V and LEDs <= 150 mA; "
+                         + f" (fw rule OLED-BST-2: full white only from VBAT_est 3.75 V and LEDs <= 150 mA; "
                          f"load {icc:g} mA + divider)", i, load_at_min(main, icc), None, "A",
                          SRC_HEADROOM + "; " + SRC_FW_BST2
                          + ("; firmware.md 6.3 LED sustained cap 150 mA" if iled else ""))

@@ -21,8 +21,9 @@ Drive patterns:
     evidence for MD-3; the coast-peak drive (firmware_coast_peak) uses the MD-3 rule.
 
 Firmware rules guarded here (each strict xfail keeps the old value as evidence, a *_with_fw_rule test or the named
-case applies the rule): MD-2 non-park moves only when VSYS_est = idle VSYS reading - 75 mV (firmware.md §12.4
-VREAD_MARGIN) >= 3.54 V, i.e. a reading >= 3.615 V (also with the reading as far off as firmware.md §12.4 documents);
+case applies the rule): MD-2 non-park moves only when VSYS_est = 0.979 x idle VSYS reading (firmware.md §12.4
+VREAD_GAIN, rule R1') >= 3.54 V, i.e. a reading >= 3.54 / 0.979 = 3.6159 V (also with the reading as far off as
+firmware.md §12.4 documents);
 MD-3 temperature-compensated duty; MD-1 brake (IN1 = IN2 = 1 >= 3 ms) before IN = 00 + nSLEEP low (KICK_CASES
 'usb-chargedone-worst-brake-then-sleep').
 
@@ -92,21 +93,24 @@ SRC_RES = "detent research (VSM08102 3.3 V / 20 Ohm, >= 80 gf at 500 PPS)"
 
 FW = "firmware.md"
 FW_VSYS_MOVE_OLD = 3.40                  # pre-MD-2 firmware.md §5.8 non-park minimum (evidence of the strict xfail)
-FW_VREAD_MARGIN = 0.075                  # firmware.md §12.4 (VSENSE-1/4/5): VSYS_est = calibrated reading - 75 mV
+# firmware.md §12.4 (VSENSE-1/4/5, rule R1'): VSYS_est = VREAD_GAIN x calibrated reading; covers an over-read of up to
+# 1 - VREAD_GAIN = 2.1 % of the reading (the flat VSYS_est = reading - 75 mV it replaces held only up to a true 3.72 V)
+VREAD_GAIN = 0.979
 FW_VSYS_MOVE_EST = 3.54                  # firmware.md §5.8 (MD-2): non-park moves only with idle VSYS_est >= 3.54 V
-FW_VSYS_MOVE = round(FW_VSYS_MOVE_EST + FW_VREAD_MARGIN, 6)   # 3.615 V: the MD-2 threshold as an idle VSYS reading
+FW_VSYS_MOVE = FW_VSYS_MOVE_EST / VREAD_GAIN   # 3.6159 V: the MD-2 threshold as an idle VSYS reading
 FW_VSYS_MOVE_PREV = 3.55                 # the MD-2 rule before the reading margin: 3.55 V measured idle VSYS, no margin
                                          # (its corners stay in MD3_CASES as extra passing corners)
 FW_VSYS_PARK = 3.30                      # firmware.md §5.8 minimum VSYS for a park move
 # firmware.md §12.4 (VSENSE-1/4): the calibrated reading is within about ±24 mV at 15-35 °C on a fresh unit and can be up
 # to 73 mV high on an aged unit at -10 / 60 °C (hardware/sim/tests/test_vsys_sense.py CAL_ACC_FRESH, CAL_DRIFT_AGED_T).
 # MD-2 gates on the idle VSYS *reading*, so a reading that high lets a non-park move start from a true idle VSYS that
-# much below 3.615 V; VREAD_MARGIN (75 mV) bounds it (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule
-# [MD-2-move-3.54]: worst over-read at a true 3.54 V is 72.4 mV).
+# much below 3.6159 V; VREAD_GAIN bounds it at VSYS_est itself, a reading up to 2.1 % (75.9 mV) high
+# (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule[MD-2-move-3.54]: worst over-read at a true 3.54 V
+# is 72.4 mV, VSYS_est = 3.5366 V there).
 FW_ADC_FRESH, FW_ADC_HIGH = 0.024, 0.073
 FW_ADC_HIGH_PREV = 0.046                 # the over-read firmware.md §12.4 gave before (its MD3_CASES corner stays)
 SRC_ADC = (f"{FW} §12.4 (VSENSE-1/4) calibrated VSYS reading about ±24 mV at 15-35 °C fresh, up to 73 mV high aged "
-           f"at -10 / 60 °C; VSYS_est = reading - 75 mV")
+           f"at -10 / 60 °C; VSYS_est = {VREAD_GAIN:g} x reading (R1')")
 FW_LED_CAP = 0.100                       # firmware.md §5.8 LED cap while moving (100 mA average)
 I_SYS = 0.050                            # nRF + QSPI peak, architecture.md §8.4
 FW_WAKE_WAIT = 1e-3                      # firmware.md §5.2: nSLEEP high, wait 1 ms
@@ -498,7 +502,7 @@ def test_hold_force_and_brownout(main, base, check, supname, temp):
     resistance (RON max, aged contacts, cold pack), rDS(on) max. Force ~ current: F = 0.78 N x I / 165 mA.
 
     Every supply here is one where firmware.md §5.8 allows a move (park >= 3.30 V; others since MD-2 only from an idle
-    VSYS_est >= 3.54 V, i.e. a reading >= 3.615 V; VBAT 3.3 / 3.4 V are park-only)."""
+    VSYS_est >= 3.54 V, i.e. a reading >= 3.6159 V; VBAT 3.3 / 3.4 V are park-only)."""
     sup = SUP[supname]
     assert sup.vsys_idle >= FW_VSYS_PARK
     r = hold_op(main, base, sup, temp)
@@ -518,7 +522,7 @@ def test_hold_force_and_brownout(main, base, check, supname, temp):
     "DESIGN ISSUE (minor, thrust margin; old-rule evidence for MD-2): the pre-MD-2 firmware.md §5.8 'minimum VSYS for "
     "non-park moves 3.40 V (measured idle)' ignores the stroke-load sag (pack + BATFET + link) and rDS(on): at 3.40 V "
     "idle the phase voltage is below the motor's 3.3 V minimum rating (< 165 mA at 25 C); the 0.5 N load budget is "
-    "still met. Rule now VSYS_est = reading - 75 mV >= 3.54 V (a reading >= 3.615 V): "
+    "still met. Rule now VSYS_est = 0.979 x reading >= 3.54 V (a reading >= 3.6159 V, R1'): "
     "test_required_current_at_firmware_move_threshold_with_fw_rule"))
 def test_required_current_at_firmware_move_threshold(main, base, check):
     """VSM08102 rated phase voltage 3.3-5 V (vendor, via detent research): 165 mA/phase at 25 C is the lowest rated
@@ -543,11 +547,12 @@ def test_required_current_at_firmware_move_threshold(main, base, check):
 
 
 def test_required_current_at_firmware_move_threshold_with_fw_rule(main, base, check):
-    """Guard for MD-2 (firmware.md §5.8 / §12.4: non-park moves only when the idle VSYS_est = reading - 75 mV is
-    >= 3.54 V, i.e. a reading >= 3.615 V). Same deck and corners as test_required_current_at_firmware_move_threshold
-    (stroke load = 2 coils + LED cap + nRF, worst source resistance, rDS(on) max) at the lowest true idle VSYS the rule
-    lets a move start from: VSYS_est itself, i.e. a reading that is VREAD_MARGIN (75 mV) high, the most the margin
-    tolerates (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule[MD-2-move-3.54] checks that no corner
+    """Guard for MD-2 (firmware.md §5.8 / §12.4: non-park moves only when the idle VSYS_est = 0.979 x reading is
+    >= 3.54 V, i.e. a reading >= 3.6159 V, R1'). Same deck and corners as
+    test_required_current_at_firmware_move_threshold (stroke load = 2 coils + LED cap + nRF, worst source resistance,
+    rDS(on) max) at the lowest true idle VSYS the rule lets a move start from: VSYS_est itself, i.e. a reading that
+    is 1 - VREAD_GAIN = 2.1 % (75.9 mV) high, the most the rule tolerates
+    (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule[MD-2-move-3.54] checks that no corner
     over-reads more). The 25 C coil current must reach the rated 165 mA."""
     sup = Supply(f"VBAT{FW_VSYS_MOVE_EST:.2f}", FW_VSYS_MOVE_EST)
     r = hold_op(main, base, sup, 25)
@@ -560,10 +565,10 @@ def test_required_current_at_firmware_move_threshold_with_fw_rule(main, base, ch
     check(f"I_coil at VSYS idle {FW_VSYS_MOVE_EST:.2f} V, -10 C", min(abs(cold["ia"]), abs(cold["ib"])), None, None,
           "A", "info: the cold coil (17.2 Ohm) gets more than the 25 C rated current")
     check(f"I_coil at the firmware non-park threshold (true VSYS idle = VSYS_est {FW_VSYS_MOVE_EST:.2f} V, reading "
-          f"{FW_VSYS_MOVE:.3f} V, 25 C)", i, I_RATED, None, "A",
+          f"{FW_VSYS_MOVE:.4f} V, 25 C)", i, I_RATED, None, "A",
           f"VSM08102 rated phase voltage 3.3-5 V (vendor page via detent research): 3.3 V / 20 Ohm = 165 mA; "
-          f"firmware rule {FW} §5.8 non-park moves only with idle VSYS_est = reading - 75 mV >= "
-          f"{FW_VSYS_MOVE_EST:.2f} V (MD-2)")
+          f"firmware rule {FW} §5.8 non-park moves only with idle VSYS_est = {VREAD_GAIN:g} x reading >= "
+          f"{FW_VSYS_MOVE_EST:.2f} V (MD-2, R1')")
 
 
 MD2_ADC_CASES = [  # id, over-read of the idle VSYS reading (firmware.md §12.4), strict-xfail reason
@@ -578,23 +583,24 @@ MD2_ADC_CASES = [  # id, over-read of the idle VSYS reading (firmware.md §12.4)
     for c in MD2_ADC_CASES])
 def test_required_current_at_measured_move_threshold_with_fw_rule(main, base, check, cid, over_read, xf):
     """Worst corner of the MD-2 rule (reviewer extension of the guard above): firmware.md §5.8 gates on the idle VSYS
-    reading (VSYS_est = reading - 75 mV >= 3.54 V, i.e. a reading >= 3.615 V), and firmware.md §12.4 gives the
+    reading (VSYS_est = 0.979 x reading >= 3.54 V, i.e. a reading >= 3.6159 V, R1'), and firmware.md §12.4 gives the
     calibrated reading as about ±24 mV at 15-35 °C on a fresh unit and up to 73 mV high on an aged unit at -10 / 60 °C
-    (VSENSE-1/4). A reading that high lets a non-park move start from a true idle VSYS of 3.615 V minus the over-read.
+    (VSENSE-1/4). A reading that high lets a non-park move start from a true idle VSYS of 3.6159 V minus the over-read
+    (R1' bounds it at VSYS_est, 3.54 V: the guard above).
     Same deck, stroke load and 25 C rating corner as test_required_current_at_firmware_move_threshold_with_fw_rule
     (the aged over-read is a -10 / 60 °C figure; at 25 °C it is about 30 mV, so this is conservative)."""
     v_true = round(FW_VSYS_MOVE - over_read, 6)
     r = hold_op(main, base, Supply(f"VBAT{v_true:.3f}", v_true), 25)
     i = min(abs(r["ia"]), abs(r["ib"]))
-    check(f"true idle VSYS when it reads {FW_VSYS_MOVE:.3f} V ({over_read * 1e3:g} mV high)", v_true, None, None, "V",
+    check(f"true idle VSYS when it reads {FW_VSYS_MOVE:.4f} V ({over_read * 1e3:g} mV high)", v_true, None, None, "V",
           f"info: {SRC_ADC}")
     check(f"BAT pin under stroke load at true VSYS idle {v_true:.3f} V, 25 C", r["vbat"], None, None, "V",
           "info: detent research 'move only when VBAT >= 3.3 V under load'")
     check(f"I_coil at the firmware non-park threshold read {over_read * 1e3:g} mV high (true VSYS idle {v_true:.3f} V, "
           f"25 C)", i, I_RATED, None, "A",
           f"VSM08102 rated phase voltage 3.3-5 V (vendor page via detent research): 3.3 V / 20 Ohm = 165 mA; "
-          f"firmware rule {FW} §5.8 non-park moves only with idle VSYS_est = reading - 75 mV >= "
-          f"{FW_VSYS_MOVE_EST:.2f} V (MD-2); {SRC_ADC}")
+          f"firmware rule {FW} §5.8 non-park moves only with idle VSYS_est = {VREAD_GAIN:g} x reading >= "
+          f"{FW_VSYS_MOVE_EST:.2f} V (MD-2, R1'); {SRC_ADC}")
 
 
 @pytest.mark.parametrize("temp", TEMPS)
@@ -1078,14 +1084,15 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
 MD3_CASES = [  # id, true idle VSYS (battery), idle VSYS firmware measures (None = true), temp, strict-xfail reason
     # the strict xfail's own corner
     ("VBAT3.7-60C", 3.7, None, 60, None),
-    # lowest true idle VSYS a non-park move may start from (MD-2): the reading is at the 3.615 V threshold and 75 mV
-    # (VREAD_MARGIN, the most the rule tolerates) high, so the true VSYS is VSYS_est = 3.54 V and firmware scales d with
-    # the 3.615 V reading. 60 C: d_peak clamps at 1 (MD-3 needs >= 3.69 V there)
-    ("VBAT3.54-60C-reads-3.615", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, 60, None),
-    ("VBAT3.54-25C-reads-3.615", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, 25, None),
+    # lowest true idle VSYS a non-park move may start from (MD-2): the reading is at the 3.6159 V threshold and 2.1 %
+    # (75.9 mV, 1 - VREAD_GAIN, the most R1' tolerates) high, so the true VSYS is VSYS_est = 3.54 V and firmware scales
+    # d with the 3.6159 V reading. 60 C: d_peak clamps at 1 (MD-3 needs >= 3.69 V there). (Ids '...-reads-3.615'
+    # under the flat 75 mV rule.)
+    (f"VBAT3.54-60C-reads-{FW_VSYS_MOVE:.3f}", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, 60, None),
+    (f"VBAT3.54-25C-reads-{FW_VSYS_MOVE:.3f}", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, 25, None),
     # coldest corner at the MD-2 threshold: the worst corner of the MD-3 rule (strict xfail '[VBAT3.55--10C]' until
     # MD-3 used max(T, 25 C): 17.58 Ohm at -10 C gave 0.4933 N at a true and read 3.55 V)
-    ("VBAT3.54--10C-reads-3.615", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, -10, None),
+    (f"VBAT3.54--10C-reads-{FW_VSYS_MOVE:.3f}", FW_VSYS_MOVE_EST, FW_VSYS_MOVE, -10, None),
     # the corners of the MD-2 rule before the reading margin (3.55 V measured idle; the reading 46 mV high at 60 C):
     # no longer reachable, kept because each has a lower true VSYS (thrust) or a higher drive voltage (VSYS max, link
     # current, BAT pin) than the new-threshold case at the same temperature
@@ -1104,8 +1111,9 @@ def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, vmeas
     / VSYS reading, clamp d <= 1, T = nRF die temperature, here equal to the coil / ambient temperature). Same deck as
     the strict xfail test_firmware_microstep_pwm[VBAT3.7-60C] (446 PPS, rDS(on) max, upper back-EMF, worst VSYS caps):
     the torque vector must stay above the 0.5 N load budget and every other limit of that test must hold, at that
-    corner, at the lowest true idle VSYS a non-park move may start from (MD-2: a 3.615 V reading that is 75 mV high,
-    true VSYS_est 3.54 V) at 60 / 25 / -10 C, and at the corners of the previous MD-2 rule (3.55 V measured)."""
+    corner, at the lowest true idle VSYS a non-park move may start from (MD-2: a 3.6159 V reading that is 2.1 %
+    (75.9 mV) high, true VSYS_est 3.54 V, R1') at 60 / 25 / -10 C, and at the corners of the previous MD-2 rule
+    (3.55 V measured)."""
     sup = SUP["VBAT3.7"] if vbat == 3.7 else Supply(f"VBAT{vbat:.3f}", vbat)
     r_eff = fw_r_eff(temp)
     check(f"MD-3 R_eff at {temp} C (firmware.md §5.3 formula)", r_eff, None, None, "Ohm", f"info: {SRC_MD3}")
@@ -1113,7 +1121,7 @@ def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, vmeas
     if vmeas is not None:
         check("idle VSYS firmware measures (true idle VSYS is the supply)", vmeas, None, None, "V", f"info: {SRC_ADC}")
         rule += (f"; idle VSYS read {vmeas:.3f} V, {(vmeas - vbat) * 1e3:.0f} mV above the true idle VSYS (MD-2 "
-                 f"threshold: a reading >= {FW_VSYS_MOVE:.3f} V; {SRC_ADC})")
+                 f"threshold: a reading >= {FW_VSYS_MOVE:.4f} V; {SRC_ADC})")
     run_microstep(main, base, check, f"{cid}-MD-3", sup, temp, r_eff=r_eff, duty_src=SRC_MD3, rule=rule,
                   vsys_meas=vmeas)
 

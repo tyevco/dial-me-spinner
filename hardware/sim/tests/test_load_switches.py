@@ -62,19 +62,20 @@ SW_SR_K = {3.6: 1900.0, 5.0: 2300.0}    # (mV/us)*pF, Table 7.6 SRON
 SW_QOD = 150.0          # Ohm typ, Table 7.5
 BQ_BATOCP = 1.5         # A, IBAT_OCP setting 10 (CHARGECTRL1 0x92, docs/architecture.md 6.5), Table 7.5
 BQ_BUVLO = 3.0          # V, VBUVLO setting 3.0 V (CHARGECTRL1 0x92), SLUSE99C Table 7.5; tBUVLO 60 us, Table 7.6
-# V, docs/firmware.md 12.4 (VSENSE-1/4/5): the calibrated VSYS reading can be up to ~72 mV HIGH (aged unit at
-# -10/60 C; fresh -10..60 C about +48 mV, aged at 25 C about +30 mV) and ~78 mV low.  Every firmware threshold that
-# protects a datasheet limit compares a TRUE-cell value against VBAT_est = calibrated reading - VREAD_MARGIN, so a
-# threshold T on VBAT_est admits a true cell as low as T + (VREAD_MARGIN - VREAD_HIGH_MAX) >= T; the guards run the
-# cell at VBAT_est itself (cell = reading - VREAD_MARGIN), the lowest the rule admits, rounded down by 3 mV.
-VREAD_HIGH_MAX = 0.072
-VREAD_MARGIN = 0.075
-assert VREAD_MARGIN >= VREAD_HIGH_MAX
+# docs/firmware.md 12.4 (VSENSE-1/4/5, rule R1'): the calibrated VSYS reading has a gain error that grows with VSYS (up
+# to about 2.0-2.1 % HIGH, aged unit at -10/60 C: 67.9 mV at a true 3.21 V, 71.4 mV at 3.465 V, 72.3 mV at 3.53 V,
+# 79.6 mV at 3.90 V).  Every firmware threshold that protects a datasheet limit compares a TRUE-cell value against
+# VBAT_est = VREAD_GAIN x calibrated reading, which covers an over-read of up to 1 - VREAD_GAIN = 2.1 % of the reading
+# (test_vsys_sense.py::test_read_margin_covers_over_read_with_fw_rule: VREAD_GAIN x reading <= true at every threshold
+# and corner), so a threshold T on VBAT_est (a reading of T / VREAD_GAIN) admits a true cell as low as T; the guards
+# run the cell at VBAT_est itself (cell = VREAD_GAIN x reading), the lowest the rule admits.  It replaces the flat
+# VBAT_est = reading - 75 mV, which covered the over-read only up to a true 3.72 V.
+VREAD_GAIN = 0.979
 # V, lowest TRUE rested cell voltage at which firmware still switches the rails: docs/firmware.md 12.4 enters SHIP
-# when VBAT_est < 3.465 V (VBATPOR max 3.46 V + 5 mV), i.e. below a 3.54 V reading -> cell = 3.54 - VREAD_MARGIN =
-# 3.465 V (it was 3.48 V = a 3.53 V reading - 46 mV under the former +-46 mV drift budget; the lower floor is stricter
-# for the BUVLO and QOD-discharge checks that start from it).  The LEDs are off except the <= 2 mA red cue below
-# VBAT_est 3.53 V (docs/firmware.md 6.3).
+# when VBAT_est < 3.465 V (VBATPOR max 3.46 V + 5 mV), i.e. below a 3.465 / VREAD_GAIN = 3.5393 V reading -> cell =
+# VREAD_GAIN x reading = 3.465 V (it was 3.48 V = a 3.53 V reading - 46 mV under the former +-46 mV drift budget;
+# the lower floor is stricter for the BUVLO and QOD-discharge checks that start from it).  The LEDs are off except
+# the <= 2 mA red cue below VBAT_est 3.53 V (docs/firmware.md 6.3).
 FW_VBAT_FLOOR = 3.465
 WS_VDD_MIN, WS_VDD_MAX = 3.3, 5.3      # V, WS2812C-2020-V6 DS p.2 supply range
 WS_VI_OVER_VDD = 0.7    # V, WS2812C-2020-V6 DS p.2 abs max VI <= VDD + 0.7 V
@@ -649,7 +650,8 @@ def test_u2_qod_discharge_tolerance_extremes(main, base, check):
     C8, C9, R4 at their tolerance corners (MPN tolerance) with the 48 x 100 nF (one reel) at +10 %, and every VLED
     capacitor at its Samsung DC-bias / TCC capacitance at 25 C (the slowest temperature: TCC < 0 at -10 and 60 C).
     Discharge from the lowest VSYS at which firmware still runs VLED (FW_VBAT_FLOOR 3.465 V true cell: SHIP when
-    VBAT_est = reading - 75 mV < 3.465 V, docs/firmware.md 12.4, VSENSE-1/4/5; 26.59 ms from the former 3.48 V floor),
+    VBAT_est = 0.979 x reading < 3.465 V, docs/firmware.md 12.4, VSENSE-1/4/5, R1'; 26.59 ms from the former 3.48 V
+    floor),
     where the DC-bias derating helps least; the 4.2 V start (most derating) is recorded for the all-plus corner.
     The discharge time is monotonic in every R and C, so the 4.2 V run needs only that corner."""
     small = [r for r in main.on_net("VLED", "C") if main.fitted(r) and r not in ("C8", "C9")]
@@ -1001,12 +1003,13 @@ BQ_SYSREG_FW = 4.4       # V, SYS_REG 0x20 written by firmware (docs/firmware.md
 FW_LED_CUE = 0.020       # A, LEDs <= 20 mA "charging cue" while TMR_ILIM is 0xC9 (docs/firmware.md 6.3 / 7.2 / 13.3)
 FW_OLED_SUP_VBAT = 3.21  # V, docs/firmware.md 7.2 / 13.3, SPEC 5.3 (NEW-1, OLED-V1, R6): at TMR_ILIM 0xC9
                          # OLED_VCC_EN only if the battery can supplement SYS: no BUVLO_STAT and VBAT_est >= 3.21 V
-                         # (a true-cell value; VBAT_est = the last battery-only reading - VREAD_MARGIN, i.e. a
-                         # 3.285 V reading).  The guard runs the cell at 3.21 V, the lowest the rule admits.  It was
+                         # (a true-cell value; VBAT_est = VREAD_GAIN x the last battery-only reading, i.e. a
+                         # 3.2789 V reading).  The guard runs the cell at 3.21 V, the lowest the rule admits.  It was
                          # "VBAT >= about 3.15 V" on the reading, which failed BUVLO at -10 C.
 FW_RULE_NEW1 = ("firmware rule NEW-1 / OLED-V1 (docs/firmware.md 7.2 / 13.3, SPEC 5.3): OLED_VCC_EN never at "
                 f"TMR_ILIM 0xC9 unless the battery can supplement (no BUVLO_STAT, VBAT_est >= {FW_OLED_SUP_VBAT} V "
-                "true cell, VBAT_est = reading - 75 mV); until ILIM is 500 mA the LEDs show the <= 20 mA charging cue")
+                f"true cell, VBAT_est = {VREAD_GAIN:g} x reading); until ILIM is 500 mA the LEDs show the <= 20 mA "
+                "charging cue")
 FW_RULE_POF = (f"firmware POF blanking (docs/firmware.md 12.4, R8): POFWARN ignored for {FW_POF_BLANK * 1e3:g} ms "
                "after OLED_VCC_EN or LED_PWR_EN rises")
 
@@ -1147,12 +1150,13 @@ def test_u21_turn_on_dead_battery_usb_100ma_with_fw_rule(main, base, check, ilim
 def usb_100ma_oled_with_supplement(main, base, temp, ilim, vbat=FW_OLED_SUP_VBAT, t_on=0.2e-3,
                                    stop=0.2e-3 + FW_POF_BLANK + 5e-3):
     """Firmware rule NEW-1 / OLED-V1, its 'battery can supplement' branch: at TMR_ILIM 0xC9 the OLED may be enabled
-    when there is no BUVLO_STAT and VBAT_est >= FW_OLED_SUP_VBAT (3.21 V true cell, VBAT_est = the last battery-only
-    reading - VREAD_MARGIN).  USB 5.0 V, the lowest cell that rule admits (VBAT_est = 3.21 V at a 3.285 V reading; the
-    reading is at most VREAD_HIGH_MAX = 72 mV high, so the cell is >= 3.213 V; a loaded reading only puts the cell
-    higher), the LED charging cue (FW_LED_CUE) on VSYS, and OLED_VCC_EN rising at t_on.  The supplement diode of
-    load_switches__bq25180.lib ignores BUVLO, so the BAT pin and the time it spends below BQ_BUVLO are returned for
-    the BUVLO check.  The window runs 5 ms past the POF blanking (FW_POF_BLANK)."""
+    when there is no BUVLO_STAT and VBAT_est >= FW_OLED_SUP_VBAT (3.21 V true cell, VBAT_est = VREAD_GAIN x the last
+    battery-only reading).  USB 5.0 V, the lowest cell that rule admits (VBAT_est = 3.21 V at a 3.2789 V reading;
+    VREAD_GAIN covers a reading up to 2.1 % high, so the cell is >= 3.21 V; the worst simulated over-read, 67.9 mV,
+    leaves it >= 3.211 V; a loaded reading only puts the cell higher), the LED charging cue (FW_LED_CUE) on VSYS, and
+    OLED_VCC_EN rising at t_on.  The supplement diode of load_switches__bq25180.lib ignores BUVLO, so the BAT pin and
+    the time it spends below BQ_BUVLO are returned for the BUVLO check.  The window runs 5 ms past the POF blanking
+    (FW_POF_BLANK)."""
     CORNERS["_sup"] = dict(usb=1, vbat=vbat, vbus=5.0)
     try:
         r = u21_turn_on(main, base, "_sup", temp, t_on=t_on, stop=stop, ilim=ilim, i_extra=FW_LED_CUE, step="5u",
@@ -1171,14 +1175,14 @@ def usb_100ma_oled_with_supplement(main, base, temp, ilim, vbat=FW_OLED_SUP_VBAT
 def test_u21_turn_on_usb_100ma_supplement_with_fw_rule(main, base, check, temp, ilim):
     """Guard of firmware rule NEW-1 / OLED-V1, second branch (the one the rule still lets the OLED turn on in at
     TMR_ILIM 0xC9): the battery can supplement, VBAT_est exactly at the rule's 3.21 V (R6) and the cell at that
-    value, the lowest the rule admits (VBAT_est = reading - 75 mV, docs/firmware.md 12.4).  Same limit as the
+    value, the lowest the rule admits (VBAT_est = 0.979 x reading, docs/firmware.md 12.4, R1').  Same limit as the
     strict xfail test_u21_turn_on_dead_battery_usb_100ma (+3V3 above the nRF52840 brown-out), which holds only while
     the BQ25180 BAT pin stays above BUVLO (else the BATFET opens after tBUVLO 60 us and this is the dead-battery case),
     so the BAT pin is checked against BUVLO as test_bat_pin_vs_buvlo_at_firmware_floor does.  The surge may take
     +3V3 below the POF limit; with the POF blanking rule (R8) it must be back above it when the blanking ends."""
     r = usb_100ma_oled_with_supplement(main, base, temp, ilim)
     v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
-    tag = (f"OLED on, VBAT_est {FW_OLED_SUP_VBAT} V (reading {FW_OLED_SUP_VBAT + VREAD_MARGIN:.3f} V, cell "
+    tag = (f"OLED on, VBAT_est {FW_OLED_SUP_VBAT} V (reading {FW_OLED_SUP_VBAT / VREAD_GAIN:.4f} V, cell "
            f"{FW_OLED_SUP_VBAT:.3f} V) supplementing, USB ILIM {ilim * 1e3:g} mA, {temp} C")
     check(f"VSYS min, {tag} (record)", r["vsysmin"], None, None, "V", f"{DS_BQ} Table 7.5 VBSUP1 supplement")
     check(f"time BAT pin < BUVLO, {tag} (record)", r["t_below_buvlo"], None, None, "s",
@@ -1199,8 +1203,8 @@ I_MOTOR = 0.42   # A, VM during a detent move, docs/architecture.md 7 power tree
 @pytest.mark.parametrize("rail,temp", [("U21", -10), ("U21", 25), ("U2", -10), ("U21+motor", -10)])
 def test_bat_pin_vs_buvlo_at_firmware_floor(main, base, check, rail, temp):
     """Lowest battery at which firmware still switches the rails (FW_VBAT_FLOOR 3.465 V true rested cell: SHIP when
-    VBAT_est < 3.465 V, a reading below 3.54 V, docs/firmware.md 12.4 (R2), which parks the motor first; cell =
-    reading - VREAD_MARGIN; below VBAT_est 3.53 V the LED rail only carries the red cue): the BQ25180 BAT pin (cell
+    VBAT_est < 3.465 V, a reading below 3.5393 V, docs/firmware.md 12.4 (R2), which parks the motor first; cell =
+    VREAD_GAIN x reading (R1'); below VBAT_est 3.53 V the LED rail only carries the red cue): the BQ25180 BAT pin (cell
     minus pack/PCM/lead resistance) must stay above the BUVLO setting during the turn-on surge, or the BATFET opens
     after tBUVLO = 60 us and the system browns out.  The U21 surge (boost soft start, ~0.4 A for ~1 ms) is far longer
     than 60 us, so the plain minimum is compared.  'U21+motor': OLED enabled while the detent motor moves (NEW-2 now
@@ -1222,7 +1226,8 @@ def test_bat_pin_vs_buvlo_at_firmware_floor(main, base, check, rail, temp):
     tag = f"{rail} turn-on at VBAT {FW_VBAT_FLOOR} V rested, {temp} C"
     check(f"BQ25180 BAT pin min, {tag}", r["vbatmin"], BQ_BUVLO,
           None, "V", f"{DS_BQ} 7.5 VBUVLO 3.0 V (CHARGECTRL1 0x92), 7.6 tBUVLO 60 us; docs/firmware.md 12.4 SHIP at "
-          "VBAT_est < 3.465 V (reading < 3.54 V, VBAT_est = reading - 75 mV, VSENSE-1/4/5)" +
+          f"VBAT_est < 3.465 V (reading < {3.465 / VREAD_GAIN:.4f} V, VBAT_est = {VREAD_GAIN:g} x reading, "
+          "VSENSE-1/4/5, R1')" +
           ("; docs/architecture.md 7 VM 0.42 A" if "motor" in rail else ""))
     v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
     check(f"+3V3 min - POFWARN limit, {tag} (record)", v3 - POF_LIMIT, None, None, "V",
@@ -1345,24 +1350,25 @@ def test_vled_at_firmware_led_floor(main, base, check, vbat, i_led, temp):
     """Lowest battery at which firmware still lights the ring (docs/firmware.md 6.3 LED derating: < 3.60 V -> 100 mA
     cap, < 3.53 V -> off except the <= 2 mA red cue; >= 3.65 V re-enables the 300 mA bursts, which then run down to the
     3.60 V hysteresis edge): VLED under that load must stay in the WS2812C supply range.  vbat is the threshold, a
-    TRUE-cell value that firmware compares against VBAT_est = rested reading - VREAD_MARGIN (R1, docs/firmware.md
-    12.4): at the switch point the reading is vbat + 75 mV and the cell is reading - VREAD_MARGIN = vbat, the lowest
-    the rule admits (the reading is at most VREAD_HIGH_MAX = 72 mV high).  Under the former rule (thresholds on the
+    TRUE-cell value that firmware compares against VBAT_est = VREAD_GAIN x rested reading (R1', docs/firmware.md
+    12.4): at the switch point the reading is vbat / 0.979 and the cell is VREAD_GAIN x reading = vbat, the lowest
+    the rule admits (VREAD_GAIN covers a reading up to 2.1 % high).  Under the former rule (thresholds on the
     reading itself, then +-46 mV drift) the cells were 46 mV lower and passed: 3.484 V at 100 mA (+125 mV at 25 C,
     +87 mV at -10 C), 3.604 V and 3.554 V at 300 mA, -10 C (+71 / +21 mV).  With the drift R1 documents (72 mV high)
-    that comparison would fail the 3.60 V burst edge (cell 3.528 V: VLED 3.2954 V at -10 C), which is why R1
+    that comparison would fail the 3.60 V burst edge (cell 3.528 V: VLED 3.2954 V at -10 C), which is why the rule
     applies VBAT_est to these thresholds."""
-    reading = vbat + VREAD_MARGIN
-    cell = reading - VREAD_MARGIN
+    reading = vbat / VREAD_GAIN
+    cell = VREAD_GAIN * reading
     CORNERS["_floor"] = dict(usb=0, vbat=cell, vbus=0.0)
     try:
         r0 = led_dc(main, base, "_floor", temp, i_led)
         r = led_dc(main, base, "_floor", temp, i_led, ron_add=max(0.0, _ron_max(r0["vin"], 25) - r0["ron"]))
     finally:
         CORNERS.pop("_floor")
-    check(f"VLED at VBAT_est {vbat} V (reading {reading:.3f} V, cell {cell:.3f} V rested), {i_led * 1e3:.0f} mA, "
+    check(f"VLED at VBAT_est {vbat} V (reading {reading:.4f} V, cell {cell:.3f} V rested), {i_led * 1e3:.0f} mA, "
           f"{temp} C", r["vled"], WS_VDD_MIN, None, "V", f"{DS_WS} p.2 VDD 3.3 V min; docs/firmware.md 6.3 LED "
-          f"derating table on VBAT_est = reading - 75 mV, 12.4 (VSENSE-1/4/5, R1); {DS_SW} Table 7.5 RON max")
+          f"derating table on VBAT_est = {VREAD_GAIN:g} x reading, 12.4 (VSENSE-1/4/5, R1'); {DS_SW} Table 7.5 RON "
+          "max")
 
 
 def test_phantom_clamp_sensitivity(main, base, check):
