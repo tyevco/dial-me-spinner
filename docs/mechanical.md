@@ -161,7 +161,7 @@ zone, RT1 moved to the top side and the θ 90 base-board hole is gone.
 | # | Part as placed | Problem | Fix |
 |---|---|---|---|
 | B1 | **U10 MDBT50Q** at r 14.5, θ 215, u.FL end inward (inner end at r 6.8) | The module overlaps the brass hub (r ≤ 8.5) by **1.5 mm** (static clash). The mated u.FL (bottom z 25.8, at r 6.7–10.3) clashes with the hub and sits 0.2 mm into the rotating cap ring (needs ≥ 0.3). The coax cannot reach it except through the hub. | Inner end at **r ≥ 8.8** (centre r ≥ 16.6) and **u.FL end facing outward** (u.FL at r ≈ 22.5, over the bowl). The coax then runs 14 mm along the module side, flat against the board. An inward u.FL needs its plug centre at r ≥ 13.8, which pushes the module over the track. |
-| B2 | **J1** (SM12B, 2.95 tall) at r 17.5, θ 330, mouth toward the centre | The back of the mated plug reaches **r 11.9** at z 26.15, **0.15 mm** above the rotating hub (needs ≥ 0.3). The harness leaves the plug and turns between the hub flange (r 8.5) and C1/R1. | Move J1 out ≥ 0.6 mm (plug back at r ≥ 12.5), or keep it and let the plug back sit at z ≥ 26.3 (it cannot: 2.95 tall). |
+| B2 | **J1** (SM12B, 2.95 tall) at r 17.5, θ 330, mouth toward the centre | The back of the mated plug reaches **r 11.9** at z 26.15, **0.15 mm** above the rotating hub (needs ≥ 0.3). The harness (43 mm path) leaves the plug and turns between the hub flange (r 8.5) and C1/R1. | Move J1 out ≥ 0.6 mm (plug back at r ≥ 12.5), or keep it and let the plug back sit at z ≥ 26.3 (it cannot: 2.95 tall). |
 | B3 | **J2** (S2B-PH-SM4-TB, **5.5 mm tall**, verify), base r 17, θ 212 | Top z 16.6 under the rotor web (17.0 at rest, **16.5 pressed** → −0.10). The mated plug reaches r 26.5, into the FA ring (z 12.8–14.3), and the battery leads cross the ring. | Replace with **SM04B-SRSS-TB** (2.95 tall; pins 1+2 BAT+, 3+4 GND, 2 A per polarity) or with two solder pads plus strain relief. Mouth toward θ 180, plug back at r ≤ 24.5, so the leads drop past the board edge inside the FA ring (r 23–25.5). |
 | B5 | **R42** (0402, LED_D48 pull-down), main top, r 30.4–31.05 | Under the top-cover skirt (r ≥ 30.6) | Move to r ≤ 30.2 |
 | B6 | Base-board θ 270 hole at **r 20** (SPEC r 21) | The Ø5 boss under it is 0.25 mm from the pack envelope (\|y\| ≤ 17.25) | Put it back at r 21 (boss 1.25 mm from the pack) |
@@ -536,7 +536,7 @@ stops).
 * **Coax** (1.13 mm, 100 mm): from the feed it rises at (−14.6, 19.9), outside the base board (r 23) and inside the FA
   ring (r 26). It crosses over J3 at z ≈ 15, enters the spindle through the θ 120 window/slot together with the
   harness, goes up the bore, out of the θ 270 slot and hub C-gap, and runs flat against the board to the u.FL.
-  Modelled path 64 mm (to the as-placed u.FL; B1 changes it by ≈ +10 mm). Stow the remaining ~25–35 mm as one gentle
+  Modelled path 63 mm (to the as-placed u.FL; B1 changes it by ≈ +10 mm). Stow the remaining ~25–35 mm as one gentle
   loop against the cup wall in θ 100–150°, away from the antenna body (to verify S11 with the final routing).
 * **Plug passage:** the MHF/u.FL plug body (≈ Ø2.0 × 1.3 plus the crimp sleeve, verify) must pass the 5.0 × 1.9
   bottom window and the 5.0 × 2.45 top slot. Trial-fit the real plug in a spare spindle before machining the batch.
@@ -654,8 +654,8 @@ of static friction, so the puck slides unless it is held or stuck.
    3. **Thread the harness and the coax into the bore now, but keep their top ends inside it.** The harness is 12
       pre-crimped single wires: SSH-003T-P0.2 contacts, 5 × 28 AWG for pins 1–4 and 8 (SPEC §2) and 7 × 32 AWG. The
       SHR-12V-S housings (~14 × 3 mm) cannot pass the slots. Push the contact ends in through the θ 120 window/slot and
-      ~10 mm up the bore with a pull string, then the coax, plug first. Cut the wires ≈ 100 mm (path 85 mm + 15 slack;
-      re-measure after the B2/B4 fixes).
+      ~10 mm up the bore with a pull string, then the coax, plug first. Cut the wires ≈ 60–70 mm (modelled path 43 mm, plus slack
+      for plugging J3 before the plate goes in; re-measure after the B2 fix).
    4. Insert the base-end contacts into one SHR-12V-S housing.
 10. **Suspension.** Plug the housing into J3. Drop the springs into the column/ear pockets and lower the plate over the
     pins (wires and coax through the open sector at θ 120). Fit the stop screws now, while nothing covers the
@@ -783,8 +783,8 @@ mechanical) atan2 error. Correct it in firmware as a function of speed, or use Z
 | Item | Value |
 |---|---|
 | Fill, 12 wires + coax | bottom window 51 %, top slot 40 %, hub gap 32 %, bore 17 % |
-| Harness path | 85 mm |
-| Coax path | 64 mm |
+| Harness path (current PCB) | 43 mm |
+| Coax path (to the as-placed u.FL) | 63 mm |
 | Cover glass deflection, 0.7 mm | 0.025 mm at 4.4 N, 0.11 mm at 20 N |
 | USB-C overmold 6.5 / 7.0 mm tall: radial clearance to the ring | 1.12 / 0.87 mm at rest; 0.62 / 0.37 mm pressed |
 

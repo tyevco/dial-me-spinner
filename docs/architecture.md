@@ -1310,33 +1310,39 @@ history stays traceable. Items 8, 9, 12, 13, 15, 16 and 17 are still open.
    bore, out of the upper slot, to the u.FL at r ≈ 8.5) the coax needs **about
    60–75 mm** with 5 mm bend radii and the service loop (*estimate*; the CAD
    model routes it in about 63 mm). SPEC now names the 146153-0100 (100 mm).
-4. **Antenna vs battery vs cup geometry. Still open, with new numbers.**
+4. **Antenna vs battery vs cup geometry. Resolved in SPEC; the RF cost
+   stays open under R1.**
    * SPEC first put the 34.9 × 9 mm antenna flat on the floor along the chord
      x = −26, where its outer corners sat at r ≈ 35.1 mm, outside the cup
      wall, and only about 2 mm from the pack.
-   * SPEC §8 now turns the pack to θ 0°/180° (|y| ≤ 17.25) and puts the
+   * SPEC §8 then turned the pack to θ 0°/180° (|y| ≤ 17.25) and put the
      antenna on a shelf at z 5.5–6 along the chord y = +26 (θ ≈ 90°), outer
      edge ≤ r 33, ≥ 4 mm from the pack side.
    * A flat 34.9 × 9 mm antenna cannot meet all three. With its ends at
      x = ±17.45 and its outer edge inside r 33, the outer edge is at
      y ≤ 28.0, so the inner edge is at y ≈ 19.0, about 1.75 mm from the pack.
      With the inner edge 4 mm from the pack (y = 21.25), the outer corners
-     reach r ≈ 34.9. Centred on y = 26, they reach r ≈ 35.1.
-   * The θ 90° base-board boss (r = 21, at x = 0, y = 21, rising from the floor
-     to the board at z 9.5) lies inside that strip.
-   * Something has to give: a shorter or curved antenna, a notched shelf or a
-     moved boss, a narrower cell, or a wall mount. *To verify in CAD.*
+     reach r ≈ 34.9. Centred on y = 26, they reach r ≈ 35.1. The θ 90°
+     base-board boss (r = 21, at x = 0, y = 21) also lay inside that strip.
+   * **Status:** SPEC §8 now centres the antenna on y = +23.5 (strip
+     y 19.0–28.0, corners r ≤ 33) and accepts ≥ 1.75 mm to the pack. It
+     replaces the θ 90° boss with a printed rib at y 17.75–18.75 and keeps
+     base-board copper ≥ 5 mm from the antenna. The 1.75 mm gap is far below
+     the RF research's ≥ 5 mm, so measure S11 with the real pack
+     ([§9](#9-rf-strategy-and-its-risk), R1). A ≤ 30 mm-wide pack would
+     restore about 4 mm ([docs/mechanical.md](mechanical.md) A1).
 5. **Base-board bosses inside the battery footprint. Resolved.** SPEC §8 put
    3 × M2 base bosses at r = 15 (θ 60/180/300°), rising from the floor through
    the battery bay (z 2.5–9.0). A 603450 pack (about 34.5 × 50–55 mm, then with
    its long axis along θ 90/270°) covered |x| ≤ 17.25, |y| ≤ 27.5, which
    contained all three boss positions. SPEC §8 now turns the pack to
-   θ 0°/180° (|x| ≤ 27.5, |y| ≤ 17.25) and supports the Ø46 base board on
-   2 × M2 bosses at r = 21, θ 90°/270°, outside the pack, with the USB-C shell
-   clamped in the cup wall as the third support; the base board carries H1/H2
-   there. The θ 180° guide pin at r = 29 now sits just beyond the pack end
-   (x = −29 against −27.5), and the CAD model moves it to r = 30. The θ 90°
-   boss now meets the antenna shelf (item 4).
+   θ 0°/180° (|x| ≤ 27.5, |y| ≤ 17.25) and supports the Ø46 base board on one
+   M2 boss at r = 20, θ 270° (the board's H1), outside the pack, a printed
+   rib under the θ 90° edge (y 17.75–18.75) and the USB-C shell clamped in the
+   cup wall. A first fix with a second boss at r = 21, θ 90° sat on the
+   antenna strip (item 4) and was dropped. The θ 180° guide pin at r = 29 now
+   sits just beyond the pack end (x = −29 against −27.5), and the CAD model
+   moves it to r = 30.
 6. **LiPo swelling gap** (risk R28). **Resolved.** SPEC's bay is z 2.5–9.0 under
    the base board at z 9.5, and SPEC asked for a pack "≤ 6.3 thick". A 6.3 mm
    pack left about 0.7 mm to the board underside, and less under any
@@ -1346,9 +1352,9 @@ history stays traceable. Items 8, 9, 12, 13, 15, 16 and 17 are still open.
    what was required:
    * pack ≤ about 6.0 mm (maximum drawing thickness): **done**, SPEC §8 now
      says "≤ 6.0 thick (≥ 1 mm swelling gap to the board)";
-   * no components on the base-board underside over the pack except a
-     deliberately padded NTC: **done on the board** (RT1 is the only underside
-     part); SPEC's wording still forbids even that (item 14);
+   * no components on the base-board underside over the pack: **done**. The
+     base board is single-sided, and RT1 is on the top side (SPEC §8,
+     item 14);
    * the thickness limit added to the D8 pack criteria: **done**.
 7. **Antenna 1–2 mm above the desk. Addressed in SPEC.** SPEC put the antenna
    at z 1.0–2.0, effectively on the desk surface. SPEC §8 now raises it to a
@@ -1377,9 +1383,9 @@ history stays traceable. Items 8, 9, 12, 13, 15, 16 and 17 are still open.
     0.1–0.2 V ([§6.4](#64-led-ring-and-audio)). SPEC §5.4 said "A
     level-shifter footprint is not needed at 3.3 V logic. Do not add one",
     which left only firmware remedies (H0H1 drive, a lower SYS_REG). SPEC §5.4
-    now provides a DNP SN74LV1T34 (U43, powered from VLED, with DNP C43) and a
-    fitted 0 Ω bypass (R43). If the bench test at VSYS 4.6 V fails, remove R43
-    and fit U43 and C43.
+    now provides a DNP SN74LV1T34 (U43, powered from VLED) and a fitted 0 Ω
+    bypass (R43); the `leds` sheet adds its DNP decoupling cap C43. If the
+    bench test at VSYS 4.6 V fails, remove R43 and fit U43 and C43.
 12. **OLED boost input disconnect.** SPEC §3 (power tree) and §5.3 still
     describe an AO3401A P-FET driven by a 2N7002 (gate 100 kΩ to VSYS, 10 kΩ
     series, 100 kΩ pull-down). The `display` sheet replaces them with a
@@ -1391,26 +1397,34 @@ history stays traceable. Items 8, 9, 12, 13, 15, 16 and 17 are still open.
     side of the piezo. The `sensors` sheet has R57/R58 = 470 Ω and adds
     R59 = 1 MΩ across the piezo as a bleed. SPEC should be updated, and the
     sound level checked with 470 Ω (*to verify*).
-14. **Base-board underside.** SPEC §8 says "Nothing on the base-board bottom
-    side: the battery sits 0.5 mm below it. The only exception is pads/test
-    points." `layout.py` puts the NTC RT1 on the underside over the pack
-    (r 8, θ 200°), padded onto the cell, as this document recommends
-    ([§8.5](#85-charging)); the `base` sheet note still says RT1 is on the top
-    side and reads board temperature. And with the ≤ 6.0 mm pack the gap is
-    1.0 mm, not 0.5 mm (0.5 mm is the gap to the bay top at z 9.0). SPEC should
-    allow the padded NTC explicitly and give one gap figure.
+14. **Base-board underside. Resolved.** SPEC §8 said "the battery sits
+    0.5 mm below it", while the ≤ 6.0 mm pack leaves 1.0 mm (0.5 mm is the
+    gap to the bay top at z 9.0), and an earlier layout put the NTC RT1 on
+    the underside, padded onto the cell. SPEC §8 now says 1 mm and puts RT1
+    on the top side at r 8, θ 200°, so the base board is single-sided and the
+    `base` sheet note (top side, reads board temperature) agrees. The cost is
+    that RT1 no longer reads the cell ([§8.5](#85-charging)).
 15. **u.FL end toward the centre** (risk R25). SPEC §8 says the module's u.FL
     end faces the centre "so the coax runs straight into the spindle bore".
     With the module centred at r 14.5 (θ 215°), that puts the mated u.FL plug
-    at about r 8.5, over the 608 and the rotor hub.
-    [docs/mechanical.md](mechanical.md) asks for parts that hang more than
-    about 2.3 mm below the board to sit at r ≥ 13. SPEC should say where the
-    u.FL goes.
+    at about r 6.7–10.3, over the 608 and the rotor hub. The CAD clash check
+    shows the module overlapping the brass hub by about 1.5 mm and the plug
+    0.2 mm into the rotating cap ring
+    ([docs/mechanical.md §3B](mechanical.md#3b-current-pcb-placement-for-the-layout-owner-from-board_partsscad-and-the-clash-check)
+    B1), which recommends the u.FL end facing outward with the module centre
+    at r ≥ 16.6. SPEC should say where the u.FL goes.
 16. **Minor value and net differences.** SPEC §5.3 lists the FB divider as
     "R1 = 499 kΩ (0.5 %), R2 = 52.3 kΩ (0.5 %)"; the sheet uses R26 499 kΩ
     0.5 % and R27 52.3 kΩ 0.1 % (R1/R2 are the VSYS-sense divider). SPEC §5.4
     puts the R41 pull-down on LED_DIN; the sheet puts it on LED_DIN_R, between
     R40 and the R43 bypass, so with U43 fitted it holds the buffer input low.
+17. **Battery connector height** (risk R36). SPEC §6 and §8 put J2, an
+    S2B-PH-SM4-TB (about 5.5 mm tall, *to verify*), in the θ 240° open
+    sector. The open sectors clear only the FA plate. The rotor carrier web
+    (z 17, about 16.5 pressed, r 11–27) still passes over them, which leaves
+    about 5.4 mm above the board top when pressed. The mated plug also
+    reaches the spider's outer ring (r 26–30). SPEC §8 should cap part height
+    in the open sectors under the web and name a lower battery connector.
 
 ---
 

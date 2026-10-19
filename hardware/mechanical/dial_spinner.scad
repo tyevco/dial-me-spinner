@@ -964,11 +964,12 @@ else if (view == "board_bottom") {
 else if (view == "base_top") { base_cup(); antenna(); battery(); battery_leads(); base_board(); guide_hw(); color([0.37, 0.42, 0.48, 0.25]) fa_lower_plate(); }
 else if (view == "clash") {
     // board opaque, everything else ghosted (%), interference volumes solid: red = vs rotor, orange = FA-internal
+    // interference volumes are grown by 0.4 mm (minkowski) so that small overlaps are visible
     main_board_pcb();
-    %main_bottom_parts(); %detent_assembly(det_offset); %spindle_hub(); %harness(); %coax(); %rotor_envelope();
-    for (i = [0:len(STATIONARY_NAMES) - 1]) color("red") render(convexity = 4) clash_rotor(i);
-    for (j = [14, 15, 10, 20, 21]) color("orange") render(convexity = 4) clash_pair(12, j);
-    color("orange") render(convexity = 4) clash_pair(21, 10);
+    %main_bottom_parts(); %detent_assembly(det_offset); %spindle_hub(); %rotor_envelope();
+    for (i = [12, 20, 21]) color("red") minkowski() { render(convexity = 4) clash_rotor(i); cube(0.8, center = true); }
+    for (j = [14, 15, 10, 20, 21]) color("orange") minkowski() { render(convexity = 4) clash_pair(12, j); cube(0.8, center = true); }
+    color("orange") minkowski() { render(convexity = 4) clash_pair(21, 10); cube(0.8, center = true); }
 }
 else if (view == "clash_geom") {
     if (clash_mode == "rotor") clash_rotor(clash_item);
