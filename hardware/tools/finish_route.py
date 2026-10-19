@@ -202,7 +202,9 @@ class Router:
         self.max_expand = 2_500_000
         self.protect_classes = {"Power", "Ground"}
         self.protect_nets = {"GND"}
-        self.rip_cost = 150.0  # per cell entered through rippable copper
+        self.rip_cost = 150.0  # per cell entered through rippable copper (x (1 + 3 x times the net was ripped))
+        self.rip_history = {}  # net name -> times ripped (kept by finish() across rounds)
+        self.rip_limit = 3
         ds = b.GetDesignSettings()
         self.hole_clr = TO_MM(ds.m_HoleClearance)
         self.hole2hole = TO_MM(ds.m_HoleToHoleMin)
@@ -223,6 +225,8 @@ class Router:
         power nets, not locked fan-out)."""
         if isinstance(it, pcbnew.PAD) or it.IsLocked():
             return False
+        if self.rip_history.get(it.GetNetname(), 0) >= self.rip_limit:
+            return False
         return it.GetNetClassName() not in self.protect_classes and it.GetNetname() not in self.protect_nets
 
     def rasters(self, grid, netcode, w, clr, via_d, via_drill, margin=None, soft=False):
@@ -232,8 +236,7 @@ class Router:
         L = len(self.layers)
         blk = np.zeros((L, grid.ny, grid.nx), bool)
         vblk = np.zeros((grid.ny, grid.nx), bool)
-        sblk = np.zeros((L, grid.ny, grid.nx), bool)
-        svblk = np.zeros((grid.ny, grid.nx), bool)
+        soft_nets = {}  # net name -> (track mask per layer, via mask)
         x0, y0 = grid.x0, grid.y0
         x1, y1 = grid.x0 + grid.nx * grid.g, grid.y0 + grid.ny * grid.g
         span = max(w / 2, via_d / 2) + clr + 1.0
@@ -265,7 +268,12 @@ class Router:
                         grid.mark_polys(vblk, _item_polys(it, lay), via_d / 2 + m)
             if not other:
                 continue
-            tb, vb = (sblk, svblk) if soft and self.rippable(it) else (blk, vblk)
+            if soft and self.rippable(it):
+                if it.GetNetname() not in soft_nets:
+                    soft_nets[it.GetNetname()] = (np.zeros((L, grid.ny, grid.nx), bool), np.zeros((grid.ny, grid.nx), bool))
+                tb, vb = soft_nets[it.GetNetname()]
+            else:
+                tb, vb = blk, vblk
             for k, lay in enumerate(self.layers):
                 if it.IsOnLayer(lay):
                     polys = _item_polys(it, lay)
@@ -303,7 +311,15 @@ class Router:
             blk[k] |= ~inside | edge_t
         vblk |= ~inside | edge_v
         if soft:
-            return blk, vblk, sblk & ~blk, svblk & ~vblk
+            scost = np.zeros((L, grid.ny, grid.nx))
+            svcost = np.zeros((grid.ny, grid.nx))
+            for name, (tm, vm) in soft_nets.items():
+                c = self.rip_cost * (1 + 3 * self.rip_history.get(name, 0))
+                scost = np.maximum(scost, tm * c)
+                svcost = np.maximum(svcost, vm * c)
+            scost[blk] = 0
+            svcost[vblk] = 0
+            return blk, vblk, scost, svcost
         return blk, vblk
 
     def masks(self, grid, cluster, w, clr):
@@ -361,13 +377,8 @@ class Router:
     def astar(self, grid, blk, vblk, src, dst, dst_pts, sblk=None, svblk=None):
         L, ny, nx = blk.shape
         free = ~blk
-        soft = sblk if sblk is not None else np.zeros_like(blk)
-        vsoft = svblk if svblk is not None else np.zeros_like(vblk)
-        if sblk is not None:
-            free = free  # soft cells are not in blk: passable, at rip_cost each
-        else:
-            soft = np.zeros_like(blk)
-        rc = self.rip_cost
+        soft = sblk if sblk is not None else np.zeros(blk.shape)  # extra cost per cell (rippable copper)
+        vsoft = svblk if svblk is not None else np.zeros(vblk.shape)
         start = src & free
         goal = dst & free
         if not start.any() or not goal.any():
@@ -413,7 +424,7 @@ class Router:
                 yy, xx = y + dy, x + dx
                 if 0 <= yy < ny and 0 <= xx < nx and free[k, yy, xx]:
                     j = (k * ny + yy) * nx + xx
-                    ng = gcur + c + (rc if soft[k, yy, xx] else 0.0)
+                    ng = gcur + c + soft[k, yy, xx]
                     if ng < gs[j]:
                         gs[j] = ng
                         prev[j] = i
@@ -422,7 +433,7 @@ class Router:
                 for kk in range(L):
                     if kk != k and free[kk, y, x]:
                         j = (kk * ny + y) * nx + x
-                        ng = gcur + self.via_cost + (rc * 8 if vsoft[y, x] else 0.0)
+                        ng = gcur + self.via_cost + 8 * vsoft[y, x]
                         if ng < gs[j]:
                             gs[j] = ng
                             prev[j] = i
@@ -502,7 +513,7 @@ class Router:
                 blk, vblk, sblk, svblk = self.rasters(grid, net.GetNetCode(), w, clr, via_d, via_drill, margin, soft=True)
                 path = self.astar(grid, blk, vblk, src, dst, dpts, sblk, svblk)
                 if path:
-                    items = self.commit(net, grid, self.simplify(path, blk | sblk), w, via_d, via_drill)
+                    items = self.commit(net, grid, self.simplify(path, blk | (sblk > 0)), w, via_d, via_drill)
                     self.rip_conflicts(items, clr, margin)
                     return items
             else:
@@ -524,10 +535,17 @@ class Router:
                 if _conflict(n, t, clr + m):
                     victims.append(t)
                     break
-        for t in victims:
-            self.ripped.add(t.GetNetname())
-            self.b.Remove(t)
-        self.log(f"    ripped up {len(victims)} items of {sorted({t.GetNetname() for t in victims})}")
+        names = sorted({t.GetNetname() for t in victims})
+        # the whole victim net goes (its unlocked tracks and vias), so it is re-routed clean, not patched
+        n = 0
+        for t in list(self.b.GetTracks()):
+            if t.GetNetname() in names and self.rippable(t):
+                self.b.Remove(t)
+                n += 1
+        for name in names:
+            self.ripped.add(name)
+            self.rip_history[name] = self.rip_history.get(name, 0) + 1
+        self.log(f"    ripped up {n} items of {names}")
 
     def commit(self, net, grid, runs, w, via_d, via_drill):
         items = []
@@ -664,11 +682,13 @@ def finish(path, log=print, grid=0.025, margin=0.6, skip=("GND",), max_rounds=30
     import pcbgen
     pcbgen.unique_uuids(path)  # DRC reports resolve items by UUID
     net_margin = {}
+    rip_history = {}
     ripups = 0
     _, remaining, open_nets = drc_uuids(path)
     for rnd in range(max_rounds):
         b = pcbnew.LoadBoard(path)
         r = Router(b, grid=grid, margin=margin, log=log)
+        r.rip_history = rip_history
         todo = sorted(r.open_connections(skip=skip, only=open_nets), key=lambda t: _dist(t[1], t[2]))
         if not todo:
             if remaining:
