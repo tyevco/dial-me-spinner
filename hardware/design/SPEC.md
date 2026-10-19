@@ -109,7 +109,7 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 | P0.13, P0.14, P0.15, P0.16 | OLED_SCK, OLED_MOSI, OLED_CS_N, OLED_DC | SPIM3 |
 | P1.01 | OLED_RES_N | 1 MΩ pull-down |
 | P1.02 | OLED_VCC_EN | boost input disconnect enable, 100 kΩ pull-down |
-| P0.06 | LED_DIN_MCU | I2S SDOUT → 33 Ω → LED_DIN (first LED DI) |
+| P0.06 | LED_DIN_MCU | I2S SDOUT → 220 Ω → LED_DIN (first LED DI) |
 | P1.04 | LED_PWR_EN | TPS22918 ON, 100 kΩ pull-down |
 | P0.24, P0.25 | TMAG_SCL, TMAG_SDA | dedicated TWIM0, 4.7 kΩ pull-ups to +3V3 |
 | P0.27 | TMAG_INT_N | 47 kΩ pull-up (open-drain INT) |
@@ -171,17 +171,18 @@ Boost:
   the magnets (layout note).
 
 ### 5.4 `leds` — 48× WS2812C-2020-V6 ring
-* D1…D48 WS2812C-2020-V6 (C55109522; footprint
+* D101…D148 WS2812C-2020-V6 (C55109522; footprint
   `LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm`; WS2812B-2020-V6 C52917434 is a
-  drop-in), chained DOUT→DIN. Each LED has its own 100 nF 0402 (C1525) on
-  VLED/GND.
-* LED_DIN_MCU → 33 Ω → LED_DIN (D1.DIN), with 100 kΩ pull-down on LED_DIN.
-  D48.DOUT goes to a test pad with 100 kΩ pull-down (V6 DI/DO are swappable).
+  drop-in), chained DOUT→DIN (nets LED_D1…LED_D47; the last DOUT is LED_D48). Each LED has its own 100 nF 0402 (C1525) on
+  VLED/GND (C101…C148, same index).
+* LED_DIN_MCU → 220 Ω (R40; limits DIN clamp injection if P0.06 is ever high while VLED is off) → LED_DIN (D101.DIN),
+  with 100 kΩ pull-down (R41) on LED_DIN. D148.DOUT (LED_D48) goes to TP40 with a 100 kΩ pull-down (R42), since V6 DI/DO are swappable.
+  Firmware: drive P0.06 low and send an all-zero frame before switching VLED off; never drive P0.06 high while VLED is off.
 * A level-shifter footprint is not needed at 3.3 V logic. Do not add one.
 
 ### 5.5 `sensors` — encoder, IMU, piezo
-* U TMAG5273A2QDBVR (C3715882), **bottom side** at r = 29 mm, θ = 270°, long axis
-  radial. Pins: 1 SCL, 2 GND, 3 TEST → GND, 4 VCC, 5 INT, 6 SDA. VCC gets
+* U TMAG5273A2QDBVR (C3715882), **bottom side**, θ = 270°, long axis radial, placed so that the **Hall
+  element** (offset 0.40 mm toward pin 3 and 0.12 mm toward the pin 1–3 edge from the body centre) is at r = 29.0 mm. Pins: 1 SCL, 2 GND, 3 TEST → GND, 4 VCC, 5 INT, 6 SDA. VCC gets
   100 nF + 1 µF. 4.7 kΩ pull-ups on TMAG_SCL/SDA, 47 kΩ on TMAG_INT_N.
   DNP footprint: DRV5012AEDMRR (C2655038) latch as a fallback wake sensor →
   TP_SPARE (optional).

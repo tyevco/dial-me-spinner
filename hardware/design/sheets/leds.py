@@ -22,13 +22,15 @@ R0402 = "Resistor_SMD:R_0402_1005Metric"
 C0402 = "Capacitor_SMD:C_0402_1005Metric"
 LED_FP = "LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm"
 LED_DS = "https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf"
+LED_DESC = ("Worldsemi WS2812C-2020-V6 addressable RGB LED, 5 mA/ch, VDD 3.3-5.3 V, "
+            "SMD2020-4P (1 DO, 2 GND, 3 DI, 4 VDD)")
 
 N_LEDS = 48
 PER_GROUP = 12
 
 LED_FIELDS = {"MPN": "WS2812C-2020-V6", "Manufacturer": "Worldsemi", "LCSC": "C55109522"}
 CAP_100N = {"MPN": "CL05B104KO5NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C1525"}
-RES_33R = {"MPN": "0402WGF330JTCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25105"}
+RES_220R = {"MPN": "0402WGF2200TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25091"}
 RES_100K = {"MPN": "0402WGF1003TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25741"}
 
 
@@ -46,16 +48,20 @@ def build(d):
     s = d.sheet(*SHEET)
     s.notes.append(
         "48x WS2812C-2020-V6 (5 mA/ch) on VLED = TPS22917 load-switch output (main_power sheet, 2x 22 uF bulk there).\n"
-        "Data: nRF P0.06 (I2S SDOUT) = LED_DIN_MCU -> R40 33R -> LED_DIN -> D101 -> LED_D1 -> D102 -> ... -> D148 -> LED_D48 (TP40).\n"
+        "Data: nRF P0.06 (I2S SDOUT) = LED_DIN_MCU -> R40 220R -> LED_DIN -> D101 -> LED_D1 -> D102 -> ... -> D148 -> LED_D48 (TP40).\n"
         "D101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic: no level shifter (SPEC 5.4).\n"
         "WS2812B-2020-V6 (C52917434, 12 mA/ch) is a footprint/pinout drop-in; firmware must then cap peak current."
     )
 
     d.group("LED data input",
-            "33R series: place within 3 mm of the nRF pin (P0.06).\n"
-            "100k pull-down at D101.DIN holds DIN low while the nRF is in reset/DFU\n"
-            "and when VLED is off (no back-powering through the DIN ESD diode).")
-    d.add("R40", "Device:R", "33", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN"}, fields=RES_33R)
+            "220R series (bounds DIN clamp current if P0.06 is high while VLED is off): place within 3 mm of the nRF pin (P0.06).\n"
+            "100k pull-down at D101.DIN holds DIN low while P0.06 is\n"
+            "high-Z (reset/DFU). FIRMWARE: send an all-zero frame and\n"
+            "drive P0.06 low (pinctrl sleep) before deasserting\n"
+            "LED_PWR_EN. Never drive LED_DIN_MCU high while VLED is off:\n"
+            "QOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\n"
+            "would back-power the ring through its ESD diode.")
+    d.add("R40", "Device:R", "220", R0402, pins={"1": "LED_DIN_MCU", "2": "LED_DIN"}, fields=RES_220R)
     d.add("R41", "Device:R", "100k", R0402, pins={"1": "LED_DIN", "2": "GND"}, fields=RES_100K)
 
     for g0 in range(1, N_LEDS + 1, PER_GROUP):
@@ -70,11 +76,12 @@ def build(d):
             # Pin names map to verified numbers: DIN = 3, DOUT = 1, VDD = 4, VSS (GND) = 2.
             d.add(f"D{100 + i}", "LED:WS2812B-2020", "WS2812C-2020-V6", LED_FP,
                   pins={"DIN": din_net(i), "DOUT": dout_net(i), "VDD": "VLED", "VSS": "GND"},
-                  fields=LED_FIELDS, datasheet=LED_DS)
+                  fields=LED_FIELDS, datasheet=LED_DS, description=LED_DESC)
 
-    d.group("Chain end",
-            "D148.DOUT (LED_D48): test pad + 100k pull-down (V6 DI/DO are swappable,\n"
-            "so the last DOUT must not float). Never loop it back to D101.")
+    d.group("Chain end: D148.DOUT = LED_D48",
+            "Test pad + 100k pull-down. V6 DI/DO are\n"
+            "swappable, so DOUT must not float.\n"
+            "Never loop LED_D48 back to D101.")
     end = dout_net(N_LEDS)
     d.add("TP40", "Connector:TestPoint", end, "TestPoint:TestPoint_Pad_D1.0mm",
           pins={"1": end}, in_bom=False)
