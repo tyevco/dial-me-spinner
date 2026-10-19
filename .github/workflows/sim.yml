@@ -1,0 +1,40 @@
+name: Simulation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1'   # weekly full run, including the slow Monte Carlo sweeps
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spice:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ngspice and Python deps
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ngspice
+          python -m pip install -q pytest numpy scipy
+      - name: SPICE suite
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python -m pytest hardware/sim -q -rxs
+          else
+            python -m pytest hardware/sim -q -rxs -m "not slow"
+          fi
+      - name: Results to the job summary
+        if: always()
+        run: cat hardware/sim/results/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spice-results
+          path: hardware/sim/results/

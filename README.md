@@ -1,5 +1,7 @@
 # dial-me-spinner
 
+**Docs site:** <https://tyevco.github.io/dial-me-spinner/>
+
 A Bluetooth dial spinner about 70 mm across, built on the nRF52840. A heavy,
 balanced stainless flywheel ring spins around a stationary centre that holds a
 colour OLED and a ring of 48 addressable RGB LEDs. You can press the whole top
