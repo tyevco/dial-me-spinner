@@ -870,6 +870,48 @@ def drc(path, warnings=None):
     return rpt, counts
 
 
+def _sexpr_end(s, i):
+    """Index just past the s-expression that opens at s[i] == "("."""
+    depth = 0
+    for k in range(i, len(s)):
+        if s[k] == "(":
+            depth += 1
+        elif s[k] == ")":
+            depth -= 1
+            if not depth:
+                return k + 1
+    raise ValueError("unbalanced s-expression")
+
+
+def dsn_plane_as_layer_rule(dsn, net="GND", layer="In1.Cu"):
+    """Freerouting 2.1 does not route against a (plane ...) on a power layer: it places no vias through the plane,
+    so GND pads and every layer change stay unrouted (base board: 34 connections for 500 passes).  The DSN therefore
+    gives In1 as a signal layer without the plane, and every class except the plane net's own is kept off it
+    (circuit use_layer).  GND may still run on In1; KiCad refills the plane around everything after the route."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    s, n = re.subn(r"(\(layer %s\s*\(type )power\)" % re.escape(layer), r"\1signal)", s)
+    if not n:
+        return
+    while (i := s.find(f"(plane {net} ")) >= 0:
+        s = s[:i] + s[_sexpr_end(s, i):]
+    others = [m for m in re.findall(r"\(layer (\S+)\s*\(type", s) if m != layer]
+    out, pos = [], 0
+    for m in re.finditer(r"\(class (\S+)", s):
+        start = m.start()
+        end = _sexpr_end(s, start)
+        block = s[start:end]
+        nets = re.findall(r'"[^"]*"|[^\s()]+', block[:block.index("(", 1)])[2:]
+        if nets != [net]:
+            c = block.index("(circuit") + len("(circuit")
+            block = block[:c] + f"\n        (use_layer {' '.join(others)})" + block[c:]
+        out += [s[pos:start], block]
+        pos = end
+    out.append(s[pos:])
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write("".join(out))
+
+
 def route(path, minutes=30, threads=2, optimizer_passes=20):
     """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
     Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
@@ -883,6 +925,7 @@ def route(path, minutes=30, threads=2, optimizer_passes=20):
     if os.path.exists(ses):
         os.remove(ses)
     pcbgen.export_dsn(path, dsn)
+    dsn_plane_as_layer_rule(dsn)
     with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
         subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mt", str(threads),
                         f"--router.job_timeout={minutes // 60:02d}:{minutes % 60:02d}:00",
