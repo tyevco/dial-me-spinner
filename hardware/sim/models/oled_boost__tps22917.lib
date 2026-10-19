@@ -25,7 +25,9 @@
 *                  at VIN 3.6 V, 25 C; max 0.14 ohm at -40..85 C, the test passes the corner).
 *                  Current flows only VIN -> VOUT: reverse current blocking (9.4) is treated as ideal.
 *   Turn off       ramp node is reset with tau ~1 us when ON goes low (Table 7.6 tOFF 10 us typ).
-*   QOD            150 ohm to GND while disabled (Table 7.5 "QOD"); the netlist leaves QOD open here.
+*   QOD            150 ohm to GND while disabled (Table 7.5 "QOD").  On this board U21 QOD (pin 5) is tied to
+*                  VOUT = OLED_VIN (hardware/sim SLP-1 / LSW-1 fix), so OLED_VIN is pulled to 0 V whenever
+*                  ON is low (C38 4.7 uF: OLED_VIN passes the TPS61040 ~1.5 V UVLO within ~1 ms of ON falling).
 *   Supply current IQ,VIN 0.5 uA enabled, ISD,VIN 10 nA disabled (Table 7.5 typ).
 *
 * NOT modelled: RCB trip current / 10 us activation time (reverse current is simply blocked), RON
@@ -70,7 +72,7 @@ Cint CT VIN {CINT}
 Bct CT GND I = V(en) > 0.5 ? V(ict)*min(max((V(vdel) + V(VIN,GND) + 0.5 - V(VIN,CT))/0.05, 0), 1) : -V(VIN,CT)*1m
 * ---- pass element: forward only, follows the ramp target, RON when fully on
 Bout VIN VOUT I = V(en) > 0.5 ? max(min(max(V(VIN,CT) - V(vdel), 0), V(VIN,GND)) - V(VOUT,GND), 0)/{RON} : 0
-* ---- QOD (open on this board) and supply current
+* ---- QOD (tied to VOUT = OLED_VIN on this board) and supply current
 Bqod QOD GND I = V(en) < 0.5 ? V(QOD,GND)/{RQOD} : 0
 Rqod QOD GND 1G
 Biq VIN GND I = V(en) > 0.5 ? {IQON} : {ISD}

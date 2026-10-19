@@ -4,8 +4,9 @@ Circuit (hardware/design/sheets/base.py, netlist hardware/kicad/base):
   * U1 BQ25180 ball D1 TS/MR = net CHG_TSMR. The charger biases it with 38 uA (adapter present, always
     on) or 60 uA pulsed 4 ms / 196 ms (battery only, EN_PUSH = 1), compares it with the JEITA
     COLD/COOL/WARM/HOT thresholds and with the 90 mV push-button threshold.
-  * RT1 Murata NCP15XH103F03RC 10 kOhm NTC to GND. It is the only NTC: the pack is a 2-wire PH lead, so
-    the charger's temperature input is this board NTC.
+  * RT1 Murata NCP15XH103F03RC 10 kOhm NTC to GND. It is the only NTC: the pack plugs into J2, a JST SH
+    4-pin SM04B-SRSS-TB with two contacts per rail (pins 1-2 BAT+, 3-4 GND; SPEC §6) and no NTC lead, so the
+    charger's temperature input is this board NTC.
   * SW1 press: VBAT -> R3 -> SW1 -> SW_GATE (R4 to GND) drives both halves of Q1 BSS138DW:
     Q1A pulls CHG_TSMR low (BQ25180 ship wake / WAKE1-2 / long-press reset), Q1B pulls BTN_N low.
   * BTN_N crosses the 12-way link (base J3 / main J1, same pin) to the main board, where R56 pulls it up
@@ -58,8 +59,9 @@ VTS_CLAMP = {"min": 2.2, "typ": 2.8, "max": 3.3}                 # Table 7.5 VTS
 VPIN_MIN, VPIN_MAX = -0.3, 5.5                                   # Table 7.1 abs max, "all other pins"
 T_TS_ON, T_TS_OFF = 4e-3, 196e-3                                 # Table 7.6 tTS_DUTY_ON / tTS_DUTY_OFF
 T_DGL = 64e-6        # Table 7.6 tSLEEP_DGL (VIN falling): NOT a TS parameter; SLUSE99C gives no TS deglitch at all
-# TS_CONTROL (0x0B, Table 8-20) settings under test: firmware.md §13.1 leaves the 0x00 default;
-# 0x90 = TS_HOT 10 (50 C) + TS_COLD 01 (3 C) is the fix proposed by this test file.
+# TS_CONTROL (0x0B, Table 8-20) settings under test: 0x00 = the POR default the OLD firmware left (strict-xfail
+# evidence for charger_ts-1); 0x90 = TS_HOT 10 (50 C) + TS_COLD 01 (3 C), what firmware.md §13.1 row 9 now writes
+# at init (SPEC §3; hardware/sim, charger_ts-1): the [0x90] cases are the guards for that rule.
 TS_CONTROL = {"0x00": ("COLD00", "HOT00"), "0x90": ("COLD01", "HOT10")}
 T_JEITA_MIN, T_JEITA_MAX = 0.0, 60.0
 
@@ -156,15 +158,18 @@ def suffix(lines, sfx):
 
 
 def vdd_for(vbat, mode, corner):
-    """+3V3 on main: RT9080-33 from VSYS (4.5 V on USB, VBAT on battery, SPEC §3), -2/+2 % (corner -1/+1)."""
+    """+3V3 on main: RT9080-33 from VSYS (SYS_REG on USB: 4.4 V as firmware.md §13.1 sets it, 4.5 V POR default;
+    VBAT on battery, SPEC §3), -2/+2 % (corner -1/+1)."""
     v = VDD_NOM * (1 + corner * VDD_TOL)
     return v if MODES[mode] > 0 else min(v, vbat - LDO_DROP)
 
 
 def build_cell(base, main, *, vbat=3.7, mode="usb5.0", pressed=False, switch=None, fet="typ",
                its="typ", dr=0.0, db=0.0, idss=IDSS_MAX, vdd=None, rscale=None, mscale=None,
-               vclamp="typ", pulsed=0, tdel=0.0, caps=None):
-    """One copy of the TS/MR + BTN_N circuit from both netlists. Returns (lines, probe nodes)."""
+               vclamp="typ", pulsed=0, tdel=0.0, caps=None, its_probe=False):
+    """One copy of the TS/MR + BTN_N circuit from both netlists. Returns (lines, probe nodes).
+    its_probe: a 0 V ammeter VITS between the CHG_TSMR net and the U1 TS/MR pin; probe "its" = i(VITS) is minus the
+    current the rest of the net (RT1, Q1A drain) sinks from U1's bias, i.e. -(ITS - clamp current)."""
     its_ad = ITS[its] if isinstance(its, str) else its
     its_bat = ITS_BAT[its] if isinstance(its, str) else its * _ITS_BAT_TYP / ITS["typ"]
     vcl = VTS_CLAMP[vclamp] if isinstance(vclamp, str) else vclamp
@@ -191,7 +196,11 @@ def build_cell(base, main, *, vbat=3.7, mode="usb5.0", pressed=False, switch=Non
             b.append(f"XRT1 n_rt1_i {base.pin('RT1', '2')} CTS_NCP15XH103 params: r25={r25:g} bnet={bnet:g} "
                      f"dr={dr:g} db={db:g}")
     if base.fitted("U1"):
-        b.append(f"XU1 {base.pin('U1', 'TS/MR')} {base.pin('U1', 'IN')} {base.pin('U1', 'BAT')} CTS_BQ25180_TSMR "
+        u1_ts = base.pin("U1", "TS/MR")
+        if its_probe:
+            b.append(f"VITS {u1_ts} n_u1_tsmr 0")
+            u1_ts = "n_u1_tsmr"
+        b.append(f"XU1 {u1_ts} {base.pin('U1', 'IN')} {base.pin('U1', 'BAT')} CTS_BQ25180_TSMR "
                  f"params: its_ad={its_ad:g} its_bat={its_bat:g} pulsed={pulsed} tdel={tdel:g} vclamp={vcl:g}")
     jb, jm, p = link_pin(base, main)
     m = [f"VDD {main.node('+3V3')} 0 {vdd:g}"]
@@ -202,7 +211,8 @@ def build_cell(base, main, *, vbat=3.7, mode="usb5.0", pressed=False, switch=Non
     b.append(f"RHARN {base.pin(jb, p)} {main.pin(jm, p)}_m {R_HARNESS:g}")
     b.append(f"CHARN {main.pin(jm, p)}_m 0 {C_HARNESS:g}")
     probes = {"ts": f"v({base.pin('U1', 'TS/MR')})", "gate": f"v({base.pin('Q1', QA[1])})",
-              "btn": f"v({nrf}_m)", "irt": "i(virt1)", "ibat": "i(vbatt)"}   # ibat < 0 = cell sourcing
+              "btn": f"v({nrf}_m)", "irt": "i(virt1)", "ibat": "i(vbatt)",   # ibat < 0 = cell sourcing
+              "its": "i(vits)"}                                               # only with its_probe=True
     return b + m, probes, vdd
 
 
@@ -411,16 +421,23 @@ def test_jeita_nominal_mapping(jeita, key, check):
 
 @pytest.mark.parametrize("reg", [
     pytest.param("0x00", marks=pytest.mark.xfail(strict=True, reason=(
-        "DESIGN ISSUE: with the default TS_CONTROL (0x00) the worst-case COLD trip is about -2 °C and the "
-        "worst-case HOT trip about +64 °C (IC threshold + bias tolerance with RT1 R25/B tolerance), so the "
-        "charger may charge outside the JEITA 0-60 °C window; write TS_CONTROL = 0x90 at init"))),
+        "DESIGN ISSUE (firmware-dependent, charger_ts-1): with the default TS_CONTROL (0x00, the OLD firmware) the "
+        "worst-case COLD trip is about -2 °C and the worst-case HOT trip about +64 °C (IC threshold + bias "
+        "tolerance with RT1 R25/B tolerance), so the charger may charge outside the JEITA 0-60 °C window; "
+        "firmware.md §13.1 now writes TS_CONTROL = 0x90 at init, guarded by the [0x90] case"))),
     "0x90",
 ])
 def test_jeita_charge_prohibit_worst_case(jeita, reg, check):
     """No combination of ITS, threshold, RT1 R25/B tolerance and Q1A leakage lets charging continue below
-    0 °C or above 60 °C (adapter present: 38 uA continuous bias)."""
+    0 °C or above 60 °C (adapter present: 38 uA continuous bias).
+
+    [0x90] is the GUARD for the firmware rule charger_ts-1 (hardware/sim; firmware.md §13.1 row 9 and SPEC §3:
+    firmware MUST write TS_CONTROL (0x0B) = 0x90 at init, TS_HOT 50 °C / TS_COLD 3 °C). [0x00], the POR default
+    the old firmware left, is the strict-xfail evidence for that rule."""
     rows, cells = jeita
     cold, hot = TS_CONTROL[reg]
+    rule = (f"; firmware rule (hardware/sim, charger_ts-1): firmware.md §13.1 row 9 / SPEC §3 TS_CONTROL (0x0B) = "
+            f"0x90 at init" if reg == "0x90" else "; TS_CONTROL POR default 0x00 (OLD firmware: no write)")
     t_cold = [(r[f"{cold}_max"], c) for r, c in zip(rows, cells)]   # highest threshold = coldest trip
     t_hot = [(r[f"{hot}_min"], c) for r, c in zip(rows, cells)]     # lowest threshold = hottest trip
     tc, cc = pick_none(t_cold, min)
@@ -429,7 +446,7 @@ def test_jeita_charge_prohibit_worst_case(jeita, reg, check):
     for args in ((f"TS_CONTROL {reg}: coldest COLD trip ({THR[cold][4]} max; {jdesc(cc)})", tc, T_JEITA_MIN, None),
                  (f"TS_CONTROL {reg}: hottest HOT trip ({THR[hot][4]} min; {jdesc(ch)})", th, None, T_JEITA_MAX)):
         try:
-            check(*args, "°C", f"{JEITA}; {BQ} Table 7.5 thresholds + ITS_BIAS; {NTC} R25/B ±1 %; {QDS} IDSS")
+            check(*args, "°C", f"{JEITA}; {BQ} Table 7.5 thresholds + ITS_BIAS; {NTC} R25/B ±1 %; {QDS} IDSS{rule}")
         except AssertionError as e:   # record both limits before failing
             errors.append(e)
     if errors:
@@ -460,8 +477,8 @@ def test_ts_stays_below_enz_at_minus_10c(jeita, check):
 
 
 def test_board_ntc_alone_gives_normal_zone_at_25c(jeita, check):
-    """No pack NTC (2-wire PH lead): RT1 alone puts TS/MR in the normal (full-current) zone at 25 °C at
-    every corner, so the charger charges normally."""
+    """No pack NTC (J2 SM04B carries only BAT+ / GND): RT1 alone puts TS/MR in the normal (full-current) zone at
+    25 °C at every corner, so the charger charges normally."""
     rows, cells = jeita
     v = [r["v25"] for r in rows]
     check("V(TS/MR) at 25 °C, lowest corner", min(v), VWARM_EXIT_MAX, None, "V",
@@ -504,8 +521,9 @@ def test_jeita_monte_carlo(base, main, check):
             check(f"MC TS_CONTROL {reg}: share of units whose HOT trip is above 60 °C", above, unit="",
                   source=f"{JEITA} (informational)")
         else:
-            check(f"MC TS_CONTROL {reg}: coldest COLD trip of {n}", float(t[cold].min()), T_JEITA_MIN, None, "°C", JEITA)
-            check(f"MC TS_CONTROL {reg}: hottest HOT trip of {n}", float(t[hot].max()), None, T_JEITA_MAX, "°C", JEITA)
+            fw = f"{JEITA}; firmware rule (hardware/sim, charger_ts-1): firmware.md §13.1 row 9 TS_CONTROL = 0x90"
+            check(f"MC TS_CONTROL {reg}: coldest COLD trip of {n}", float(t[cold].min()), T_JEITA_MIN, None, "°C", fw)
+            check(f"MC TS_CONTROL {reg}: hottest HOT trip of {n}", float(t[hot].max()), None, T_JEITA_MAX, "°C", fw)
 
 
 # ------------------------------------------------------------------------------------- button: TS/MR
@@ -530,7 +548,7 @@ def test_press_pulls_tsmr_below_mr_threshold(base, main, mode, check):
     i, t, c = worst(rows, cfgs, "ibat", max, key=lambda v, r: -v)
     check(f"SW1 current pressed, {mode}, max", i, None, SW_IMAX, "A", f"{SWD} contact rating 50 mA")
     check(f"VBAT drain while held, {mode}, max (informational)", i, unit="A",
-          source="sheets/base.py note (~4 uA while held)")
+          source="sheets/base.py note (~42 uA while held, R4 100 kOhm)")
 
 
 def test_press_minimum_vbat_for_detection(base, main, check):
@@ -776,8 +794,8 @@ def window_25c(base, main):
 @pytest.mark.fault
 def test_fault_rt1_not_fitted_is_detected(base, main, check):
     """RT1 left off: the pin floats to the clamp. The 25 °C window check must flag it, and the pin stays inside
-    its abs-max rating. (Whether the charger then suspends charging is NOT guaranteed: see
-    test_open_ntc_keeps_ts_monitoring_enabled.)"""
+    its abs-max rating. (The charger itself does not guarantee to suspend charging: see
+    test_open_ntc_keeps_ts_monitoring_enabled; the firmware rule charger_ts-v1 does, see its _with_fw_rule guard.)"""
     assert window_25c(base, main) < THR["COOL"][0]
     base.remove("RT1")
     v = window_25c(base, main)
@@ -787,11 +805,12 @@ def test_fault_rt1_not_fitted_is_detected(base, main, check):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE: an open RT1 (part missing, cracked 0402, open joint) lets TS/MR float to VTS_CLAMP "
-    "(2.2-3.3 V), above VTS_ENZ min (1.8 V). SLUSE99C Table 7.5 enables the TS function only below VTS_ENZ, so "
-    "JEITA protection may switch off silently instead of reading COLD (typ: clamp 2.8 V > ENZ 2.1 V). Fix "
-    "(firmware, docs/firmware.md §13.1/13.2, bq25180.c): treat STAT0.TS_OPEN_STAT = 1 as a fault and set "
-    "ICHG_CTRL.CHG_DIS = 1 while it is set; correct docs/bringup.md TS/MR row ('open = cold')"))
+    "DESIGN ISSUE (firmware-dependent, charger_ts-v1): an open RT1 (part missing, cracked 0402, open joint) lets "
+    "TS/MR float to VTS_CLAMP (2.2-3.3 V), above VTS_ENZ min (1.8 V). SLUSE99C Table 7.5 enables the TS function "
+    "only below VTS_ENZ, so JEITA protection may switch off silently instead of reading COLD (typ: clamp 2.8 V > "
+    "ENZ 2.1 V). The hardware cannot prevent it; the firmware rule (docs/firmware.md §13.1 'TS open' / §13.2, "
+    "SPEC §3: STAT0.TS_OPEN_STAT = 1 -> ICHG_CTRL.CHG_DIS = 1, 'temperature sensor fault') covers it: see "
+    "test_open_ntc_keeps_ts_monitoring_enabled_with_fw_rule"))
 def test_open_ntc_keeps_ts_monitoring_enabled(base, main, check):
     """Fault condition: with RT1 open, TS/MR must stay below VTS_ENZ so the charger keeps monitoring TS (and reads
     COLD = charging suspended). Best case for the design: VTS_CLAMP at its minimum."""
@@ -800,6 +819,34 @@ def test_open_ntc_keeps_ts_monitoring_enabled(base, main, check):
                   temps=(25.0, 30.0))
     check("RT1 open: V(TS/MR) with VTS_CLAMP at its min vs VTS_ENZ min", rows[0]["ts"][0], None, VTS_ENZ_MIN, "V",
           f"{BQ} Table 7.5 VTS_ENZ min 1.8 V ('VTSMR < VTS_ENZ for TS function to be enabled'), VTS_CLAMP 2.2 V min")
+
+
+SRC_TS_OPEN = (f"{BQ} §8.3.13.1: 'The bit TS_OPEN_STAT is set when this clamp is active' (regardless of TS_EN); "
+               "firmware rule (hardware/sim, charger_ts-v1): firmware.md §13.1 'TS open' / §13.2, SPEC §3: "
+               "TS_OPEN_STAT = 1 -> ICHG_CTRL.CHG_DIS = 1 and 'temperature sensor fault'")
+
+
+def test_open_ntc_keeps_ts_monitoring_enabled_with_fw_rule(base, main, check):
+    """GUARD for the firmware rule charger_ts-v1 (hardware/sim; firmware.md §13.1 'TS open', §13.2 fault table,
+    SPEC §3): firmware MUST treat STAT0.TS_OPEN_STAT = 1 as a fault and set CHG_DIS = 1.  The rule does not change
+    the pin voltage, so the VTS_ENZ check of test_open_ntc_keeps_ts_monitoring_enabled cannot pass with it; what the
+    rule needs from the hardware is that an open RT1 always sets TS_OPEN_STAT.  SLUSE99C §8.3.13.1 sets the bit
+    while the VTS_CLAMP clamp is active, i.e. whenever the rest of the CHG_TSMR net (Q1A drain at IDSS max, its
+    gate on R4 / the SW1 insulation) sinks less than the TS bias: then the bias drives the pin into the clamp.
+    Checked with RT1 open at every adapter-present corner (the only state that can charge): VIN 4.5 / 5.0 / 5.5 V,
+    VBAT 3.0 / 4.2 V, ITS min, VTS_CLAMP min / typ / max, typ / strong / weak Q1, -10 / 25 / 60 °C.  Then
+    TS_OPEN_STAT = 1 and firmware disables charging, so the open NTC cannot leave charging on unprotected."""
+    base.remove("RT1")
+    cfgs = [dict(mode=m, vbat=vb, fet=f, its="min", vclamp=vc, its_probe=True)
+            for m in ("usb4.5", "usb5.0", "usb5.5") for vb in (3.0, 4.2) for f in FET for vc in VTS_CLAMP]
+    rows = run_dc("RT1 open, TS_OPEN_STAT (fw rule)", base, main, cfgs, ("ts", "its"))
+    i_ext, t, c = worst(rows, cfgs, "its", max, key=lambda v, r: -v)
+    check(f"RT1 open: current the CHG_TSMR net sinks from the TS bias, max ({desc(c, t)}, VTS_CLAMP {c['vclamp']}) "
+          "vs ITS min: below it the pin rides on the clamp, so TS_OPEN_STAT = 1 (fw rule charger_ts-v1)",
+          i_ext, None, ITS["min"], "A", f"{BQ} Table 7.5 ITS_BIAS min 36.5 µA; {QDS} IDSS 0.5 µA max; " + SRC_TS_OPEN)
+    dv, t, c = worst(rows, cfgs, "ts", min)
+    check(f"RT1 open: lowest V(TS/MR) ({desc(c, t)}, VTS_CLAMP {c['vclamp']} = {VTS_CLAMP[c['vclamp']]} V; "
+          "informational: the pin sits on the clamp)", dv, unit="V", source=f"{BQ} Table 7.5 VTS_CLAMP 2.2-3.3 V")
 
 
 @pytest.mark.fault

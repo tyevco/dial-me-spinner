@@ -909,11 +909,14 @@ def test_fault_c74_left_off_is_detected(main, base, check):
 
 
 # ------------------------------------------------ firmware drive: 25 kHz slow-decay 8-µstep sine
-def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=25e3, t_hold0=1e-3):
+def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=25e3, t_hold0=1e-3,
+                   r_eff=FW_R_COIL_OLD):
     """PWM command lists for the four IN pins (firmware.md §5.3). Positive current: IN1 = 1, IN2 PWM with duty
     1 - |d| (IN2 high = brake/slow decay). Edge-aligned 'up' counter: the drive part comes first.
-    µstep 0 is held for t_hold0 first (the firmware's pre-energise, shortened to > 5 L/R)."""
-    d_pk = min(1.0, i_target * FW_R_COIL / vsys_meas)
+    µstep 0 is held for t_hold0 first (the firmware's pre-energise, shortened to > 5 L/R).
+    Amplitude d_peak = min(1, i_target x r_eff / vsys_meas): r_eff = fw_r_eff(T) is the MD-3 rule, the default
+    FW_R_COIL_OLD the pre-MD-3 fixed 20.3 Ohm."""
+    d_pk = min(1.0, i_target * r_eff / vsys_meas)
     tpwm = 1.0 / fpwm
     t_ustep = 1.0 / (pps * 8)
     n_pwm = int(round(t_ustep / tpwm)) or 1
@@ -944,9 +947,10 @@ MICRO_CASES = [("VBAT3.7-25C", "VBAT3.7", 25, None), ("VBUS5.0-25C", "VBUS5.0", 
                # sensitivity: the detent sheet's own VM caps left off (C70, C72 100 nF, C74 10 uF)
                ("VBAT3.7-25C-without-C70-C72-C74", "VBAT3.7", 25, "slow"),
                ("VBAT3.7-60C", "VBAT3.7", 60,
-                "DESIGN ISSUE: the firmware's sine microstepping uses a fixed 20.3 Ohm coil in d = I x R / VSYS and a "
-                "160 mA peak, so the hot coil (60 C, 22.8 Ohm) gets < 160 mA and the torque vector (1/sqrt2 of full "
-                "step) falls below the 0.5 N load budget")]
+                "DESIGN ISSUE (old-rule evidence for MD-3): the pre-MD-3 sine microstepping used a fixed 20.3 Ohm coil "
+                "in d = I x R / VSYS and a 160 mA peak, so the hot coil (60 C, 22.8 Ohm) gets < 160 mA and the torque "
+                "vector (1/sqrt2 of full step) falls below the 0.5 N load budget. The MD-3 duty is guarded by "
+                "test_firmware_microstep_pwm_with_fw_rule")]
 
 
 def _micro_marks(tag):
@@ -957,18 +961,13 @@ def _micro_marks(tag):
     return [pytest.mark.xfail(strict=True, reason=tag)]
 
 
-@pytest.mark.parametrize("cid,supname,temp,xf", [pytest.param(*c, marks=_micro_marks(c[-1]), id=c[0])
-                                                 for c in MICRO_CASES])
-def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
-    """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS. Checks the VM ripple
-    from the 25 kHz current pulses, VSYS peak, BAT pin, link current and the torque-vector magnitude."""
-    sup = SUP[supname]
-    if "without" in cid:
-        for ref in ("C70", "C72", "C74"):
-            main.remove(ref)
+def run_microstep(main, base, check, cid, sup, temp, *, r_eff=FW_R_COIL_OLD, duty_src=None, rule=""):
+    """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS (amplitude
+    i_target x r_eff / VSYS_idle). Checks the VM ripple from the 25 kHz current pulses, VSYS peak, BAT pin, link
+    current and the torque-vector magnitude. `rule` is appended to the sources of the limit checks."""
     pps, n_full = 446, 1
     t_on, t_e = 50e-6, 100e-6                         # the firmware's 1 ms wake wait adds nothing here (twake 30 us)
-    ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)
+    ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle, r_eff=r_eff)
     ctrl["MOT_NSLEEP"] = _pwl([(t_on, 1)])
     deck = new_deck(f"microstep {cid}")
     power(deck, main, base, sup, temp, cscale=vsys_cscale(main, base, sup.vsys_idle, worst=True))
@@ -988,20 +987,66 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     _, v = window(w, f"v({vs})", t1, t_end)
     _, il = window(w, "i(vlink)", t1, t_end)
     ivec = tavg(t, np.sqrt(ia ** 2 + ib ** 2))
-    check("PWM duty amplitude d_peak", d_pk, None, 1.0, "", f"{FW} §5.3 d = 160 mA x 20.3 Ohm / VSYS")
+    check("PWM duty amplitude d_peak", d_pk, None, 1.0, "",
+          duty_src or f"pre-MD-3 {FW} §5.3 d = 160 mA x 20.3 Ohm / VSYS")
     check("µstep current-vector magnitude", ivec, None, None, "A", "info")
     # rating condition at the same speed: ideal 3.3 V two-phase-on full step (vector = sqrt2 x avg |i| per coil)
     iref = rated_reference(pps, KE_MAX, L_NOM, False)
     f_micro = F_RATED * ivec / (math.sqrt(2) * iref)
     check("µstep thrust estimate (vs 2-phase-on rating at 446 PPS)", f_micro, F_NEED, None, "N",
-          "detent research load <= 0.5 N; rating assumed 2-2 phase full step at 3.3 V (sqrt2 x I vector)")
+          "detent research load <= 0.5 N; rating assumed 2-2 phase full step at 3.3 V (sqrt2 x I vector)" + rule)
     check("VM ripple pk-pk, 25 kHz PWM", float(v.max() - v.min()), None, None, "V", "info")
-    check("VM (VSYS) max, 25 kHz PWM", float(v.max()), None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max")
+    check("VM (VSYS) max, 25 kHz PWM", float(v.max()), None, SYS_ABS_MAX, "V", f"{DS_BQ} Table 7.1 SYS abs max{rule}")
     check("link current per VSYS contact, 25 kHz PWM", float(il.max()) * SHARE_WORST, None, JST_I_CONTACT, "A",
-          "JST SH 1 A/contact (SPEC §2)")
+          "JST SH 1 A/contact (SPEC §2)" + rule)
     if not sup.usb:
         _, vb = window(w, "v(nb_vbat)", t1, t_end)
-        check("BAT pin min, 25 kHz PWM", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V")
+        check("BAT pin min, 25 kHz PWM", float(vb.min()), VBUVLO, None, "V", f"{DS_BQ} VBUVLO 3.0 V{rule}")
+    return d_pk, ivec, f_micro
+
+
+@pytest.mark.parametrize("cid,supname,temp,xf", [pytest.param(*c, marks=_micro_marks(c[-1]), id=c[0])
+                                                 for c in MICRO_CASES])
+def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
+    """The real drive (446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS) with the pre-MD-3 duty
+    d = 160 mA x 20.3 Ohm / VSYS (see run_microstep). At 25 C the MD-3 duty is 0.15 % higher (20.33 Ohm); the 60 C
+    case is the strict-xfail evidence for MD-3."""
+    sup = SUP[supname]
+    if "without" in cid:
+        for ref in ("C70", "C72", "C74"):
+            main.remove(ref)
+    run_microstep(main, base, check, cid, sup, temp)
+
+
+MD3_CASES = [  # id, idle VSYS (battery), temp, strict-xfail reason
+    # the strict xfail's own corner
+    ("VBAT3.7-60C", 3.7, 60, None),
+    # lowest idle VSYS a non-park move may start from (MD-2): d_peak is clamped at 1 there (MD-3 needs >= 3.69 V at 60 C)
+    ("VBAT3.55-60C", FW_VSYS_MOVE, 60, None),
+    # coldest corner at the lowest non-park VSYS: the worst corner of the MD-3 rule
+    ("VBAT3.55--10C", FW_VSYS_MOVE, -10,
+     "DESIGN ISSUE (firmware rule insufficient): at -10 C the MD-3 duty d = I x (20 Ohm x (1 + 0.00393 x (T - 25 C)) "
+     "+ 0.33 Ohm) / VSYS lowers the drive to 160 mA x 17.58 Ohm = 2.81 V, but the back-EMF (upper ke) and the cold "
+     "pack sag do not shrink with it, so at 446 PPS the current vector falls to about 121 mA and the thrust estimate to "
+     "about 0.493 N < the 0.5 N load budget at VSYS idle 3.55 V (about 0.495 N at 3.7 V, 0.498 N at 4.2 V). The pre-MD-3 "
+     "20.3 Ohm gave about 0.585 N; not reducing the duty below 25 C (T -> max(T, 25 C)) would keep it"),
+]
+
+
+@pytest.mark.parametrize("cid,vbat,temp,xf", [
+    pytest.param(*c, marks=[pytest.mark.xfail(strict=True, reason=c[-1])] if c[-1] else [], id=c[0])
+    for c in MD3_CASES])
+def test_firmware_microstep_pwm_with_fw_rule(main, base, check, cid, vbat, temp, xf):
+    """Guard for MD-3 (firmware.md §5.3: d_peak = I_target x (20 Ohm x (1 + 0.00393 x (T - 25 C)) + 0.33 Ohm) / VSYS,
+    clamp d <= 1, T = nRF die temperature, here equal to the coil / ambient temperature). Same deck as the strict
+    xfail test_firmware_microstep_pwm[VBAT3.7-60C] (446 PPS, rDS(on) max, upper back-EMF, worst VSYS caps): the
+    torque vector must stay above the 0.5 N load budget and every other limit of that test must hold, at that corner,
+    at the lowest non-park VSYS (MD-2, 3.55 V idle) and at the cold end."""
+    sup = SUP["VBAT3.7"] if vbat == 3.7 else Supply(f"VBAT{vbat:.2f}", vbat)
+    r_eff = fw_r_eff(temp)
+    check(f"MD-3 R_eff at {temp} C (firmware.md §5.3 formula)", r_eff, None, None, "Ohm", f"info: {SRC_MD3}")
+    run_microstep(main, base, check, f"{cid}-MD-3", sup, temp, r_eff=r_eff, duty_src=SRC_MD3,
+                  rule=f"; firmware rule {SRC_MD3}")
 
 
 # ------------------------------------------------ nSLEEP wake timing

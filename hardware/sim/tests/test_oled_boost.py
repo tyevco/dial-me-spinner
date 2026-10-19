@@ -15,21 +15,32 @@ against it).  Limits:
   * D21 IFRM 1.5 A, VRRM 40 V ... CJ B5817W-5819W rev D (Mar 2015) Maximum Ratings
   * TPS22917 IPLS 2.5 A, VIN <= 5.5 V, ISD,VIN <= 100 nA ... SLVSDW8B Tables 7.1 / 7.3 / 7.5
   * VCC up before AFh: firmware waits 200 ms after OLED_VCC_EN (firmware.md 7.2 step 23 / NHD init sequence); the
-    same step allows shortening it but "never below 5 ms" (checked: xfail)
+    same step allows shortening it after measurement, but "the wait MUST never be below 10 ms" (hardware/sim,
+    OLED-V2; SPEC 5.3).  The old floor, 5 ms, is kept as the strict-xfail evidence for the rule
+    (test_startup_time_vs_firmware_floor); test_startup_time_vs_firmware_floor_with_fw_rule checks the 10 ms rule.
   * VCC must float when off: no path VSYS -> VCC ... SSD1351 Rev 1.3 8.9 note (2); TPS61040 SLVS413L 6.3.3
   * Headroom: at VCC = 12.5 V the boost must deliver the panel ICC firmware allows at that VSYS + the divider
     current (measured with VCC clamped at 12.5 V, see capability(); a run from 13 V can take ms to droop)
   * USB only, battery dead (no BQ25180 supplement): enabling VCC must not pull VSYS below 3.0 V, the level the
-    +3V3 rail is designed for (architecture.md; BQ25180 SLUSE99C ILIM, 8.3.3)
+    +3V3 rail is designed for (architecture.md; BQ25180 SLUSE99C ILIM, 8.3.3).  Firmware rule (firmware.md 6.3 /
+    7.2 / 13.3, SPEC 5.3; hardware/sim NEW-1, OLED-V1): OLED_VCC_EN stays low while ILIM = 100 mA unless the
+    battery can supplement SYS; until ILIM = 500 mA the LEDs show the <= 20 mA charging cue.
 
-Off state: with U21 open, OLED_VIN has no DC path (as on the board), so EN-low states start from explicit initial
-conditions (init="off") instead of a DC operating point; the TPS61040 keeps regulating from C38 for tens of ms
-after OLED_VCC_EN falls (verified 3 ms window; the UVLO-chatter regime after that is not simulated).
+Off state: EN-low states start from explicit initial conditions (init="off": U21 open, OLED_VIN at 0 V) instead of
+a DC operating point.  U21's QOD is tied to OLED_VIN (SLP-1 / LSW-1 fix), so after OLED_VCC_EN falls it discharges
+C38 through ~150 ohm: OLED_VIN passes the TPS61040's ~1.5 V UVLO within about 1 ms (0.5 ms at VSYS 3.0 V), the
+boost stops and VCC floats near 13 V behind D21 (verified 3 ms window; the model has no UVLO hysteresis).
 
 Supply corners: VSYS on battery = VBAT 3.0 / 3.7 / 4.2 V (BQ25180 BATFET path); on USB VSYS = SYS_REG 4.5 V
-+2 % = 4.59 -> 4.6 V (BQ25180 SLUSE99C VSYS_REG_ACCURACY).  The firmware low-battery rule (firmware.md 7.4:
-below VBAT 3.60 V, C7 <= 08h and <= 30 % white) bounds the panel load below 3.6 V by the 50 %-ON maximum
-(29 mA); from 3.6 V up the panel may show full white (42 mA max).
++2 % = 4.59 -> 4.6 V (BQ25180 SLUSE99C VSYS_REG_ACCURACY).  Firmware writes SYS_REG = 0x20 (4.4 V, firmware.md
+13.1 row 8); 4.6 V is kept as the stress corner because 4.5 V is the POR default (before the init write, after a
+BQ reset) and the only other value firmware allows.  The USB-only start-up decks (usb_start) use the firmware's
+4.4 V, the lower start for the VSYS dip.  The firmware low-battery rule (firmware.md 7.4 / 12.4: below rested
+VBAT 3.75 V, and while the LEDs exceed their 150 mA sustained cap, C7 <= 08h and <= 30 % white; hardware/sim
+OLED-BST-2) bounds the panel load there by the 50 %-ON maximum (29 mA); above it the panel may show full white
+(42 mA max).  The old threshold was 3.60 V: test_headroom_at_firmware_full_white_threshold keeps it as the
+strict-xfail evidence, and icc_max() / the passing headroom, stress and temperature tests keep 3.60 V as their
+(stricter) switch point, so they still assume full white at VSYS 3.6-3.75 V.
 
 Simulation settings: gear integration, reltol 1e-3, 50 ns max step.  Checked against the harness defaults
 (trap, reltol 1e-4) and a 20 ns step on the 1 mA / 23 mA / 42 mA steady states: VCC avg / min / max within 1 mV,
@@ -75,22 +86,36 @@ U21_ISD_MAX = 100e-9
 SRC_ISD = "TPS22917 SLVSDW8B Table 7.5: ISD,VIN 100 nA max (-40..85 C)"
 T_AF = 0.200
 SRC_TAF = "firmware.md 7.2 step 23 (vendor sequence): AFh 200 ms after OLED_VCC_EN, VCC must be in range by then"
-T_AF_MIN = 5e-3
-SRC_TAF_MIN = "firmware.md 7.2 step 23: the VCC-to-AFh wait may be shortened after measurement, 'never below 5 ms'"
+T_AF_MIN_OLD = 5e-3      # OLD firmware floor, kept as the strict-xfail evidence for OLED-V2
+SRC_TAF_MIN_OLD = ("OLD firmware.md 7.2 step 23: the VCC-to-AFh wait may be shortened after measurement, "
+                   "'never below 5 ms' (superseded by OLED-V2: 10 ms)")
+T_AF_MIN_FW = 10e-3      # firmware rule OLED-V2
+SRC_TAF_MIN_FW = ("firmware rule (hardware/sim, OLED-V2): firmware.md 7.2 step 23 'the wait MUST never be below "
+                  "10 ms', 3.1 oled_vcc startup-delay-us = <10000>; SPEC 5.3")
 SRC_FLOAT = ("SSD1351 Rev 1.3 8.9 note (2) VCC floats when off / note (1) held near VCI by ESD path; "
              "TPS61040 SLVS413L 6.3.3 (disabled boost passes VIN to VOUT)")
 
 # supply corners
 VSYS_BAT = (3.0, 3.7, 4.2)                    # VBAT corners (VSYS = VBAT through the BATFET)
-VSYS_USB = 4.6                                # BQ25180 SYS_REG 4.5 V + 2 % (SLUSE99C VSYS_REG_ACCURACY)
-VSYS_FW = 3.6                                 # firmware.md 7.4 low-battery threshold for full-white content
+VSYS_USB = 4.6                                # BQ25180 SYS_REG POR default 4.5 V + 2 % (SLUSE99C VSYS_REG_ACCURACY):
+#                                               the stress corner (firmware writes 4.4 V, 4.5 V is the only other
+#                                               allowed value and the state before init / after a BQ reset)
+SYS_REG_FW = 4.4                              # firmware.md 13.1 row 8: SYS_REG = 0x20 -> SYS 4.4 V on USB
+VSYS_FW_OLD = 3.6                             # OLD firmware.md 7.4 full-white threshold (OLED-BST-2 evidence); also
+#                                               the stricter switch point icc_max() keeps for the passing tests
+VSYS_FW_RULE = 3.75                           # firmware.md 7.4 / 12.4: full white only from rested VBAT 3.75 V
+SRC_FW_BST2 = ("firmware rule (hardware/sim, OLED-BST-2): firmware.md 7.4 / 12.4, SPEC 5.3: C7 <= 08h and "
+               "<= 30 % white below rested VBAT 3.75 V and while the LEDs exceed their 150 mA sustained cap")
 # VSYS source: BQ25180 RON_BAT 55 mOhm typ (SLUSE99C 7.5) + link harness 8.5 + 5.7 mOhm (architecture.md 4.2)
 R_SRC = 0.055 + 0.0085 + 0.0057
 
 
 def icc_max(vsys: float) -> float:
-    """Largest panel VCC current firmware allows at this VSYS (see module docstring)."""
-    return ICC_100_MAX if vsys >= VSYS_FW else ICC_50_MAX
+    """Panel VCC current the passing tests load the boost with at this VSYS: full white (42 mA) from the OLD 3.60 V
+    threshold up, the 50 %-ON maximum (29 mA) below it.  firmware.md 7.4 now caps the panel below rested VBAT
+    3.75 V (OLED-BST-2), so between 3.60 and 3.75 V this asks for more than firmware allows: kept on purpose (moving
+    the switch point to 3.75 V would lower the 3.7 V load in the headroom and stress tests from 42 to 29 mA)."""
+    return ICC_100_MAX if vsys >= VSYS_FW_OLD else ICC_50_MAX
 
 
 # TPS61040 corners from SLVS413L 5.5 (typ / min / max).  "weak" = least output capability, "strong" = largest
@@ -336,9 +361,9 @@ def load_at_min(d, icc_ma: float) -> float:
 
 
 def startup(d, title, *, vsys, tstop, derate, **kw):
-    """OLED_VCC_EN low -> high at 20 us from the long-term off state (init="off": OLED_VIN 0 V, VCC held by the
-    panel ESD path; a DC operating point is not used because with U21 open OLED_VIN has no DC path), panel
-    display off: ICC = 0."""
+    """OLED_VCC_EN low -> high at 20 us from the long-term off state (init="off": OLED_VIN 0 V, where U21's QOD,
+    tied to OLED_VIN, holds it; VCC held by the panel ESD path; explicit initial conditions, no DC operating
+    point), panel display off: ICC = 0."""
     deck = build(d, title, vsys=vsys, icc=0.0, derate=derate, en="step", t_en=20e-6, init="off", **kw)
     deck.meas(f"tran tvin90 WHEN v(n_oled_vin)={0.9 * vsys:.6g} RISE=1")
     deck.meas(f"tran tup WHEN v(n_p13v_oled)={VCC_MIN} RISE=1")
@@ -391,13 +416,14 @@ def test_nominal_regulation(main, check):
 
 
 def _tolerance_runs(d, ifb):
-    """VFB max / light load / derated caps / USB (highest VCC) and VFB min / full white at the lowest VSYS that
-    firmware allows it (3.6 V: lowest VCC), for every R26/R27 tolerance corner (Design.extremes), with FB bias
-    current `ifb` pushing the same way."""
+    """VFB max / light load / derated caps / USB (highest VCC) and VFB min / full white at the OLD firmware
+    full-white threshold (3.6 V: lowest VCC; firmware.md 7.4 now allows full white only from 3.75 V, so 3.6 V is
+    kept as the stricter corner), for every R26/R27 tolerance corner (Design.extremes), with FB bias current `ifb`
+    pushing the same way."""
     jobs = []
     for corner in d.extremes(["R26", "R27"]):
         jobs.append(("hi", corner, dict(U20_TYP, VREF=VREF_MAX, IFB=+ifb), 4.6, ICC_LIGHT))
-        jobs.append(("lo", corner, dict(U20_TYP, VREF=VREF_MIN, IFB=-ifb), VSYS_FW, ICC_100_MAX))
+        jobs.append(("lo", corner, dict(U20_TYP, VREF=VREF_MIN, IFB=-ifb), VSYS_FW_OLD, ICC_100_MAX))
 
     def one(job):
         side, corner, u20, vsys, icc = job
@@ -476,12 +502,30 @@ def test_supply_corners_headroom(main, check):
     soft_checks(check, _headroom_rows(main, corners))
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: at the firmware full-white threshold (VBAT 3.60 V, "
-                   "firmware.md 7.4) a worst-case TPS61040 + L20 delivers only ~41 mA at VCC 12.5 V, less than the "
-                   "42 mA NHD 100 %-ON maximum; VCC settles near 12.3 V")
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, OLED-BST-2): at the OLD firmware "
+                   "full-white threshold (VBAT 3.60 V) a worst-case TPS61040 + L20 delivers only ~41 mA at VCC 12.5 V, "
+                   "less than the 42 mA NHD 100 %-ON maximum; VCC settles near 12.3 V. firmware.md 7.4 now caps the "
+                   "panel below rested VBAT 3.75 V: see test_headroom_at_firmware_full_white_threshold_with_fw_rule")
 def test_headroom_at_firmware_full_white_threshold(main, check):
-    """Same weak-part stack at VSYS 3.6 V, the lowest voltage at which firmware still allows full white."""
-    soft_checks(check, _headroom_rows(main, [(VSYS_FW, icc_max(VSYS_FW))]))
+    """Same weak-part stack at VSYS 3.6 V, the lowest voltage at which the OLD firmware still allowed full white."""
+    soft_checks(check, _headroom_rows(main, [(VSYS_FW_OLD, icc_max(VSYS_FW_OLD))]))
+
+
+def test_headroom_at_firmware_full_white_threshold_with_fw_rule(main, check):
+    """GUARD for the firmware rule OLED-BST-2 (hardware/sim; firmware.md 7.4 / 12.4, SPEC 5.3): C7 <= 08h and
+    <= 30 % white below rested VBAT 3.75 V, so full white (42 mA NHD 100 %-ON maximum) is allowed only from
+    3.75 V.  Same weak-part stack as test_headroom_at_firmware_full_white_threshold (ILIM 350 mA, toff 550 ns,
+    ton 4 us, RDS 1 ohm, L20 -20 %, DCR max, U21 RON max) at VSYS 3.75 V: at 25 C as there, plus -10 / 60 C.
+    Below 3.75 V the 29 mA cap is covered down to 3.0 V by test_supply_corners_headroom."""
+    vs, icc = VSYS_FW_RULE, ICC_100_MAX
+
+    def one(temp):
+        return temp, capability(main, f"capability {vs} V {temp:g} C (fw rule)", vsys=vs, temp=temp,
+                                u20=dict(U20_WEAK), **WEAK_PASSIVES)
+    soft_checks(check, [(f"boost current at VCC 12.5 V, weak parts, {temp:g} C, VSYS {vs} V (fw rule OLED-BST-2: "
+                         f"full white only from rested VBAT 3.75 V; load {icc:g} mA + divider)", i,
+                         load_at_min(main, icc), None, "A", SRC_HEADROOM + "; " + SRC_FW_BST2)
+                        for temp, i in pmap(one, TEMPS)])
 
 
 def test_peak_currents_and_stress(main, check):
@@ -509,11 +553,13 @@ def test_peak_currents_and_stress(main, check):
 def test_temperature(main, check):
     """-10 / 25 / 60 C: TPS61040 RDS(on) (Fig 5-10), ILIM (Fig 5-7), VFB (Fig 5-6), IQ (Fig 5-5); B5819W forward
     drop and leakage (curves); L20 DCR (copper); TPS22917 RON.  Boost capability at VCC 12.5 V with typical parts
-    at the low-battery load (3.0 V, 29 mA) and the full-white threshold (3.6 V, 42 mA) - RDS(on) and DCR rise
+    at the low-battery load (3.0 V, 29 mA) and the OLD full-white threshold (3.6 V, 42 mA; kept as the stricter
+    corner, firmware.md 7.4 now allows full white only from 3.75 V) - RDS(on) and DCR rise
     with temperature - and USB at light load (highest VCC, largest D21 leakage)."""
     rows = []
     for t in TEMPS:
-        rows += _headroom_rows(main, [(3.0, icc_max(3.0)), (VSYS_FW, icc_max(VSYS_FW))], weak=False, temp=t)
+        rows += _headroom_rows(main, [(3.0, icc_max(3.0)), (VSYS_FW_OLD, icc_max(VSYS_FW_OLD))], weak=False,
+                               temp=t)
 
     def one(t):
         return t, steady(main, f"temp {t} C light", temp=t, vsys=VSYS_USB, icc=ICC_LIGHT, derate=True,
@@ -540,7 +586,7 @@ _START_CACHE = {}
 
 
 def startup_worst(d):
-    """VSYS 3.0 V, marked caps at +tol, weak parts (cached: two tests read it)."""
+    """VSYS 3.0 V, marked caps at +tol, weak parts (cached: three tests read it)."""
     key = (tuple(sorted(d._override.items())), frozenset(d._removed), frozenset(d._shorted))
     if key not in _START_CACHE:
         _START_CACHE[key] = startup(d, "startup worst", vsys=3.0, derate=False, tstop=9e-3,
@@ -577,51 +623,98 @@ def test_startup_inrush_and_overshoot(main, check):
     soft_checks(check, rows)
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware.md 7.2 step 23): the documented floor for the "
-                   "VCC-to-AFh wait, 'never below 5 ms', is shorter than the worst-case VCC rise (~6.3 ms at VSYS "
-                   "3.0 V with a weak TPS61040, L20 -20 %, C37 +10 %); 4.9 ms even with typical parts")
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, OLED-V2): the OLD floor for the "
+                   "VCC-to-AFh wait (firmware.md 7.2 step 23 'never below 5 ms') is shorter than the worst-case VCC "
+                   "rise (~6.3 ms at VSYS 3.0 V with a weak TPS61040, L20 -20 %, C37 +10 %); 4.9 ms even with typical "
+                   "parts. firmware.md now says never below 10 ms: see test_startup_time_vs_firmware_floor_with_fw_rule")
 def test_startup_time_vs_firmware_floor(main, check):
-    """The slowest start (see startup_worst) against the shortest wait firmware.md allows before AFh."""
+    """The slowest start (see startup_worst) against the shortest wait the OLD firmware.md allowed before AFh."""
     r = startup_worst(main)
-    check("VCC reaches 12.5 V after OLED_VCC_EN, VSYS 3.0 V, slowest parts (vs firmware floor)",
-          r["tup"] - 20e-6, None, T_AF_MIN, "s", SRC_TAF_MIN)
+    check("VCC reaches 12.5 V after OLED_VCC_EN, VSYS 3.0 V, slowest parts (vs the OLD 5 ms firmware floor)",
+          r["tup"] - 20e-6, None, T_AF_MIN_OLD, "s", SRC_TAF_MIN_OLD)
+
+
+def test_startup_time_vs_firmware_floor_with_fw_rule(main, check):
+    """GUARD for the firmware rule OLED-V2 (hardware/sim; firmware.md 7.2 step 23 and 3.1 oled_vcc
+    startup-delay-us = <10000>, SPEC 5.3): the VCC-to-AFh wait MUST never be below 10 ms.  Same slowest start as
+    test_startup_time_vs_firmware_floor (VSYS 3.0 V, weak TPS61040, U21 RON / L20 DCR max, L20 -20 %, C37 and
+    the +13V_OLED caps +tol, marked values) against that 10 ms floor."""
+    r = startup_worst(main)
+    check("VCC reaches 12.5 V after OLED_VCC_EN, VSYS 3.0 V, slowest parts (vs the 10 ms firmware floor, OLED-V2)",
+          r["tup"] - 20e-6, None, T_AF_MIN_FW, "s", SRC_VCC + " (VCC >= 12.5 V before AFh); " + SRC_TAF_MIN_FW)
 
 
 SRC_USB = ("architecture.md +3V3 row: the rail is designed for VSYS >= BUVLO 3.0 V (+3V3 >= 2.9 V, W25Q128 needs "
            ">= 2.7 V); BQ25180 SLUSE99C 7.5 ILIM, 8.3.3 no supplement below BUVLO; firmware.md 13.3 / 6.3")
 
 
-def usb_start(d, title, ilim):
-    """OLED_VCC_EN rising while VSYS comes only from USB through the BQ25180 input limit (battery dead or absent:
-    no supplement), with the VSYS capacitors of both boards (marked values) and no other VSYS load - all of which
-    favour the result.  Output caps at their energy-equivalent C(V) (DERATE_ENERGY)."""
+def usb_start(d, title, ilim, en="step", iload=0.0, vreg=SYS_REG_FW):
+    """OLED_VCC_EN rising (en="step"; en="off" holds it low) while VSYS comes only from USB through the BQ25180
+    input limit (battery dead or absent: no supplement), SYS regulated at `vreg` (the firmware's SYS_REG 4.4 V),
+    with the VSYS capacitors of both boards (marked values) and no other VSYS load than `iload` (A, DC) - all of
+    which favour the result.  Output caps at their energy-equivalent C(V) (DERATE_ENERGY)."""
     b = spicelib.Design("base")
-    deck = build(d, title, vsys=4.5, icc=0.0, derate="energy", en="step", t_en=20e-6, init="off")
+    deck = build(d, title, vsys=vreg, icc=0.0, derate="energy", en=en, t_en=20e-6, init="off")
     deck.include("oled_boost__bq25180.lib")
     deck.lines = [ln for ln in deck.lines if not ln.startswith(("VSRC ", "RSRC "))]
-    deck += f"XBQ {d.node('VSYS')} 0 BQ25180_SYS_OB params: ILIM={ilim}"
+    deck += f"XBQ {d.node('VSYS')} 0 BQ25180_SYS_OB params: ILIM={ilim:g} VREG={vreg:g}"
     deck += [ln[0] + "BASE_" + ln[1:] for ln in b.passives(nets={"VSYS", "GND"})]   # base board, via J3
+    if iload:
+        deck += f"ISYSLOAD {d.node('VSYS')} 0 DC {iload:g}"
     deck.meas("tran vsysmin MIN v(n_vsys)")
     deck.meas("tran vend AVG v(n_p13v_oled) FROM=6.5m TO=7m")
     return run(deck, 7e-3)
 
 
 def test_usb_500ma_oled_enable(main, check):
-    """USB at the 500 mA input-limit code (450 mA min), battery dead: the OLED supply may start."""
+    """USB at the 500 mA input-limit code (450 mA min), battery dead, SYS at the firmware's 4.4 V: the OLED supply
+    may start (the enable the NEW-1 / OLED-V1 rule defers to ILIM = 500 mA)."""
     r = usb_start(main, "usb 500 mA", 0.450)
     soft_checks(check, [("VSYS min during OLED start-up, USB ILIM 500 mA code (450 mA min), no battery",
                          r["vsysmin"], 3.0, None, "V", SRC_USB),
                         ("VCC settled, USB only", r["vend"], VCC_MIN, VCC_MAX, "V", SRC_VCC)])
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with USB at the 100 mA pre-enumeration limit and a dead / "
-                   "absent battery (no supplement), the boost start-up (~0.25 A for ~2 ms) pulls VSYS to ~2.5 V; "
-                   "firmware.md 13.3 / 6.3 still allow the OLED on in that state")
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware-dependent, NEW-1 / OLED-V1): with USB at the 100 mA "
+                   "pre-enumeration limit and a dead / absent battery (no supplement), the boost start-up (~0.25 A "
+                   "for ~2 ms) pulls VSYS to ~2.3-2.5 V; the OLD firmware.md 13.3 / 6.3 allowed the OLED on in that "
+                   "state. The rule now keeps OLED_VCC_EN low: see test_usb_100ma_dead_battery_oled_enable_with_fw_rule")
 def test_usb_100ma_dead_battery_oled_enable(main, check):
-    """USB at the 100 mA input-limit code (98 mA max, the most favourable), battery below BUVLO."""
+    """USB at the 100 mA input-limit code (98 mA max, the most favourable), battery below BUVLO, OLED_VCC_EN raised
+    as the OLD firmware did."""
     r = usb_start(main, "usb 100 mA", 0.098)
     check("VSYS min during OLED start-up, USB ILIM 100 mA code (98 mA max), battery below BUVLO", r["vsysmin"],
           3.0, None, "V", SRC_USB)
+
+
+ILIM100_MIN, ILIM100_MAX = 0.080, 0.098       # BQ25180 SLUSE99C 7.5 ILIM, 100 mA code (TMR_ILIM = 0xC9) min / max
+I_CUE_FW = 20e-3                              # firmware.md 6.3 / 7.2 / 13.3: the <= 20 mA charging cue (NEW-1)
+I_NOSUP100_FW = 70e-3                         # firmware.md 6.3 no-supplement profile, ILIM 100 mA phase: <= 70 mA total
+SRC_FW_NEW1 = ("firmware rule (hardware/sim, NEW-1, OLED-V1): firmware.md 6.3 / 7.2 OLED_VCC_EN rules / 13.3, SPEC "
+               "5.3: OLED_VCC_EN MUST stay low while TMR_ILIM = 0xC9 (100 mA) unless the battery can supplement SYS; "
+               "LEDs show the <= 20 mA charging cue until ILIM = 500 mA")
+
+
+def test_usb_100ma_dead_battery_oled_enable_with_fw_rule(main, check):
+    """GUARD for the firmware rule NEW-1 / OLED-V1 (hardware/sim; firmware.md 6.3, 7.2 'OLED_VCC_EN rules', 13.3;
+    SPEC 5.3): while the BQ25180 input limit is 100 mA and the battery cannot supplement SYS (BUVLO_STAT, or VBAT
+    below about 3.15 V, or unknown), OLED_VCC_EN stays low and the LEDs show the <= 20 mA charging cue.  Same
+    USB-only, battery-below-BUVLO deck as test_usb_100ma_dead_battery_oled_enable with the rule applied
+    (OLED_VCC_EN held low), at both ends of the 100 mA code (80 mA min, 98 mA max as there), loaded with the
+    20 mA cue and with the whole 70 mA budget firmware.md 6.3 allows in that phase (no-supplement profile, PI-4).
+    The deferred enable at ILIM = 500 mA is test_usb_500ma_oled_enable.  Not covered here: the rule's other branch
+    (OLED allowed at 100 mA with C7 <= 04h when the battery can supplement, VBAT >= about 3.15 V): this BQ25180
+    model has no battery / supplement path and the docs give no cell resistance or supplement threshold for it."""
+    jobs = [(ilim, iload) for ilim in (ILIM100_MIN, ILIM100_MAX) for iload in (I_CUE_FW, I_NOSUP100_FW)]
+
+    def one(job):
+        ilim, iload = job
+        return job, usb_start(main, f"usb 100 mA fw rule {ilim:g} A {iload:g} A", ilim, en="off", iload=iload)
+    soft_checks(check, [(f"VSYS min, USB ILIM 100 mA code ({ilim * 1e3:g} mA), battery below BUVLO, fw rule NEW-1: "
+                         f"OLED_VCC_EN held low, {iload * 1e3:g} mA load", r["vsysmin"], 3.0, None, "V",
+                         SRC_USB + "; " + SRC_FW_NEW1 + ("; firmware.md 6.3 no-supplement ILIM-100 total <= 70 mA "
+                                                         "(PI-4)" if iload > I_CUE_FW else ""))
+                        for (ilim, iload), r in pmap(one, jobs)])
 
 
 def test_load_steps(main, check):
@@ -675,11 +768,11 @@ def test_line_transients(main, check):
 
 
 def test_shutdown_vcc_float(main, check):
-    """OLED_VCC_EN low (after AEh, display off): U21 opens at once, so VSYS stops feeding the boost (ISD only).
-    The TPS61040 (EN = VIN) keeps regulating from the charge left on C38 until OLED_VIN falls to its UVLO, so VCC
-    stays near 13 V for tens of ms; it must not overshoot, and it is never actively discharged (it floats, SSD1351
-    8.9 note (2)).  3 ms window: before OLED_VIN reaches UVLO (the model has no UVLO hysteresis, so that regime
-    is not simulated - see test_off_state for the end state)."""
+    """OLED_VCC_EN low (after AEh, display off): U21 opens at once, so VSYS stops feeding the boost (ISD only),
+    and U21's QOD (tied to OLED_VIN) discharges C38 through ~150 ohm.  The TPS61040 (EN = VIN) runs from the charge
+    left on C38 until OLED_VIN falls through its ~1.5 V UVLO (about 0.5 ms at VSYS 3.0 V), then stops; VCC must
+    not overshoot, and it is never actively discharged: it floats near 13 V behind D21 (SSD1351 8.9 note (2)).
+    3 ms window (the model has no UVLO hysteresis; see test_off_state for the long-term end state)."""
     t_off, t_end = 50e-6, 3e-3
 
     def one(job):

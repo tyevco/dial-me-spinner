@@ -7,7 +7,9 @@
 * Vendor    : no transient model of the power path is published; this is a two-parameter abstraction.
 *
 * Modelled:
-*   SYS regulation  VSYS_REG = 4.5 V (SYS_REG_CTRL = 010, the reset value; 7.5 "VSYS_REG"), output
+*   SYS regulation  VSYS_REG = VREG, default 4.5 V (SYS_REG_CTRL = 010, the reset value; 7.5 "VSYS_REG").  The
+*                   OLED tests pass VREG = 4.4 V, the value firmware writes at boot (SYS_REG = 0x20,
+*                   docs/firmware.md 13.1 row 8), the lower start for the VSYS-dip checks.  Output
 *                   resistance RSYS (default 69 mOhm: the same source resistance the OLED tests use).
 *   Input limit     the VIN -> SYS current never exceeds ILIM (7.5 "ILIM": 100 mA code 80 / 90 / 98 mA
 *                   min / typ / max at VIN 5 V; 500 mA code 450 / 475 / 498 mA).  Default 98 mA (the

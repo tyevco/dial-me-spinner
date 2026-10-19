@@ -14,9 +14,14 @@ Angles:
   * VSYS ripple     2 kHz LED PWM at the hardware worst-case LED current (load extreme on VSYS)
   * accuracy        firmware constant, raw gain (production window), uncalibrated (bring-up), one-point calibrated
                     at -10/25/60 °C (TCR, CEG, VOS, C5 insulation resistance), SHIP threshold vs BQ25180 VBATPOR
-                    (also 15/35 °C, the band where the 3.48 V rule holds), AIN leakage sensitivity
+                    (also 15/35 °C, the band where the old 3.48 V rule holds), AIN leakage sensitivity
   * aging           (verifier) calibrated reading and SHIP rule at 25 °C after R1/R2 datasheet drift (±0.5 %) and
                     C5 IR loss to its endurance bound
+  * firmware rules  the strict xfails keep the old values (SHIP 3.48 V, ±10 mV, raw gain ±3 %, bring-up ±2 %) as the
+                    evidence; the *_with_fw_rule guards apply firmware.md §12.4 / §16 test 8 and bringup.md B-8.5 as
+                    they stand: SHIP below 3.53 V and a ±46 mV calibrated drift budget (VSENSE-1/4), calibration
+                    reference from a DMM at TP1 or with the board under 5 mA (VSENSE-5), ±5.5 % raw-gain and
+                    uncalibrated windows (VSENSE-2/3)
   * settling        after power-up, all R/C corners, X7R temperature
   * sleep current   VSYS 3.7 / 4.2 V, all corners
   * faults          C5 left off (x2), R1/R2 swapped, R1 decade typo, R2 left off, C5 wrong value, R1 bridged
@@ -78,7 +83,15 @@ def ir_eol(c):
 
 
 V_CAL = 3.800          # firmware.md §12.4 / §16 test 8: production one-point calibration at 3.800 V
-V_SHIP = 3.48          # firmware.md §12.4: SHIP entry below 3.48 V
+V_SHIP_OLD = 3.48      # pre-VSENSE-1 firmware.md §12.4 SHIP entry (evidence of the strict xfails; 15/25/35 °C cases)
+V_SHIP = 3.53          # firmware.md §12.4 low-battery policy: SHIP entry below 3.53 V (VSENSE-1, VSENSE-4)
+CAL_ACC_OLD = 0.010    # pre-VSENSE-1 firmware.md §12.4 '±10 mV calibrated ADC error' (now 25 ± 10 °C, fresh unit only)
+CAL_DRIFT = 0.046      # firmware.md §12.4: calibrated reading drifts by up to ±46 mV over −10…60 °C and with ageing
+I_CAL_MAX = 5e-3       # firmware.md §12.4 / §16 test 8 (VSENSE-5): without the DMM at TP1, board under 5 mA while calibrating
+RAW_GAIN_WIN_OLD = 0.03   # pre-VSENSE-2 firmware.md §16 test 8 raw-gain window ±3 %
+RAW_GAIN_WIN = 0.055      # firmware.md §16 test 8: raw gain within ±5.5 % (VSENSE-2)
+UNCAL_WIN_OLD = 0.02      # pre-VSENSE-3 bringup.md B-8.5 uncalibrated window ±2 %
+UNCAL_WIN = 0.055         # bringup.md B-8.5: uncalibrated vs DMM at TP1 within ±5.5 % (VSENSE-3)
 VBATPOR_MAX = 3.46     # BQ25180 DS SLUSE99C §7.5 VBATPOR 3.08 / 3.21 / 3.46 V (min/typ/max)
 FW_RATIO = 3.2         # firmware.md §3.1 DTS vsys-sense full-ohms 3200000 / output-ohms 1000000
 T_FIRST_SAMPLE = 1.0   # firmware.md §2.2: power_thread runs on a 1 s tick -> first battery sample
@@ -86,11 +99,20 @@ T_FW_MIN_INTERVAL = 1.0  # firmware.md §12.4: "Sample at most about 1 Hz"
 I_LED_MAX = 0.73       # architecture.md §8.4: LED ring hardware worst case, full white, C variant
 R_SRC_BAT = 0.25       # firmware.md §12.4: VOCV ≈ Vmeas + I_est x 0.25 Ω (cell + BATFET + path)
 F_LED_PWM = 2e3        # architecture.md §6.4 / WS2812C-2020-V6: 2 kHz PWM
+# VSENSE-5: the VSYS really at the divider while firmware stores 3.800 V. DMM at TP1 = exact. Board under 5 mA: VSYS sits
+# below the supply setpoint by I x path resistance; the docs give no resistance for the battery-emulator path, so the
+# documented cell + BATFET + path figure (R_SRC_BAT, 0.25 Ω) stands in for it (1.25 mV, stores a high gain).
+CAL_REFS = {"DMM-at-TP1": V_CAL, "board-under-5mA": round(V_CAL - I_CAL_MAX * R_SRC_BAT, 6)}
+SRC_VSENSE_RULE = ("firmware rule firmware.md §12.4 (VSENSE-1/4/5): SHIP below 3.53 V; calibration reference from a "
+                   "DMM at TP1 or with the board under 5 mA")
 
 TEMPS = (-10.0, 25.0, 60.0)
-V_POINTS = (3.0, 3.3, 3.48, 3.7, 3.8, 4.2, 4.41, 4.5, 4.59, 5.0, 5.5)
-# 3.0/3.7/4.2 battery corners; 4.41/4.5/4.59 = SYS_REG 4.5 V ±2 % on USB (BQ25180 DS SLUSE99C §7.5 VSYS_REG_ACCURACY);
-# 4.5/5.0/5.5 = VBUS corners with SYS_REG_CTRL = 111 pass-through (VSYS = VIN, SLUSE99C §8.3)
+V_POINTS = (3.0, 3.3, V_SHIP_OLD, V_SHIP, 3.7, CAL_REFS["board-under-5mA"], 3.8, 4.2, 4.41, 4.5, 4.59, 5.0, 5.5)
+# 3.0/3.7/4.2 battery corners; 3.48 / 3.53 old / current SHIP threshold; 3.79875 = VSENSE-5 loaded calibration point;
+# 4.41/4.5/4.59 = SYS_REG 4.5 V ±2 % on USB (BQ25180 DS SLUSE99C §7.5 VSYS_REG_ACCURACY): 4.5 V is the POR default and
+# the only alternative firmware.md §13.1 allows (it sets 4.4 V, 0x20), so these are the upper USB points;
+# 4.5/5.0/5.5 = VBUS corners with SYS_REG_CTRL = 111 pass-through (VSYS = VIN, SLUSE99C §8.3): firmware never sets it,
+# kept as the hardware bound of the input-range check
 
 ADC_VARIANTS = [dict(EG=eg, CEG=s * CEG_TYP, VOS=v) for eg in (-EG16, EG16) for s in (-1, 1)
                 for v in (-VOS_LSB12, VOS_LSB12)]
@@ -125,7 +147,7 @@ def _divider(d, scale=None, tcr=None, ir=None):
 
 
 def _tag(v):
-    return "v" + f"{v:.2f}".replace(".", "p")
+    return "v" + f"{v:.5f}".replace(".", "p")
 
 
 def _run(deck):
@@ -180,9 +202,10 @@ def _corners(temp):
 
 
 @functools.lru_cache(maxsize=None)
-def _calibrated_errors(temp):
+def _calibrated_errors(temp, v_cal_true=V_CAL):
     """Error (V) of the one-point-calibrated reading at `temp` for every corner: {vsys: [err, ...]}.
-    Calibration: 25 °C, 3.800 V, same part (R corner, ADC variant); the C5 IR may differ between the two times."""
+    Calibration: 25 °C, 3.800 V stored, same part (R corner, ADC variant); the C5 IR may differ between the two times.
+    v_cal_true is the VSYS really at the divider during calibration (VSENSE-5, CAL_REFS): V_CAL with the DMM at TP1."""
     cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
     errs = {v: [] for v in V_POINTS}
     for row in _corners(temp):
@@ -190,7 +213,7 @@ def _calibrated_errors(temp):
         # used to force the same IR at both times, which hid the 2.4 mV IR term at the calibration temperature).
         ir_cals = [k[1] for k in cal if k[0] == row["si"]]
         for ir_cal in ir_cals:
-            ccal = cal[(row["si"], ir_cal)][V_CAL]["codes"]
+            ccal = cal[(row["si"], ir_cal)][v_cal_true]["codes"]
             for v in V_POINTS:
                 for i, code in enumerate(row["res"][v]["codes"]):
                     errs[v].append(V_CAL * code / ccal[i] - v)
@@ -199,14 +222,15 @@ def _calibrated_errors(temp):
 
 DRIFT_R = 0.005   # UNI-ROYAL thick-film DS V.3 §11, ±0.5 %/1 % parts: Humidity (steady state, 240 h 40 °C 90-95 % RH)
                   # and Rapid change of temperature: ΔR ±(0.5 % + 0.05 Ω). Used as the post-calibration drift bound.
-AGED_POINTS = (3.3, V_SHIP, 3.7, 4.2)
+AGED_POINTS = (3.3, V_SHIP_OLD, V_SHIP, 3.7, 4.2)
 
 
 @functools.lru_cache(maxsize=None)
-def _aged_errors():
+def _aged_errors(v_cal_true=V_CAL):
     """Error (V) of the one-point-calibrated reading at 25 °C after the part has aged: calibration on the fresh board
     (every R1/R2 tolerance corner, ADC variant, C5 IR bound/open), then in use R1 and R2 drift by DRIFT_R in opposite
-    directions (both signs) and the C5 IR is anywhere from open to the endurance bound (ir_eol, 250 MΩ)."""
+    directions (both signs) and the C5 IR is anywhere from open to the endurance bound (ir_eol, 250 MΩ).
+    v_cal_true: the VSYS really at the divider while 3.800 V is stored (VSENSE-5, CAL_REFS)."""
     d = spicelib.Design("main")
     c5 = d.value("C5")
     cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
@@ -217,7 +241,7 @@ def _aged_errors():
             for ir in (ir_eol(c5) if d.fitted("C5") else None, ir_min(c5), None):
                 res = _dc(d, 25.0, aged, None, ir, points=AGED_POINTS + (V_CAL,))
                 for ir_cal in [k[1] for k in cal if k[0] == si]:
-                    ccal = cal[(si, ir_cal)][V_CAL]["codes"]
+                    ccal = cal[(si, ir_cal)][v_cal_true]["codes"]
                     for v in AGED_POINTS:
                         for i, code in enumerate(res[v]["codes"]):
                             errs[v].append(V_CAL * code / ccal[i] - v)
