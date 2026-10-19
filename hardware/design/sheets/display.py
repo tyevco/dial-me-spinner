@@ -236,7 +236,7 @@ def build(d):
 
     d.group("13 V boost: TPS61040, rectifier, FB divider", _pad(
             "VOUT = 1.233 V x (1 + 499k / 52.3k) = 13.00 V (0.5 % / 0.1 % divider); CFF C40 33 pF across R26 (tune 22-100 pF).\n"
-            "EN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.92 A (peak need 0.49 A).\n"
+            "EN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.72 A rated (0.92 A typ; peak need 0.49 A).\n"
             "LAYOUT: tight CIN-L-SW-GND and SW-D-COUT-GND loops; R26/R27/C40 at the FB pin, away from SW.", 150))
     d.add("R27", "Device:R", "52.3k 0.1%", R0402, pins={"1": "GND", "2": "OLED_BST_FB"},
           fields={"MPN": "RT0402BRD0752K3L", "Manufacturer": "YAGEO", "LCSC": "C852832"})

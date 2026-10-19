@@ -24,6 +24,7 @@ dead battery at the 100 mA input limit, and fault tests for CT bridged / a decad
 from __future__ import annotations
 
 import re
+import subprocess
 
 import pytest
 
@@ -306,15 +307,28 @@ class SimulationError(RuntimeError):
     xfail(raises=AssertionError) can only be satisfied by a violated limit, never by a broken simulation)."""
 
 
-def run(deck, *, need=()):
-    res = deck.run()
-    # The TPS22917 macro-model's logic edges can stall ngspice's trapezoidal step control at a switching instant
-    # ("Timestep too small") for some otherwise harmless loads; the same deck then runs with Gear integration.
-    # Only that error triggers the retry, and any error of the retry is still fatal.
-    if any(re.search(r"(?i)timestep too small", e) for e in res["_errors"]) and \
-            not any("method=gear" in o for o in deck.options):
-        deck.options.append("option method=gear")
-        res = deck.run()
+NUMERIC_FALLBACKS = (["option reltol=1e-3"], ["option reltol=1e-3", "option method=gear", "option rshunt=1e12"])
+
+
+def run(deck, *, need=(), timeout=90):
+    # The TPS22917 macro-model's logic edges can stall ngspice's step control at a switching instant ("Timestep too
+    # small", or a hang) for some otherwise harmless loads, e.g. with the DNP C43 fitted.  Only those two outcomes
+    # trigger a retry with looser numerics (reltol 1e-3, then also Gear + rshunt 1e12); every other error, and any
+    # error of the last attempt, stays fatal.  Normal decks finish in a few seconds, so a 90 s attempt is generous.
+    base = [o for o in deck.options if not o.startswith("option reltol")] + \
+        [o for o in deck.options if o.startswith("option reltol")]
+    res = None
+    for extra in ([],) + NUMERIC_FALLBACKS:
+        deck.options = ([o for o in base if not (extra and o.startswith("option reltol"))] + extra)
+        try:
+            res = deck.run(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            res = None
+            continue
+        if not any(re.search(r"(?i)timestep too small", e) for e in res["_errors"]):
+            break
+    if res is None:
+        raise SimulationError(f"ngspice did not finish in {timeout} s, also with the numerical fallbacks")
     errors = list(res["_errors"])
     # The XSPICE ilimit block (BQ25180 USB input FET) prints "**** ERROR **** / CLIMIT function linear range less
     # than zero" for one Newton iteration while ngspice's gmin stepping explores the operating point; the step

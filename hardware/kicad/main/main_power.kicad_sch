@@ -3598,7 +3598,7 @@
 				)
 			)
 		)
-		(property "Value" "10u"
+		(property "Value" "10u/25V"
 			(at 193.04 39.192 90)
 			(effects
 				(font
@@ -3633,7 +3633,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10A106KP8NNNC"
+		(property "MPN" "CL10A106MA8NRNC"
 			(at 193.04 35.56 0)
 			(effects
 				(font
@@ -3651,7 +3651,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C19702"
+		(property "LCSC" "C96446"
 			(at 193.04 35.56 0)
 			(effects
 				(font
@@ -5314,7 +5314,7 @@
 				)
 			)
 		)
-		(property "Value" "10u"
+		(property "Value" "10u/25V"
 			(at 83.82 115.392 90)
 			(effects
 				(font
@@ -5349,7 +5349,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10A106KP8NNNC"
+		(property "MPN" "CL10A106MA8NRNC"
 			(at 83.82 111.76 0)
 			(effects
 				(font
@@ -5367,7 +5367,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C19702"
+		(property "LCSC" "C96446"
 			(at 83.82 111.76 0)
 			(effects
 				(font
@@ -5940,7 +5940,7 @@
 				)
 			)
 		)
-		(property "Value" "100"
+		(property "Value" "68"
 			(at 27.94 152.476 90)
 			(effects
 				(font
@@ -5966,7 +5966,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); ~4 ms with 44 uF"
+		(property "Description" "QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % in <= 28.3 ms at the C8/C9 +20 % corner, inside the firmware's 30 ms (hardware/sim test_load_switches)"
 			(at 27.94 149.86 0)
 			(effects
 				(font
@@ -5975,7 +5975,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "0402WGF1000TCE"
+		(property "MPN" "RC0402FR-0768RL"
 			(at 27.94 149.86 0)
 			(effects
 				(font
@@ -5984,7 +5984,7 @@
 				(hide yes)
 			)
 		)
-		(property "Manufacturer" "UNI-ROYAL"
+		(property "Manufacturer" "YAGEO"
 			(at 27.94 149.86 0)
 			(effects
 				(font
@@ -5993,7 +5993,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C25076"
+		(property "LCSC" "C163455"
 			(at 27.94 149.86 0)
 			(effects
 				(font

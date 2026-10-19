@@ -165,6 +165,8 @@ def build(d):
     d.add("U12", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",
           pins={"1": "USB_DP", "6": "USB_DP", "3": "USB_DM", "4": "USB_DM", "5": "VBUS_NRF", "2": "GND"},
           fields={"MPN": "USBLC6-2SC6", "Manufacturer": "STMicroelectronics", "LCSC": "C7519"})
+    # VBUS_NRF is fed from the flagged VBUS through R12; ERC does not propagate a supply through a resistor.
+    d.add("#FLG10", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "VBUS_NRF"}, in_bom=False, on_board=False)
 
     d.group("32.768 kHz LFXO", "SC-20S CL 9 pF; Ccap = 2*CL - Cpin - Cpcb ~ 12 pF C0G.\n"
             "R1 <= 90k (nRF RS_LFXO max 100k); DLmax 0.5 uW = nRF PD_LFXO.\n"

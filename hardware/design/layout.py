@@ -882,8 +882,11 @@ def route(path, passes=12, timeout=4 * 3600, threads=2, optimizer_passes=20):
         os.remove(ses)
     pcbgen.export_dsn(path, dsn)
     with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
+        # Freerouting 2.1 ignores -mp (its settings file wins, max_passes 9999), so the pass limit is also given
+        # as a settings override.
         subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mp", str(passes), "-mt", str(threads),
-                        f"--router.optimizer.max_passes={optimizer_passes}", "--gui.enabled=false"],
+                        f"--router.max_passes={passes}", f"--router.optimizer.max_passes={optimizer_passes}",
+                        "--gui.enabled=false"],
                        timeout=timeout, stdout=log, stderr=subprocess.STDOUT)
     if not os.path.exists(ses):
         raise RuntimeError("Freerouting produced no session file")
