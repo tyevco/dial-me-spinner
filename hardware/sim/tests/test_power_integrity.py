@@ -623,25 +623,33 @@ def test_harness_model_inputs_from_netlist(main, base, check):
     ("nominal", 4.2), ("worst", 4.2), ("nominal", 3.7),
     pytest.param("worst", 3.7, marks=pytest.mark.xfail(strict=True, reason=(
         "DESIGN ISSUE: with no firmware limit (48 LEDs full white + OLED 100 % + both coils on + +3V3 peak, "
-        "~1.33 A) a 200 mOhm pack at 3.7 V pulls VLED to ~3.06 V < 3.3 V (WS2812C VDD min): the firmware LED "
+        "~1.33 A) a 200 mOhm pack at 3.7 V pulls VLED to ~3.05 V < 3.3 V (WS2812C VDD min): the firmware LED "
         "limiter is a hardware protection function"))),
     pytest.param("nominal", 3.0, marks=pytest.mark.xfail(strict=True, reason=(
-        "DESIGN ISSUE: uncapped full load at VBAT 3.0 V: V(BAT) 2.84 V < BUVLO 3.0 V (BATFET opens, brown-out) "
-        "and VLED < 3.3 V; firmware must ship at 3.48 V and cap loads, the hardware alone cannot"))),
+        "DESIGN ISSUE: uncapped full load at the end of discharge (VBAT 3.0 V) pulls +3V3 to ~2.68 V < 2.7 V "
+        "(W25Q128JV VCC min) while the BQ25180 BUVLO deglitch (60 us) runs; only the firmware (SHIP at 3.48 V, "
+        "loads capped) prevents it"))),
     pytest.param("worst", 3.0, marks=pytest.mark.xfail(strict=True, reason=(
-        "DESIGN ISSUE: uncapped full load at VBAT 3.0 V worst corner: V(BAT) 2.69 V < BUVLO, VLED and +3V3 low"))),
+        "DESIGN ISSUE: uncapped full load at VBAT 3.0 V worst corner: +3V3 ~2.41 V < 2.7 V (W25Q128JV VCC min)"))),
 ])
 def test_hw_worst_case_uncapped_dc(main, base, check, cname, vbat):
-    """Hardware worst case with NO firmware limits, steady state: is the firmware LED cap needed?"""
+    """Hardware worst case with NO firmware limits, steady state: is the firmware LED cap needed?
+
+    Verifier: at an OCV of 3.0 V the V(BAT) >= VBUVLO check is impossible for any load (OCV = VBUVLO, every mA
+    of discharge puts the terminal below it) and VLED >= 3.3 V is impossible for any VSYS-fed rail (OCV < 3.3 V),
+    so those two checks only apply where the OCV is above the respective limit; the 3.0 V corner is judged on
+    +3V3 (flash), the currents and the contact ratings, which a better design could pass."""
     s = System(main, base, CORNERS[cname])
     r = run_op(s.deck(f"uncapped DC {cname} {vbat}", hw_loads(sync=False), vbat=vbat))
     tag = f"uncapped DC VBAT {vbat} {cname}"
-    check_supply(check, s, r, tag, dc=True, extra=[
+    extra = [
         (f"{tag}: link VSYS current per contact", r["ilink"] / s.n_vsys, None, SH_CONTACT_A, "A", SRC_SH),
         (f"{tag}: link GND current per contact", r["ignd"] / s.n_gnd, None, SH_CONTACT_A, "A", SRC_SH),
         (f"{tag}: battery connector current per contact", r["ibat"] / min(s.n_bpos, s.n_bneg), None,
-         CONTACT_A[s.bat_series], "A", f"JST {s.bat_series} DS current rating per contact"),
-        (f"{tag}: V(BAT) (BUVLO)", r["vbat"], VBUVLO, None, "V", SRC_BUVLO)])
+         CONTACT_A[s.bat_series], "A", f"JST {s.bat_series} DS current rating per contact")]
+    if vbat > VBUVLO:
+        extra.append((f"{tag}: V(BAT) (BUVLO)", r["vbat"], VBUVLO, None, "V", SRC_BUVLO))
+    check_supply(check, s, r, tag, dc=True, led_on=vbat > WS_VDD_MIN, extra=extra)
 
 
 @pytest.mark.parametrize("cname", ["nominal", "worst", "cold"])
@@ -659,7 +667,7 @@ def test_firmware_capped_dc(main, base, check, point, cname):
 SYNC_XFAIL = pytest.mark.xfail(strict=True, reason=(
     "DESIGN ISSUE: the firmware limiter caps the AVERAGE ring current, but with all 48 LEDs lit (any brightness) "
     "and their 2 kHz PWM phases aligned the ring draws the full 48 x 3 x 5 mA = 0.72 A for 70-210 us per period, "
-    "about as long as the battery-path settling (~150 us), so VLED sags almost as at DC: 3.10-3.25 V < 3.3 V "
+    "about as long as the battery-path settling (~150 us), so VLED sags almost as at DC: 3.08-3.25 V < 3.3 V "
     "(WS2812C VDD min) at VBAT <= 3.70 V (worst corner) and at 3.53 V even at the nominal corner"))
 
 
@@ -682,7 +690,9 @@ def test_firmware_capped_sync_pwm_transient(main, base, check, cname, point):
     loads = fw_loads(s.n_led, cap, icc, motor, sync=True)
     r = run_tran(s.deck(f"capped sync {point}", loads, vbat=vbat), stop=1.2e-3, waves=("v(p_bat)",))
     tag = f"capped sync-PWM {point} {cname}"
-    check_supply(check, s, r, tag, led_on=cap > FW_LED_CUE, extra=[
+    # verifier: VLED is checked at the low-battery cue point too: LED_PWR_EN stays on for the red cue, so all 48
+    # WS2812C ICs on the rail still need VDD >= 3.3 V (the author skipped it for cap <= FW_LED_CUE)
+    check_supply(check, s, r, tag, led_on=True, extra=[
         (f"{tag}: V(BAT) below BUVLO, longest", longest_below(r, "v(p_bat)", VBUVLO), None, TBUVLO, "s", SRC_BUVLO),
         (f"{tag}: GND offset main-base, peak", max(r["gnd_max"], -r["gnd_min"]), None, BQ_VIL, "V",
          SRC_BQ_VIL + " (offset alone)")])

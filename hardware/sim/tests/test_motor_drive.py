@@ -675,7 +675,8 @@ def test_turnoff_kick_monte_carlo(main, base, check):
         w, tm = run_stepping(main, base, sup, 25, 446, nsteps=0, stall=True, rds=RDS_TYP, lph=L_NOM, other=3e-3,
                              end="coast", cscale=cs, aged=False, t_pre=1.5e-3, t_hold=0.2e-3, t_tail=0.5e-3)
         _, vs = window(w, "vsys", tm["t_x"] - 1e-4, tm["t_stop"])
-        vmax.append(float(vs.max()))
+        _, vsb = window(w, "vsys_base", tm["t_x"] - 1e-4, tm["t_stop"])     # BQ25180 SYS pin is on the base board
+        vmax.append(float(max(vs.max(), vsb.max())))
     vmax = np.array(vmax)
     check("VSYS peak after coast, MC mean (200 draws)", float(vmax.mean()), None, None, "V", "info")
     check("VSYS peak after coast, MC max (200 draws)", float(vmax.max()), None, SYS_ABS_MAX, "V",
