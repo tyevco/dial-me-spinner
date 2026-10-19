@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import os
 import random
 import re
 
@@ -424,9 +425,9 @@ def test_model_matches_datasheet_figures(check):
 
 
 def test_spec_section3_ldo_requirements(main, check):
-    """SPEC 3: 'LDO >= 200 mA, Iq <= 2 uA, dropout <= 300 mV at 200 mA ... Input 10 uF, output 10 uF + 100 nF'.
-    Dropout with the DS max-dropout part at 60 C; capacitors from the netlist (nominal, and effective at the input
-    against the DS 1 uF input recommendation)."""
+    """SPEC 3: 'LDO: ≥ 200 mA, Iq ≤ 2 µA typ / 4 µA max, dropout ≤ 300 mV at 200 mA ... Input 10 µF, output
+    10 µF + 100 nF' (Iq: test_quiescent_current_*). Dropout with the DS max-dropout part at 60 C; capacitors from the
+    netlist (nominal, and effective at the input against the DS 1 uF input recommendation)."""
     deck = spicelib.Deck("LDO SPEC dropout 200 mA")
     deck.include(LIB)
     c = dict(LOW, ACC=0, LINE=0, ILIM=0.98, IFB=0.72)
@@ -468,7 +469,8 @@ def test_nominal_regulation(main, check):
 
 @pytest.mark.parametrize("temp", TEMPS)
 def test_dc_supply_and_temperature_corners(main, check, temp):
-    """+3V3 over every VSYS the charger can deliver (VBAT 3.0-4.2 V, USB 4.41-4.59 V), at -10/25/60 C.
+    """+3V3 over every VSYS the charger can deliver (VBAT 3.0-4.2 V; USB 4.312-4.488 V at the firmware's SYS_REG 4.4 V
+    and 4.41-4.59 V at the 4.5 V POR default / allowed alternative), at -10/25/60 C.
 
     Worst-low corner (-2 %, max dropout, max load/line regulation, peak load) against the consumers' minimums:
     W25Q128JV 2.7 V and the WS2812C data-high requirement VDD >= 0.6*VSYS + 0.4 V (nRF VOH = VDD - 0.4 V).
