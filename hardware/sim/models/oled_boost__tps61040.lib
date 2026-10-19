@@ -14,7 +14,10 @@
 *     VIN 3.7 V / 20 mA : VOUT avg 13.019 vs 13.018 V, ripple 9.4 vs 9.0 mV, pulse rate 203 vs 210 kHz
 *     VIN 3.0 V / 40 mA : VOUT avg 12.977 vs 12.974 V, ripple 7.7 vs 7.2 mV, pulse rate 447 vs 461 kHz
 *     Peak switch current 0.441 vs 0.431 A: the port uses the datasheet 100 ns current-limit delay
-*     (SLVS413L 6.3.1 Eq. 1), the vendor model's RC buffer gives ~90 ns.
+*     (SLVS413L 6.3.1 Eq. 1), the vendor model's RC buffer gives ~90 ns.  (Checked before the enable-node
+*     fix below, which changes only the VIN/EN loading and UVLO, not the regulated steady state.)
+*     Note the vendor switch path is 0.6 ohm VSWITCH + 0.25 ohm sense resistor = 0.85 ohm; the port uses
+*     the datasheet RDS(on) instead.
 *
 * Modelled (datasheet table / figure -> model parameter, default = typical):
 *   VREF   1.233 V    FB trip point, EC 5.5 "VFB" 1.208 / 1.233 / 1.258 V (1.8 V <= VIN <= 6 V).
@@ -37,7 +40,14 @@
 *                     (delayed) current limit or at the max on time; reset-dominant RS latch.
 *   Body diode        SW -> GND clamp (IS 1e-12, RS 0.5 ohm), as the integrated NMOS has one.
 *
-* NOT modelled: thermal shutdown (168 C), UVLO hysteresis, EN input leakage (0.1 uA), switch-node
+* Verifier fix (2026-10-19): the internal enable node was called "en", which SPICE (case-insensitive) merged
+*   with the EN pin: the pin was loaded by 1 kOhm to a 0/1 V source (~2.7 mA from OLED_VIN at 3.7 V), UVLO
+*   never stopped switching (reset only below 0.5 V on EN) and IQ scaled with VIN.  Internal nodes are now
+*   "ena"/"enar".  Consequence: with U21 open, OLED_VIN has no DC path any more (as on the board), so the
+*   EN-low state has no clean DC operating point; tests start it from explicit initial conditions.
+*
+* NOT modelled: thermal shutdown (168 C), UVLO hysteresis (not specified; without it the part chatters at
+*   1.5 V when VIN sits at the threshold, which is slow to simulate), EN input leakage (0.1 uA), switch-node
 *   capacitance (Coss is not specified; the rectifier junction capacitance sets the SW-node ringing),
 *   gate-drive edge rates (switch edges are ~1 ns), dependence of VFB / ILIM on VIN (< 1 %, Fig 5-9),
 *   line/load regulation terms beyond what the ideal comparator + external parts produce, the

@@ -763,7 +763,9 @@ def _reverse_run(main, base, case):
                  # BATFET in supplement mode: conducts through RON_BAT once SYS < VBAT - VBSUP1 (smooth ideal diode)
                  f"BSUP 0 n_vsys I=0.5*(({VBUVLO - VBSUP1}-v(n_vsys)) + sqrt(({VBUVLO - VBSUP1}-v(n_vsys))**2 + 1e-8))"
                  f"/{RON_BAT}", f"IVS n_vsys 0 {DIM_VSYS}"]
-        tstop = t_ev + 8e-3
+        # the peak comes when SYS reaches its supplement floor (~3.7 ms after the event); stop at +5 ms, before +3V3 has
+        # decayed onto VSYS (the dropout re-entry at VIN ~ VOUT with ~0 pass current stalls the solver ~5.4 ms later)
+        tstop = t_ev + 5e-3
     elif case == "batocp trip":
         # a VSYS overload at the BATOCP setting (e.g. a shorted motor lead) switched on at t_ev: the BATFET opens
         deck += [f"VBAT nbat 0 {up}", f"RBAT nbat nbf {RON_BAT}", "SBAT nbf n_vsys nopen 0 SWREV",

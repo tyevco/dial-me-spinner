@@ -789,6 +789,29 @@ def test_data_line_dc_levels(base, main, check, vbus, state):
     check(f"low line at the nRF pad ({tag})", v["lo_nrf"], None, USB2_VOL[0], "V", USB2_VOL[1])
 
 
+USB2_ICCSH = (2.5e-3, "USB 2.0 Spec Rev 2.0 Table 7-7 ICCSH 2.5 mA (7.2.3: high-power device enabled for remote "
+                      "wakeup; any other device 500 uA)")
+USB2_PULLUP_I = 3.6 / (1.425e3 + 14.25e3)   # USB 2.0 Table 7-7 VTERM max / (RPU min + RPD min), from VBUS via VUSB33
+NRF_IUSB_SUSPEND = 262e-6                    # nRF52840 PS v1.1 IUSB,SUSPEND,VBUS 262 uA (typ; no max given)
+BQ_IQ_IN_MAX = 1e-3                          # BQ25180 DS SLUSE99C Table 7.5 IQ_IN 1 mA max (charge enabled, ICHG 0)
+
+
+@pytest.mark.parametrize("vbus", [5.25, 5.5])
+def test_usb_suspend_current(base, main, check, vbus):
+    """USB suspend: the device's VBUS draw with the charger idle (IQ_IN max: firmware must stop charging in suspend,
+    the BQ25180 has no input-HiZ mode), the nRF USB suspend current plus the D+ pull-up current, and D1 at its
+    leakage-max corner (Littelfuse IR 400 uA at 5 V; no temperature coefficient published, so 25 C only)."""
+    net = Net(base, main, iq=BQ_IQ_IN_MAX, iin=0.0, ivbus=NRF_IUSB_SUSPEND + USB2_PULLUP_I, vusb=3.3, tvs="leakmax")
+    dk = net.deck(f"USB suspend at VBUS {vbus} V")
+    dk += [f"Vsrc srcv 0 {vbus}", f"Rcab srcv vj1 {CABLES['1m_1uH_50m'][2]}"]
+    dk.op()
+    dk.print_op("-i(vsrc)", "i(vitvs)")
+    r = run(dk)
+    check(f"(info) D1 leakage at VBUS {vbus} V (leakage-max corner)", r["op_1"], None, None, "A", TVS_IR[1])
+    check(f"VBUS current in USB suspend at {vbus} V (charger idle, D1 leakage max)", r["op_0"], None, USB2_ICCSH[0],
+          "A", USB2_ICCSH[1])
+
+
 def test_netlist_coverage(base, main, parts, check):
     """Every fitted part on the nets this file simulates is represented in the decks (a part added in the schematic
     must not be silently dropped; Net.lines raises NetlistError for the same condition)."""
@@ -1034,7 +1057,7 @@ def test_fault_tvs_reversed(base, main, parts, check):
           TVS_IT[1])
 
 
-# ============================================================================================ fault injection (verifier)
+# ============================================================================ fault injection (verifier additions)
 def rewire(d: Design, ref: str, func: str, net: str) -> Design:
     """Wrong-connection fault: a copy of `d` with pin `func` of `ref` moved to `net` (pins and pin functions kept
     consistent, so Net.lines maps the pin onto the builder's node for that net)."""

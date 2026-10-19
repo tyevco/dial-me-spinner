@@ -178,7 +178,7 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
     icc   : panel VCC current in mA (number) or a list of (t, mA) PWL points
     en    : "on" (OLED_VCC_EN high from t = 0), "step" (low until t_en, then high), "off_at" (high until t_en)
     init  : "steady" (start at the regulated point: output charged, U21 fully on, soft start done; run with uic)
-            or "cold" (DC operating point with OLED_VCC_EN low)
+            or "off" (long-term off state: U21 open, OLED_VIN 0 V, VCC near VCI via the panel ESD path; uic)
     """
     u20 = dict(u20_at(temp, U20_TYP) if u20 is None else u20)
     ron = u21_ron(temp) if ron is None else ron
@@ -247,7 +247,7 @@ def build(d, title, *, vsys=3.7, temp=25.0, u20=None, ron=None, dcr=None, scale=
     elif init == "off":
         # long after OLED_VCC_EN went low: U21 open (CT = VIN), OLED_VIN drained to 0 V (worst case for the FB pin
         # abs max), VCC held below VCI by the panel ESD path (SSD1351 8.9 note (1)) and settling from there
-        v0 = 3.3 - 0.5 if vcc0 is None else vcc0
+        v0 = 3.3 - 0.4 if vcc0 is None else vcc0     # above the ESD-path equilibrium: settles from above
         r26, r27 = d.value("R26"), d.value("R27")
         ics = {n["VSYS"]: vsys, n["OLED_VIN"]: 0, n["OLED_BST_SW"]: 0, "n_l20_dcr": 0, "n_d21_a": 0,
                "n_u21_vin": vsys, n["+13V_OLED"]: v0, n["OLED_BST_FB"]: v0 * r27 / (r26 + r27),
@@ -313,8 +313,10 @@ def load_at_min(d, icc_ma: float) -> float:
 
 
 def startup(d, title, *, vsys, tstop, derate, **kw):
-    """OLED_VCC_EN low -> high at 20 us from the cold operating point (panel display off: ICC = 0)."""
-    deck = build(d, title, vsys=vsys, icc=0.0, derate=derate, en="step", t_en=20e-6, init="cold", **kw)
+    """OLED_VCC_EN low -> high at 20 us from the long-term off state (init="off": OLED_VIN 0 V, VCC held by the
+    panel ESD path; a DC operating point is not used because with U21 open OLED_VIN has no DC path), panel
+    display off: ICC = 0."""
+    deck = build(d, title, vsys=vsys, icc=0.0, derate=derate, en="step", t_en=20e-6, init="off", **kw)
     deck.meas(f"tran tvin90 WHEN v(n_oled_vin)={0.9 * vsys:.6g} RISE=1")
     deck.meas(f"tran tup WHEN v(n_p13v_oled)={VCC_MIN} RISE=1")
     deck.meas("tran vpk MAX v(n_p13v_oled)")
@@ -324,7 +326,7 @@ def startup(d, title, *, vsys, tstop, derate, **kw):
     deck.meas("tran swpk MAX v(n_oled_bst_sw)")
     deck.meas(f"tran iu21avg AVG i(vprb_u21) FROM=20u TO={tstop:.6g}")
     deck.meas(f"tran vend AVG v(n_p13v_oled) FROM={tstop - 0.3e-3:.6g} TO={tstop:.6g}")
-    return run(deck, tstop, uic=False, may_miss=("tup", "tvin90"))
+    return run(deck, tstop, may_miss=("tup", "tvin90"))
 
 
 # =============================================================================================== tests
@@ -571,17 +573,21 @@ SRC_FB_ABS = "TPS61040 SLVS413L 5.1 abs max: FB <= VIN + 0.3 V (architecture.md 
 def test_off_state(main, check):
     """Long-term state with OLED_VCC_EN low: OLED_VIN drained to 0 V (worst case), VCC held by the panel's
     VCI -> VCC ESD path.  No path from VSYS may lift VCC above VCI, U21 draws only its shutdown current, and the
-    divider must not put the TPS61040 FB pin more than 0.3 V above its (unpowered) VIN.  Highest VSYS; the ESD
-    diode drop falls with temperature, so 60 C gives the highest VCC and FB."""
+    divider must not put the TPS61040 FB pin more than 0.3 V above its (unpowered) VIN.  VCC starts above the
+    ESD-path equilibrium (VCI - 0.4 V) and is read after 50-60 ms (time constant ~75 ms, so the reading is an
+    upper bound).  The ESD drop falls with temperature, so 60 C gives the highest VCC and FB; D21 leakage, which
+    lifts OLED_VIN, is smallest at -10 C."""
     def one(job):
         vs, temp = job
         deck = build(main, f"off {vs} V {temp} C", vsys=vs, temp=temp, icc=0.0, derate=False, en="off",
                      init="off")
-        deck.meas("tran vccmax MAX v(n_p13v_oled) FROM=1m TO=5m")
-        deck.meas("tran fbx MAX v(n_oled_bst_fb,n_oled_vin) FROM=1m TO=5m")
-        deck.meas("tran iu21 AVG i(vprb_u21) FROM=1m TO=5m")
-        deck.meas("tran v3v3 AVG v(n_p3v3) FROM=1m TO=5m")
-        deck.tran("1u", "5m", 0, "uic")
+        deck += f"BFBX n_fbx 0 V=V({main.node('OLED_BST_FB')})-V({main.node('OLED_VIN')})"   # probe, no load
+        w = "FROM=50m TO=60m"
+        deck.meas(f"tran vccmax MAX v(n_p13v_oled) {w}")
+        deck.meas(f"tran fbx MAX v(n_fbx) {w}")
+        deck.meas(f"tran iu21 AVG i(vprb_u21) {w}")
+        deck.meas(f"tran v3v3 AVG v(n_p3v3) {w}")
+        deck.tran("10u", "60m", 0, "uic")
         r = deck.run(timeout=900)
         assert not r["_errors"] and not r.get("_missing"), r["_log"][-3000:]
         return job, r
