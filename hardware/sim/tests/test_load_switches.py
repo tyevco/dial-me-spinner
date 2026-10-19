@@ -103,10 +103,14 @@ def _rename(lines, tag):
     return out
 
 
-def vsys_network(deck, main, base, corner="bat3.7", temp=25, i3v3=I_3V3, ronbat="55m", ronin="0.27", vsysreg=4.5):
+def vsys_network(deck, main, base, corner="bat3.7", temp=25, i3v3=I_3V3, ronbat="55m", ronin="0.27", vsysreg=4.5,
+                 i_extra=0.0):
     """BQ25180 power path -> base VSYS caps -> link harness -> main-board VSYS caps + always-on +3V3 load.
 
-    Main-board VSYS node is n_vsys; +3V3 is an ideal LDO limited by the RT9080 dropout (n_p3v3)."""
+    Main-board VSYS node is n_vsys; +3V3 is an ideal LDO limited by the RT9080 dropout (n_p3v3).
+    i_extra: an additional DC load on VSYS (e.g. the detent motor during a move)."""
+    if i_extra:
+        deck += f"IEXTRA n_vsys 0 DC {i_extra:.6g}"
     c = CORNERS[corner]
     deck.include(LIB_BQ)
     if c["usb"]:
@@ -428,10 +432,12 @@ def _rise(r):
     return ton, tr
 
 
-def sane_vsys(v, corner):
-    """Guard against a converged-but-wrong operating point: VSYS before the event must be where the source puts it."""
+def sane_vsys(v, corner, slack=0.0):
+    """Guard against a converged-but-wrong operating point: VSYS before the event must be where the source puts it
+    (slack: extra allowed drop for decks with an additional VSYS load)."""
     c = CORNERS[corner]
     lo, hi = ((min(4.5, c["vbus"]) - 0.2, min(4.5, c["vbus"]) + 0.1) if c["usb"] else (c["vbat"] - 0.2, c["vbat"]))
+    lo -= slack
     if not lo <= v <= hi:
         raise SimulationError(f"VSYS operating point {v} V outside {lo}..{hi} V for {corner}")
 
@@ -485,6 +491,39 @@ def test_fault_ct_cap_missing_inrush(main, base, check):
     r = u2_turn_on(main, base, "bat4.2", stop=3e-3)
     detects(check, "U2 inrush with C7 missing", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
     detects(check, "battery current with C7 missing", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A")
+
+
+@pytest.mark.fault
+def test_fault_ct_bridged_to_vin(main, base, check):
+    """Wrong connection: C7's pads bridged (CT tied straight to VIN = VSYS).  The CT ramp can never start, so U2 never
+    turns on and the ring stays dark: the tON check against the firmware wait must report it."""
+    main.short("C7")
+    r = u2_turn_on(main, base, "bat3.7")
+    detects(check, "U2 tON with CT bridged to VIN", _rise(r)[0], None, FW_LED_WAIT, "s",
+            "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN")
+
+
+@pytest.mark.fault
+def test_fault_ct_cap_ten_times_too_big(main, base, check):
+    """C7 fitted as 10 nF instead of 1 nF: tON ~ 38 ms, so the first LED frame goes out before VLED is up."""
+    main.override("C7", "10n")
+    r = u2_turn_on(main, base, "bat3.7")
+    detects(check, "U2 tON with C7 = 10n", _rise(r)[0], None, FW_LED_WAIT, "s",
+            "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN")
+
+
+@pytest.mark.fault
+def test_fault_ct_cap_ten_times_too_small(main, base, check):
+    """C7 fitted as 100 pF instead of 1 nF: ~0.9 A inrush into ~49 uF for ~0.2 ms (>> tBUVLO 60 us).  At the 3.48 V
+    firmware floor in the cold the battery-pin dip must cross BUVLO (the 1 nF design passes this check)."""
+    main.override("C7", "100p")
+    CORNERS["_floor"] = dict(usb=0, vbat=FW_VBAT_FLOOR, vbus=0.0)
+    try:
+        r = u2_turn_on(main, base, "_floor", -10)
+    finally:
+        CORNERS.pop("_floor")
+    detects(check, "BQ25180 BAT pin min with C7 = 100p, VBAT 3.48 V, -10 C", r["vbatmin"], BQ_BUVLO, None, "V",
+            f"{DS_BQ} 7.5 VBUVLO 3.0 V, 7.6 tBUVLO 60 us")
 
 
 # ======================================================================================== 3. U2 off: QOD discharge of VLED
@@ -667,6 +706,15 @@ def test_fault_on_pulldown_missing_in_reset(main, base, check):
             "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
 
 
+@pytest.mark.fault
+def test_fault_oled_on_pulldown_missing_in_reset(main, base, check):
+    """R25 left off: the same failure on U21 - the OLED boost input stays connected through an MCU reset."""
+    main.remove("R25")
+    r = mcu_reset(main, base, stop=30e-3)
+    detects(check, "U21 ON after MCU reset with R25 missing", r["von21"], None, SW_VIL_MAX, "V",
+            f"{DS_SW} Table 7.3 VIL max")
+
+
 # ======================================================================================== 5. phantom powering via LED_DIN
 def phantom_op(main, base, corner="bat4.2", temp=25, rout=ROUT["hd_max"], esd=None):
     """U2 off (LED_PWR_EN low, QOD active), P0.06 driven HIGH: clamp current into D101.DIN and the VLED it builds."""
@@ -733,10 +781,10 @@ def test_phantom_normal_off_state(main, base, check):
 U21_CASES = [(c, 25) for c in ("bat3.0", "bat3.7", "bat4.2", "usb4.5", "usb5.5")] + [("bat3.0", -10)]
 
 
-def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
+def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0):
     d = Deck(f"U21 turn-on {corner} {temp}C")
     d += f".temp {temp}"
-    vsys_network(d, main, base, corner, temp)
+    vsys_network(d, main, base, corner, temp, i_extra=i_extra)
     sense(d, "n_vsys", "n_u21_vin", "n_iu21")
     tps22917(d, main, "U21", vin_node="n_u21_vin")
     oled_input(d, main)
@@ -752,7 +800,7 @@ def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
     d.meas(f"tran vinend FIND v({main.node('OLED_VIN')}) AT={stop}")
     d.wave(f"v({main.node('OLED_VIN')})", "v(n_iu21)", "v(n_u21_vin)")
     r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vbatmin", "v13end", "vinend"))
-    sane_vsys(r["vsys0"], corner)
+    sane_vsys(r["vsys0"], corner, slack=i_extra * (RPACK[temp] + 0.1))
     w = r["waves"]
     t, v = w["time"], w[f"v({main.node('OLED_VIN')})"]
     r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on) or float("inf")    # never reached -> inf (see u2)
@@ -798,19 +846,27 @@ def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
           f"{DS_BST} Table 5.3 VIN 1.8..6 V")
 
 
-@pytest.mark.parametrize("rail,temp", [("U21", -10), ("U21", 25), ("U2", -10)])
+I_MOTOR = 0.42   # A, VM during a detent move, docs/architecture.md 7 power tree ("0.36-0.42 A for <= 0.9 s")
+
+
+@pytest.mark.parametrize("rail,temp", [("U21", -10), ("U21", 25), ("U2", -10), ("U21+motor", -10)])
 def test_bat_pin_vs_buvlo_at_firmware_floor(main, base, check, rail, temp):
-    """Lowest battery at which firmware still switches the rails (3.48 V rested; below it SHIP, and below 3.53 V the
-    LED rail only carries the red cue): the BQ25180 BAT pin (cell minus pack/PCM/lead resistance) must stay above the
-    BUVLO setting during the turn-on surge, or the BATFET opens after tBUVLO = 60 us and the system browns out.
-    The U21 surge (boost soft start, ~0.4 A for ~1 ms) is far longer than 60 us, so the plain minimum is compared."""
+    """Lowest battery at which firmware still switches the rails (3.48 V rested; below it SHIP, which parks the motor
+    first, and below 3.53 V the LED rail only carries the red cue): the BQ25180 BAT pin (cell minus pack/PCM/lead
+    resistance) must stay above the BUVLO setting during the turn-on surge, or the BATFET opens after tBUVLO = 60 us
+    and the system browns out.  The U21 surge (boost soft start, ~0.4 A for ~1 ms) is far longer than 60 us, so the
+    plain minimum is compared.  'U21+motor': OLED enabled while the detent motor moves (park before SHIP)."""
     CORNERS["_floor"] = dict(usb=0, vbat=FW_VBAT_FLOOR, vbus=0.0)
     try:
-        r = (u21_turn_on if rail == "U21" else u2_turn_on)(main, base, "_floor", temp)
+        if rail == "U2":
+            r = u2_turn_on(main, base, "_floor", temp)
+        else:
+            r = u21_turn_on(main, base, "_floor", temp, i_extra=I_MOTOR if "motor" in rail else 0.0)
     finally:
         CORNERS.pop("_floor")
     check(f"BQ25180 BAT pin min, {rail} turn-on at VBAT {FW_VBAT_FLOOR} V rested, {temp} C", r["vbatmin"], BQ_BUVLO,
-          None, "V", f"{DS_BQ} 7.5 VBUVLO 3.0 V (CHARGECTRL1 0x92), 7.6 tBUVLO 60 us; docs/firmware.md 12.4 SHIP < 3.48 V")
+          None, "V", f"{DS_BQ} 7.5 VBUVLO 3.0 V (CHARGECTRL1 0x92), 7.6 tBUVLO 60 us; docs/firmware.md 12.4 SHIP < 3.48 V"
+          + ("; docs/architecture.md 7 VM 0.42 A" if "motor" in rail else ""))
 
 
 # ======================================================================================== 7. U21 off: back-powering
