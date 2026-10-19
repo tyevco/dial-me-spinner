@@ -31,12 +31,13 @@ step passing first.
 | Item | Made by | Notes |
 |---|---|---|
 | Main board PCB + PCBA (Ø64, 4-layer, ENIG) | JLCPCB, Standard PCBA, **both sides** | MDBT50Q module via Global Sourcing or consignment (§4.1) |
-| Base board PCB + PCBA (Ø46 + USB tab, 2-layer, ENIG) | JLCPCB, Standard PCBA, top side only | BQ25180 DSBGA, X-ray required (§3.2) |
+| Base board PCB + PCBA (Ø46 + USB tab, 4-layer, ENIG) | JLCPCB, Standard PCBA, top side only | BQ25180 DSBGA, X-ray required (§3.2) |
 | 12-way link harness through the spindle (plus a separate bench harness) | Hand | §6 |
 | 2.4 GHz flex antenna + coax | Hand (adhesive + u.FL mate) | §7.1 |
-| 1S LiPo pack + JST-PH breakout lead | Hand | Check polarity before plugging in (§7.2) |
+| 1S LiPo pack, re-terminated with SH leads for J2, + battery breakout lead | Hand | Check polarity before plugging in (§7.2) |
 | Detent actuator (micro linear stepper), carriage, Ø3×2 detent magnet | Hand | §7.3 |
 | OLED panel into the bottom-contact ZIF | Hand, **after SWD programming and the recovery gate (B-8.7)** | §7.4 |
+| NFC coil (13.56 MHz flex in the top cover) | Hand: solder its tail to the J11 pads | §11.7 |
 | 48-magnet track in the 316L ring | Hand, with a polarity jig | §8 |
 | 608 bearing prep, rotor assembly, balancing | Hand | §9, §10 |
 | Base cup, FA lower plate, spindle, light box, diffuser, top cover, OLED bracket, feet | Printed or machined parts + hand | §11 |
@@ -68,7 +69,7 @@ bottom 180° − θ + α), so the JLC preview should already show every part the
 | Outer / inner copper | 1 oz / 0.5 oz (JLC default) | 0.5 oz inner copper doubles the ring IR-drop estimate to about 12 mV per mm of path, which is still negligible ([leds verifier]). In1 is a solid GND plane (`layout.py`). Order 1 oz inner only if VLED ends up routed on In2 as a thin trace |
 | Vias | 0.25 mm drill / 0.45 mm pad, 0.5 mm pad on the power and GND net classes (`layout.py`), **tented** | Module inner pads escape inward to tented vias under the module body ([mcu verifier]). If any via touches a pad, order "epoxy filled & capped" instead |
 | Solder mask | **White** (matches the white light-box interior in SPEC §8) or black | White raises the cavity-floor reflectance and recovers band-edge brightness. Black gives crisper pixels. Both sides get the same colour. Check JLC's minimum mask dam for the chosen colour against the 0.5 mm-pitch ZIF and LGA pads |
-| Silkscreen | Any, but **none inside the LED cavity r 27–30** | Silk and bare copper inside the cavity show as specular hotspots ([leds research]). As generated, the stock LED footprints' own silk marks (D101–D148) and R42's reference lie in this band: remove them or accept the hotspots (§13 #22) |
+| Silkscreen | Any, but **none inside the LED cavity r 27–30** | Silk and bare copper inside the cavity show as specular hotspots ([leds research]). As generated, the stock LED footprints' own silk marks (D101–D148) lie in this band: remove them or accept the hotspots (§13 #22). R42 has moved to r 24.1, out of the band |
 | Board outline | Ø64 disc, centre Ø5; 3× **plated GND** M2 (H1–H3) at r = 6.5, θ 90°/210°/330°; 2× NPTH M2 (H4/H5) at r = 17, θ 60°/120° | SPEC §8. The spindle's M4 spigot passes the Ø5 hole. The brass hub's face on the plated H1–H3 pads is the GND end of the ring's ESD bleed (§10.1, §11.4), and the OLED-bracket screws go through H1–H3 into the hub. H4 holds the stepper saddle; the model leaves H5 unused |
 | Fiducials | FID1–FID3 on the top, FID4–FID6 on the bottom (1 mm copper, 2 mm mask opening) | Three per assembled side (`layout.py`) |
 | Electrical test | Yes (JLC default for multilayer) | |
@@ -77,16 +78,18 @@ bottom 180° − θ + α), so the JLC preview should already show every part the
 
 | Option | Setting | Why |
 |---|---|---|
-| Layers | 2 | SPEC §2 |
+| Layers | 4 (In1 = GND plane, In2 = signals/power) | SPEC §2. Single-sided assembly all the same |
 | Thickness | 1.6 mm | Stiffness under the centre press switch: 1.6 mm deflects < 0.05 mm under 5 N, while 0.8 mm deflects about 0.26 mm ([mechanical research]) |
+| Stack-up | JLC standard 4-layer (e.g. JLC04161H-7628) | No controlled impedance needed: USB is Full-Speed over a short run |
 | Surface finish | **ENIG** (required) | JLC requires ENIG for 0.20–0.25 mm BGA pads. The BQ25180YBG is a 0.4 mm-pitch DSBGA-8 on 0.23 mm NSMD pads ([power verifier]; [BQ25180 datasheet](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) |
-| Copper | 1 oz | Charger traces carry up to 1 A |
+| Outer / inner copper | 1 oz / 0.5 oz (JLC default) | Charger traces carry up to 1 A on the outer layers; the BQ25180's GND ball D2 stitches into both pours and the In1 plane (SPEC §8) |
 | Solder mask | Green is fine (hidden) | Mask opening on the DSBGA must be ≤ 0.05 mm larger than the 0.23 mm pad. The footprint (`base.py`) opens it 0.025 mm per side, giving 0.28 mm openings and a dam of about 0.12 mm at 0.4 mm pitch. If that is below JLC's minimum for the chosen colour, JLC may merge the openings. Accept it, since no traces run between balls **[TVP: check the JLC DFM report]** |
 | Board outline | Ø46 disc plus a 13 mm-wide tab to r = 34.6 at θ = 0° for the USB-C; one NPTH M2 hole (H1, Ø2.2) at r = 20, θ = 270° | SPEC §8; `layout.py`. H1 sits outside the pack. A printed rib under the θ = 90° edge and the USB-C shell, captured in the cup wall, are the other two supports (§11.2) |
 | USB-C shell legs | Plated slots per the HRO TYPE-C-31-M-12 footprint | Shell legs carry the cable side loads |
 | Bottom side | **No components** (single-sided board) | It faces the LiPo across 1.0 mm (§7.2). The NTC RT1 is on the top at r 8, θ 200° (SPEC §8) |
-| Antenna keep-out | No B.Cu copper (tracks, vias, pour) for y > 15.4 and no F.Cu pour for y > 17 | SPEC §8, `layout.py` `ANTENNA_KEEPOUT_*`: keeps base-board copper ≥ 5 mm from the antenna under the θ = 90° edge (§7.1) |
+| Antenna keep-out | No plane or pour on B.Cu, In1 or In2 for y > 15.4 (B.Cu/In2 tracks and vias may come to y ≈ 17.5), and no F.Cu pour for y > 17 | SPEC §8, `layout.py` `ANTENNA_KEEPOUT_*`: keeps base-board copper ≥ 5 mm from the antenna under the θ = 90° edge (§7.1) |
 | Fiducials | FID1–FID3 on the top | `layout.py` |
+| Electrical test | Yes (JLC default for multilayer) | |
 
 ### 2.3 Panelization of round boards
 
@@ -112,13 +115,16 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 3. **TPS22917 CT capacitor: done.** The TPS22917 pin table reads "CT: Switch slew rate control. Connect
    capacitor from this pin to VIN" ([TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf), Pin
    Functions; confirmed by the power verifier). `main_power.py` now ties **C7 (1 nF/50 V) from LSW_CT to VSYS**
-   (VSYS is the switch's VIN), with QOD through R4 = 100 Ω to VLED and R3 = 100 kΩ as the ON pull-down. The OLED
-   boost-input switch U21 (`display.py`) is wired the same way: C37 = 1 nF from CT to VSYS, QOD open. With CT to
-   VIN, SLVSDW8B gives at VIN = 3.6 V: tR = 1.6 µs/pF (≈ 1.6 ms) and tON = 3.8 µs/pF (≈ 3.8 ms, the "≈ 4 ms" of
-   SPEC §5.1), with RON = 90 mΩ typ / 110 mΩ max at 25 °C (80 mΩ is the 5 V figure). If the slew were
-   uncontrolled, the inrush into the 2× 22 µF + 48× 100 nF on VLED would be about 1 A ([power research]).
-   Bring-up step B-9.8a measures it. Only the TPS22918 alternate takes CT to GND, so if you substitute it for U2
-   or U21, its CT capacitor goes back to GND.
+   (VSYS is the switch's VIN), with QOD through **R4 = 68 Ω** (RC0402FR-0768RL, C163455) to VLED and R3 = 100 kΩ
+   as the ON pull-down. The OLED boost-input switch U21 (`display.py`) has C37 = 1 nF from CT to VSYS and its
+   **QOD tied directly to VOUT = OLED_VIN**, so OLED_VIN is held at ≈ 0 V when off and the TPS61040 (EN = VIN)
+   stays off in sleep (SPEC §5.3; hardware/sim, SLP-1, LSW-1). With CT to VIN, SLVSDW8B gives at VIN = 3.6 V:
+   tR = 1.6 µs/pF (≈ 1.6 ms) and tON = 3.8 µs/pF (≈ 3.8 ms, the "≈ 4 ms" turn-on of SPEC §5.1), with RON = 90 mΩ
+   typ / 110 mΩ max at 25 °C (80 mΩ is the 5 V figure). If the slew were uncontrolled, the inrush into the
+   2× 22 µF + 48× 100 nF on VLED would be about 1 A ([power research]). The QOD discharge takes VLED to 10 % in
+   ≈ 24 ms nominal, 26.6 ms worst case, inside firmware's 30 ms wait (SPEC §5.1; hardware/sim, LSW-2). Bring-up
+   step B-9.8a measures both. Only the TPS22918 alternate takes CT to GND, so if you substitute it for U2 or U21,
+   its CT capacitor goes back to GND.
 4. **TC2030-IDC-NL footprint** J10 on the top side under the OLED glass (r 12, θ 150°): 6 pads plus 3 NPTH
    locating holes, with no parts inside the cable-head outline.
 5. **LED rotations:** D101 (SPEC "LED1", pixel 0 in `leds.py`) sits at θ = 0° and the numbering runs CCW to
@@ -134,25 +140,26 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
    **Base-board TPs and J2 are unreachable once Stage C has fitted the FA lower plate and the rotor**, which is
    why §7.2 adds a battery breakout.
-8. **Module u.FL clearance to the rotor: still open.** The mated u.FL plug stands about 2.5 mm proud of the module
-   and points down, toward the rotor. The layout follows SPEC §8: U10 is on the bottom at r = 14.5, θ = 215°,
-   with its u.FL end toward the centre. Its courtyard reaches in to r ≈ 6.25, and the model's clash check
-   (`docs/mechanical.md` §3B item B1) puts the module's inner end at r 6.8, about 1.5 mm into the brass hub
-   (r ≤ 8.5), and the mated plug (bottom z 25.8) 0.2 mm into the rotating cap ring. Before ordering, move the
-   module so that its inner end is at r ≥ 8.8 with the u.FL end facing outward over the bowl (B1), or show
-   clearance in a fresh clash check (`extract_board_parts.py`, then `check_clashes.sh`).
+8. **Module u.FL clearance to the rotor: done.** The mated u.FL plug stands about 2.5 mm proud of the module and
+   points down, toward the rotor. The earlier placement (r 14.5, u.FL toward the centre) put the module's inner
+   end 1.5 mm into the brass hub (`docs/mechanical.md` §3B item B1). SPEC §8 and the board now centre U10 at
+   r 17.3, θ 215° on the bottom, inner end at r ≥ 8.8, with its **u.FL end facing outward** (u.FL at r ≈ 23,
+   over the bowl), and the model's clash check passes on the current boards. The coax runs back under the board
+   beside the module to the spindle's θ = 270° slot and threads between U12 and the module's inner corner:
+   0.13 mm to U12 and 0.44 mm above the rotating cap ring (r 9–13), so it is tacked up with Kapton at
+   assembly (§7.1, §11.4 D2).
 9. **Base-board mounting: done.** SPEC §8 and the base board now use one M2 hole (H1) at r = 20, θ = 270°,
    outside the pack, plus the cup's rib under the θ = 90° edge and the USB-C shell. The θ = 90° boss is gone: it
    stood on the antenna strip.
-10. **Other placement checks from the model** (`docs/mechanical.md` §3, re-run the clash check on the final
-    boards). As placed now, three still fail: the back of J1's mated plug reaches r 11.9 at z 26.15, only 0.15 mm
-    above the rotating hub where ≥ 0.3 mm is needed (B2: move J1 out ≥ 0.6 mm, which changes SPEC's r = 17.5);
-    the battery connector J2 (S2B-PH-SM4-TB, ≈ 5.5 mm tall) ends 0.10 mm into the pressed rotor web and its plug
-    reaches r 26.3, into the FA ring (B3: the model proposes a 2.95 mm SM04B-SRSS-TB or solder pads, a SPEC
-    change); R42 sits at r 30.4–31.05, under the top-cover skirt at r ≥ 30.6 (B5: move it to r ≤ 30.2). The
-    main-board top within r ≤ 4.5 must stay free for the M4 nut (A7; the nut itself clears in the current check,
-    but C35's courtyard reaches in to r ≈ 4.4). Bottom-side parts in the actuator corridor θ 30–160°,
-    r 8.5–27 must stay ≤ 1.3 mm tall unless the model shows clearance (A11).
+10. **Other placement checks from the model: done** (`docs/mechanical.md` §3; re-run `extract_board_parts.py`
+    and `check_clashes.sh` after any placement change). The three earlier failures are fixed in SPEC §8 and on
+    the boards: J1 moved out to r = 19.5 so its mated plug's back clears the rotating hub (B2); the battery
+    connector J2 is now the 2.95 mm side-entry SM04B-SRSS-TB instead of the ≈ 5.5 mm PH part (B3); R42 sits at
+    r 24.1, clear of the top-cover skirt (B5). The clash check now reports only the intended contacts (hard
+    stop, SW1 press, bonded detent rails, felt shoe, drop-stop). The rules still hold for any later change:
+    keep the main-board top within r ≤ 4.6 free for the M4 nut (A7), keep bottom parts over the rotating hub
+    (r 9.5–12.5) at z ≥ 26.3, and keep bottom parts in the actuator corridor θ 30–160°, r 8.5–27 ≤ 1.3 mm tall
+    unless `calcs_output.txt` §11 shows clearance (A11) (SPEC §8).
 
 ---
 
@@ -160,10 +167,11 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 
 ### 3.1 Service level and sides
 
-* **Main board: Standard PCBA, two sides.** Bottom: MDBT50Q U10, QSPI flash U11 and crystal Y1, TMAG5273 U30
-  and its ESD array U32, both DRV8837 (U40, U41), link J1, motor connector J40, piezo BZ1, and their passives.
-  Top: LEDs, ZIF J20, LDO U1, both TPS22917 load switches (U2, U21), 13 V boost, LIS2DW12, DRV5032 U42, TC2030
-  pads. `ORDER-NOTES.md` lists every bottom-side placement. Plan for two reflow passes.
+* **Main board: Standard PCBA, two sides.** Bottom: MDBT50Q U10 with its VBUS resistor R12, C12 and the
+  second-stage USB ESD array U12, QSPI flash U11 and crystal Y1, TMAG5273 U30 and its ESD array U32, both DRV8837
+  (U40, U41), link J1, motor connector J40, piezo BZ1, the NFC tuning caps C16/C17, and their passives. Top:
+  LEDs, ZIF J20, LDO U1, both TPS22917 load switches (U2, U21), 13 V boost, LIS2DW12, DRV5032 U42, TC2030 pads,
+  NFC coil pads J11 (no part). `ORDER-NOTES.md` lists every bottom-side placement. Plan for two reflow passes.
 * **Base board: Standard PCBA, top side only.** This is the safer tier for a 0.4 mm DSBGA plus an X-ray request.
   Check JLC's current rules on which tier offers X-ray. The board is single-sided (SPEC §8), so `ORDER-NOTES.md`
   should list no bottom-side placements for it.
@@ -177,6 +185,8 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 | U1 BQ25180YBGR (DSBGA-8, 0.4 mm) | base | **Required, every board** | Hidden joints. Bridging or opens here mean no charging or no SYS |
 | U10 MDBT50Q-U1MV2 (61 bottom pads, 28 of them inner) | main | **Strongly recommended** | Inner pads cannot be inspected optically or reworked with an iron ([mcu verifier]) |
 | U31 LIS2DW12 (LGA-12), U40/U41 DRV8837 (WSON-8 + EP) | main | Optional | Electrical tests in `bringup.md` catch most faults |
+| D101–D148 VDD/GND pads | main | AOI; X-ray optional | A VLED-to-GND bridge is stopped only by the BQ25180 BATOCP and the pack PCM: U2 has no current limit (hardware/sim, NF-3) |
+| J20 ZIF pins 1–2 | main | No; visual at 10–20× (B-2) | GND sits next to the 13 V VCC at 0.5 mm pitch; a bridge shorts the boost output (hardware/sim, OLED-V3) |
 
 Ask JLC to send the X-ray images. If they are not available, rely on the electrical checks in `bringup.md`: B-4
 (BQ25180 power-up), B-9.4 (BQ25180 I2C) and B-7 (module SWD).
@@ -206,16 +216,21 @@ The CPL already carries the per-part rotation and origin corrections (§2). The 
 * LEDs D101–D148: pin-1 marks follow the ring; the DI/VDD pad column faces the previous LED.
 * TMAG5273 U30 (bottom, θ = 270°, Hall element at r = 29.0): long axis radial (SPEC §5.5), so its X axis is
   tangential.
-* MDBT50Q U10 (bottom): the u.FL end points the way the final board has it. As placed now it faces the board
-  centre (SPEC §8); §2.4 item 8 may turn it outward.
+* MDBT50Q U10 (bottom, centred at r 17.3, θ 215°): the u.FL end faces **outward** (u.FL at r ≈ 23, SPEC §8).
+* USBLC6-2SC6 U12 (bottom, at the module's D+/D− pads): pin 1 per the silk. Turned 180°, its GND pin lands on
+  VBUS_NRF and the internal clamp shorts it (bring-up B-2, B-3a).
+* TPD4E05U06 U32 (bottom, beside U30): pin 1 per the silk. Turned 180°, the TMAG lines land on its NC pins and
+  are unprotected, and no electrical test shows it (bring-up B-2).
+* TPS22917 U2 and U21 (top): pin 1 per the silk.
 * AFC01-S30FCA-00 ZIF J20 (top, r 9.5, θ = 270°): pin 1 matches the folded FPC (§7.4). Contacts are on the
   **bottom**.
 * BQ25180 U1 (base, r 19.5, θ 255°): ball A1.
 * Polarised parts: VCOMH tantalum C32 (C7189, + to the panel pin), B5819W D21 cathode to +13V_OLED, BAV99 D20
   orientation; on the base, SMF5.0A D1 cathode to VBUS.
-* Side-entry JST SH link connectors `SM12B-SRSS-TB`, entry toward the board centre: J1 (main, bottom, r 17.5,
+* Side-entry JST SH link connectors `SM12B-SRSS-TB`, entry toward the board centre: J1 (main, bottom, r 19.5,
   θ 330°) and J3 (base, top, r 15.5, θ 120°). Pin 1 position (§6). Also the motor connector J40 (main, bottom)
-  and the battery connector J2 (base, r 17, θ 222°, mouth radially outward, BAT+ silk at pin 1, §7.2).
+  and the battery connector J2 (side-entry SH `SM04B-SRSS-TB`, base, r 17, θ 222°, mouth radially outward,
+  BAT+ silk at pins 1–2 and GND at pins 3–4, §7.2).
 
 ### 3.5 DNP
 
@@ -229,8 +244,8 @@ board only):
   C43 (SPEC §5.4).
 * The **DRV5012AEDMRR** fallback wake latch of SPEC §5.5 is not on the `sensors` sheet, so the board has no
   footprint for it.
-* Test pads (TP1–TP4, TP10–TP13, TP40 and the base TP1–TP4), the TC2030 footprint J10 and the plated spindle
-  holes H1–H3 are `in_bom = False`. The fiducials and the NPTH holes (main H4/H5, base H1) are board-only.
+* Test pads (TP1–TP4, TP10–TP13, TP40 and the base TP1–TP4), the TC2030 footprint J10, the NFC coil pads J11
+  and the plated spindle holes H1–H3 are `in_bom = False`. The fiducials and the NPTH holes (main H4/H5, base H1) are board-only.
   None of these needs a part.
 
 ---
@@ -263,16 +278,24 @@ APPROTECT enabled by default, which changes the programming procedure.
 
 | Part | LCSC | Stock seen | Fallback / note |
 |---|---|---|---|
-| WS2812C-2020-V6 (5 mA/ch) | C55109522 | ~47k, single source | WS2812B-2020-V6 C52917434 (~897k) is footprint- and pin-compatible but **12 mA/ch**: 48 LEDs at full white draw 1.73 A instead of 0.72 A, 2.35 A worst case (SPEC §5.4), so the firmware ring cap ≤ 0.75 A is mandatory and the link power contacts are at their limit ([leds verifier]) |
+| WS2812C-2020-V6 (5 mA/ch) | C55109522 | ~47k, single source | Only **V6** parts: the LED data margins are for the V6 input threshold; with any other part fit U43/C43 and remove R43 (SPEC §5.4; hardware/sim, LED-DATA-2). WS2812B-2020-V6 C52917434 (~897k) is footprint- and pin-compatible but **12 mA/ch**: 48 LEDs at full white draw 1.73 A instead of 0.72 A, 2.35 A worst case (SPEC §5.4), so it may be fitted only with firmware's instantaneous current cap (≈ 1.0 A at full battery), and the link power contacts are then at their limit ([leds verifier]; hardware/sim, PI-3) |
 | TMAG5273A2QDBVR | C3715882 | ~5.4k LCSC / 6.3k JLC; other variants nearly 0 | Buy reserve stock. The TMAG5173-Q1 is pin-compatible at VCC ≥ 2.3 V (OK at 3.3 V); order the A2/0x35 variant ([sensing verifier]) |
 | BQ25180YBGR | C3682423 | ~4.1k | BQ25188YBGR C43043524 (62 pcs); check its register map before swapping |
 | PKMCS0909E4000-R1 piezo | C910763 | 0 to 4k across snapshots | DigiKey/Mouser; hand-solder if JLC is out |
 | 560 kΩ 0402 (OLED IREF) | C132339 | 0 at LCSC, ~9k at JLC | Any 560 kΩ 1 % 0402 |
 | AFC01-S30FCA-00 ZIF | C262671 | ~37k | FH12-30S-0.5SH(55) C506793 (bottom contact) or HDGC 0.5K-HX-30PWB C2919501 (double-sided contacts, removes the orientation risk) |
-| SM04B-SRSS-TB (motor) | C160404 | fluctuates | |
+| SM04B-SRSS-TB (motor J40, base battery J2) | C160404 | fluctuates | Two per board set |
 | TS-1187A-B-A-B (press switch) | C318884 | ~2.4k, fluctuates | KSC2-series parts are 3.5 mm tall and do **not** fit the stack ([mechanical verifier]) |
 | SC-20S 32.768 kHz | C97603 | ~6.8k | SC-32S C97604 has a different footprint (3.2×1.5) and needs 9–10 pF caps. Not a drop-in |
 | TPS22917DBVR (two per main board: U2, U21) | C2681320 | ~28.5k | TPS22918DBVR C131941 is pin-compatible, but its CT goes to GND (§2.4 item 3) |
+
+**Parts changed by the SPICE suite** (all in the sheets, so the generated BOM carries them; check the quote shows
+them): R12 4.7 Ω FRC0402F4R70TS (C2909356), VBUS → VBUS_NRF at the module (USB-1); U12, a second USBLC6-2SC6
+(C7519) at the module's D+/D− (USB-2); R4 68 Ω RC0402FR-0768RL (C163455), the U2 QOD resistor (LSW-2); main C2,
+C6, C41 and base C4 now 10 µF/25 V CL10A106MA8NRNC (C96446), like base C2 (MD-5); base C1 2.2 µF/25 V 0805 X7R
+CC0805KKX7R8BB225 (C277470) on the charger input (USB-3); base R4 100 kΩ (C25741), the Q1 gate pull-down
+(charger_ts-2). The mechanical model replaced the base battery connector: J2 is the SM04B-SRSS-TB (C160404); the
+PH S2B-PH-SM4-TB (C295747) is gone.
 
 ### 4.3 Parts not bought through JLC
 
@@ -283,14 +306,15 @@ APPROTECT enabled by default, which changes the programming procedure.
 | Bearing oil | ISO VG 2–10 (e.g. Mobil Velocite No.3 = VG 2, No.6 = VG 10) | Base oil type not stated by Mobil |
 | Track magnets | 48 + ≥ 10 spare, NdFeB **Ø2.0×2.0 mm N52**, axially magnetised, NiCuNi, one batch | ±0.05 mm and ±5 % Br vary by vendor ([detent research]) |
 | Detent magnet | 1 + spares, **Ø3×2 mm N52** axial | Near-equivalent: [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8"×1/16") |
-| Linear stepper | VIC-TECH VSM08102 (Ø8, M2×0.4, ~10 mm stroke, 20 Ω/phase), slider with the spring-preloaded anti-backlash nut | Thrust margin is only ≈ 0.9–1.4× at rest (`docs/mechanical.md` §7). The 10 mm sibling does not fit the bowl. Fallback: N20 or Ø6 planetary gearmotor with a lead screw. Get the drawing and thrust curve ([vendor page](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)) |
+| Linear stepper | VIC-TECH VSM08102 (Ø8, M2×0.4, ~10 mm stroke, 20 Ω/phase), slider with the spring-preloaded anti-backlash nut | Thrust margin is only ≈ 0.9–1.4× at rest (`docs/mechanical.md` §7), and the SPICE motor model gives at most 0.93 N from any battery VSYS against a 0.8–1.15 N worst-case load (architecture risk R4; hardware/sim, MD-4; still open, §13 #26). The 10 mm sibling does not fit the bowl (`docs/mechanical.md` §7). Fallback: N20 or Ø6 planetary gearmotor with a lead screw. Get the drawing and thrust curve ([vendor page](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)) |
 | Antenna | Molex **146153-0100** (100 mm coax), as SPEC §5.2 and §8 specify | The 50 mm -0050 is too short for the shelf-to-u.FL route (§7.1). -0100 is at DigiKey/Mouser ([Molex](https://www.molex.com/ja-jp/products/part-detail/1461530100)); LCSC C916292 is the -0050, so do not order it |
-| Battery | Protected 1S LiPo, **≤ 6.0 mm thick** at the drawing maximum (SPEC §8), ≤ 34.5 × 55 mm including the PCM, JST-PH 2.0 lead, UN38.3 report | The bay envelope is 55 × 34.5 mm (\|x\| ≤ 27.5, \|y\| ≤ 17.25) with the long axis along θ = 0°/180° and the leads at the θ = 180° end. The mechanical BOM picks a 503450/523450-class pack, ≤ 5.6 mm, ≤ 53 mm long preferred, with the leads leaving the PCM end ≥ 4 mm off the centreline to clear the θ = 180° guide column (`docs/mechanical.md` §13). 6.0 mm leaves the 1.0 mm swelling gap (§7.2) |
+| Battery | Protected 1S LiPo, **≤ 6.0 mm thick** at the drawing maximum (SPEC §8), ≤ 34.5 × 55 mm including the PCM, UN38.3 report. Re-terminate the leads for J2: 28 AWG pre-crimped SH leads (SSH-003T-P0.2), two per rail, into an SHR-04V-S (pins 1–2 BAT+, 3–4 GND; SPEC §6) | The bay envelope is 55 × 34.5 mm (\|x\| ≤ 27.5, \|y\| ≤ 17.25) with the long axis along θ = 0°/180° and the leads at the θ = 180° end. The mechanical BOM picks a 503450/523450-class pack, ≤ 5.6 mm, ≤ 53 mm long preferred, with the leads leaving the PCM end ≥ 4 mm off the centreline to clear the θ = 180° guide column (`docs/mechanical.md` §13). 6.0 mm leaves the 1.0 mm swelling gap (§7.2) |
 | Harness (final) | 12 single JST SH wires pre-crimped on both ends (SSH-003T-P0.2 contacts, no housings), **28 AWG on the power pins 1–4 and 8** (SPEC §2), 32 AWG on the seven signals, + 2× SHR-12V-S housings. Length ≈ 60–70 mm per wire (`docs/mechanical.md` §12; its BOM row lists ~100 mm leads), ≥ 10 mm more on a unit with the lift loop (§6) | §6. Both ends stay loose until the wires have been threaded through the spindle (Stage C) |
 | Harness (bench) | A second 12-way SH lead, housings fitted on both ends | Used only for Stages A–B, so the final harness never has to be de-pinned (§6) |
-| Battery breakout | Short JST-PH 2.0 extension (PH plug ↔ PH receptacle housing) with BAT+ cut and both ends, plus GND, brought out as a 3-wire 28–30 AWG tail to a 3-pin header and a shorting jumper | §7.2. Gives a battery disconnect and a PPK2/bench tap once J2 is buried |
+| Battery breakout | The pack lead above built with a break in BAT+: pack-side BAT+, board-side BAT+ and GND brought out as a 3-wire 28 AWG tail to a 3-pin header and a shorting jumper; the J2 end stays the 4-way SHR-04V-S | §7.2. Gives a battery disconnect and a PPK2/bench tap once J2 is buried. The break is spliced into the lead, so no extra mated connector has to fit in the bay |
 | RF test pigtail | 1.13 mm coax, ≈ 150–200 mm, **u.FL receptacle** (sold as "U.FL/IPEX male") on one end, SMA on the other, plus 1–2 clip-on ferrites | B-11.2 d/e (Stage R, §11.5). Check that it mates with the Molex antenna's u.FL plug **[TVP]**. It leaves round the board edge (§11.4): the main-board Ø5 hole now carries the spindle's M4 spigot |
 | Motor lead | SHR-04V-S housing; ideally a factory-crimped SH lead on the motor | Avoid hand-crimping SH contacts ([detent verifier]) |
+| NFC coil | 13.56 MHz flex coil, ≈ 1.4–1.5 µH, in the top cover, with a tail long enough to reach the J11 pads (main top, r 21.5, θ 222°) | C16/C17 (180 pF C0G) are sized for that inductance: measure the coil and retune them on the prototype (SPEC §5.2; bring-up B-9.11) **[TVP]** |
 | Fasteners | M2, **brass** (or A4/316 stainless), nylon where the antenna needs it | Test every screw with an N52 magnet. No carbon steel within 10 mm of the track. The OLED-bracket screws through the plated H1–H3 into the brass hub are brass (M2 × 6 countersunk); the hub face clamped on the H1–H3 pads is the GND end of the ring's ESD bleed (§12). The θ 60° stop screw, above the antenna, is nylon (§7.1) |
 | Guide pins and stop screws (model) | 3× knurled brass Ø3.0 pins (11.0 mm at θ 180°/300°, 7.0 mm at θ 60°), M2 tapped at the top, pressed with Loctite 638 and locked by Ø1.0 cross pins; 3× M2 × 3 brass pan-head stop screws. At θ 60°, above the antenna: PEEK pin, PEEK cross pin and a nylon screw | `docs/mechanical.md` §8: the springs push the FA plate up against the screw heads (§11.3). The θ 180° guide sits at r = 30 so its column clears the pack end |
 | FA springs | 3× compression, 302 SS, wire 0.32 mm, OD 3.95, 3 active + 2 closed/ground, free length 4.72 mm, k ≈ 0.63 N/mm | Installed at 2.60 mm (column/ear seat z 10.5 to plate seat z 13.1): 1.33 N each, 4.0 N total (SPEC: ≈ 4 N). Solid height 1.60 mm leaves 0.50 mm of margin at the 0.50 mm hard stop. A spare set with free length 5.03 mm gives 4.6 N at the same installed length. Measure the rate **[TVP]** |
@@ -342,22 +366,23 @@ The pinout is identical on both boards and the harness is straight-through, 1→
   the coax take ≈ 5.6 mm² there, and with the real 28/32 AWG mix the model's fill is 51 % in the lower window,
   40 % in the upper slot and 17 % in the bore (`docs/mechanical.md` §14).
 * **Length.** The modelled path from base J3 (top side) up through the spindle and out of its upper slot to main
-  J1 (bottom side, r = 17.5, θ = 330°) is ≈ 43 mm on the current boards (`docs/mechanical.md` §14), and
-  `docs/mechanical.md` §12 cuts the wires to ≈ 60–70 mm, which leaves slack for plugging J3 before the plate goes
-  in. Re-measure after the J1 fix (§2.4 item 10) and on the first mechanical mock-up. Allow a **≥ 5 mm service
+  J1 (bottom side, r = 19.5, θ = 330°) is ≈ 43 mm on the current boards (`hardware/mechanical/calcs_output.txt`
+  §12, which cuts the wires to 58 mm with 15 mm of slack), and `docs/mechanical.md` §12 cuts them to
+  ≈ 60–70 mm, which leaves slack for plugging J3 before the plate goes in. Re-measure on the first mechanical
+  mock-up. Allow a **≥ 5 mm service
   loop**, because the FA moves up to 0.5 mm on every press while the base is fixed. On the first unit, and on any
   unit that gets the RF S11 test (Stage R), add a **≥ 10 mm lift loop** (wires that much longer) parked straight
   inside the spindle bore (nothing rotates in the bore). It lets the main board be lifted about 10 mm off the hub
   to reach J1 and the u.FL **[TVP: check on the mock-up]**.
 * **Pin 1 orientation.** J1 and J3 are both side-entry `SM12B-SRSS-TB` (LCSC C160411, about 2.95 mm tall) with
-  the entry facing the board centre: J1 on the main-board **bottom** at r = 17.5, θ = 330°, and J3 on the
+  the entry facing the board centre: J1 on the main-board **bottom** at r = 19.5, θ = 330°, and J3 on the
   base-board **top** at r ≈ 15.5, θ = 120°. The pinout is the same at both ends (`nets.py LINK_PINOUT`):
   1, 2 VSYS · 3, 4 GND · 5 VBUS · 6 USB_DM · 7 USB_DP · 8 GND · 9 I2C_SCL · 10 I2C_SDA · 11 CHG_INT_N · 12 BTN_N.
   Mark pin 1 on both housings and check that pin 1 lands on pin 1 at both ends.
 * **Current.** JST SH contacts are rated 1 A each, so VSYS on two contacts carries ≤ 2 A and GND has three;
   these five leads are the 28 AWG ones (SPEC §2). A full-white LED ring (0.72 A with the C variant) plus the OLED
   (≤ 0.15 A) fits. With the B variant (2.35 A worst case, SPEC §5.4) the power contacts are at their limit and
-  the firmware ring cap is mandatory (§4.2).
+  firmware's instantaneous current cap is mandatory (§4.2).
 * **Test before first use.**
 
   | Check | Bench harness | Final harness | Pass |
@@ -380,8 +405,8 @@ The pinout is identical on both boards and the harness is straight-through, 1→
 SPEC §8 places the 34.9 × 9 × 0.1 mm flex on a printed shelf at z ≈ 5.5–6.0, centred on the chord y = +23.5
 (θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33): about 9.5 mm below the ring, about 6 mm above the desk and
 1.75 mm in plan from the pack side (y = 17.25). The coax (100 mm on the -0100) rises to the spindle's lower side
-slot, runs up the bore and leaves through the upper slot to the module's u.FL (U10, main-board bottom, r = 14.5,
-θ = 215°). The 50 mm -0050 is too short for this route.
+slot, runs up the bore and leaves through the upper slot to the module's u.FL (U10, main-board bottom, centred at
+r 17.3, θ = 215°, u.FL end facing outward at r ≈ 23). The 50 mm -0050 is too short for this route.
 
 **Geometry** (SPEC §8, `docs/mechanical.md` §9):
 
@@ -396,11 +421,13 @@ slot, runs up the bore and leaves through the upper slot to the module's u.FL (U
 * **Route (model):** the coax leaves the antenna's −x end (verify on the Molex drawing), rises at
   (x, y) ≈ (−14.6, 19.9), outside the base board (r 23) and inside the FA ring (r 26), crosses over J3 at
   z ≈ 15, enters the spindle through the θ = 120° window together with the harness, runs up the bore, leaves
-  through the θ = 270° slot and the hub's C-gap, and runs flat against the board to the u.FL. That is ≈ 63 mm to
-  the as-placed u.FL (`docs/mechanical.md` §9); the outward u.FL of §2.4 item 8 adds ≈ 10 mm. Stow the remaining
-  ≈ 25–35 mm as one gentle loop against the cup wall at θ ≈ 100–150°, away from the antenna body, and leave
-  ≥ 3 mm of slack where the coax crosses the press gap **[TVP: check S11 with the final routing]**. The turns into
-  and out of the Ø6 bore are tighter than the usual 5 × OD bend radius **[TVP]**.
+  through the θ = 270° slot and the hub's C-gap, and runs back flat against the board bottom beside the module to
+  the outward-facing u.FL. On the way it threads between U12 and the module's inner corner, 0.13 mm from U12 and
+  0.44 mm above the rotating cap ring (r 9–13), so it **must be tacked up to the board with Kapton** there
+  (SPEC §8; §11.4 D2). That is ≈ 79 mm on the current boards (`hardware/mechanical/calcs_output.txt` §12). Stow
+  the remaining ≈ 21 mm as one gentle loop against the cup wall at θ ≈ 100–150°, away from the antenna body, and
+  leave ≥ 3 mm of slack where the coax crosses the press gap **[TVP: check S11 with the final routing]**. The
+  turns into and out of the Ø6 bore are tighter than the usual 5 × OD bend radius **[TVP]**.
 * **Plug passage:** the u.FL plug (≈ Ø2.0 × 1.3 plus the crimp sleeve) has to pass the 5.0 × 1.9 mm lower window
   and the 5.0 × 2.45 mm upper slot. Trial-fit a real plug in a spare spindle before the batch is machined
   **[TVP]**.
@@ -424,9 +451,11 @@ slot, runs up the bore and leaves through the upper slot to the module's u.FL (U
 
 ### 7.2 Battery
 
-1. **Polarity first.** SPEC §6: J2 pin 1 = BAT+, pin 2 = GND, marked BAT+/GND on the silkscreen next to J2.
-   Hobby JST-PH polarity is not standardised. Measure the pack lead with a DMM before every first insertion. The
-   BQ25180 BAT pin has an absolute minimum of −0.3 V, so a reversed pack destroys the charger ([power research]).
+1. **Polarity first.** SPEC §6: J2 (side-entry SH `SM04B-SRSS-TB`) pins 1–2 = BAT+, pins 3–4 = GND, two
+   1 A contacts per rail, marked BAT+/GND on the silkscreen next to J2. The pack is re-terminated with 28 AWG
+   pre-crimped SH leads, two per rail (§4.3), and hobby pack lead colours are not standardised. Measure the lead
+   at its SHR-04V-S housing with a DMM before every first insertion. The BQ25180 BAT pin has an absolute minimum
+   of −0.3 V, so a reversed pack destroys the charger ([power research]).
 2. Check the pack voltage (accept 3.5–4.2 V; do not use a pack below 3.0 V), the protection-PCB position and
    whether its length clears the cup wall.
 3. **Swell gap.** SPEC §8 limits the pack to ≤ 6.0 mm. In the bay (z 2.5–9.0) it tops out at z 8.5, and the
@@ -441,10 +470,11 @@ slot, runs up the bore and leaves through the upper slot to the module's u.FL (U
    any extra nickel strip or steel hardware away from the TMAG side (θ = 270°).
 6. **Battery breakout (fit at Stage B on every unit that will get B-9.9b, B-10 or B-9.8f after Stage C).** Once
    the FA lower plate and the rotor are in, J2 cannot be reached. J2 sits on the base-board top at r = 17,
-   θ = 222°, mouth radially outward (SPEC §8, `layout.py`), and the pack leads come up past the board edge at
-   θ ≈ 195° (model). The pack can then no longer be unplugged or replaced by a supply. Fit the breakout lead
-   (§4.3) between the pack and J2. Bring its 3-wire tail (BAT+ pack side, BAT+ board side, GND) out through a Ø3
-   cable port printed in the cup wall of a **dev cup**, at z ≈ 3–8 (below the base board), at θ ≈ 190–230° near
+   θ = 222°, mouth radially outward (SPEC §8, `layout.py`), and the pack leads run from the pack end beside the
+   pack at z ≈ 10, under the spider, and come up over the board edge at θ ≈ 222° (SPEC §8). The pack can then no
+   longer be unplugged or replaced by a supply. Use the breakout lead (§4.3) as the pack's J2 lead. Bring its
+   3-wire tail (BAT+ pack side, BAT+ board side, GND) out through a Ø3 cable port printed in the cup wall of a
+   **dev cup**, at z ≈ 3–8 (below the base board), at θ ≈ 190–230° near
    the pack's lead end and J2, clear of the θ = 180° guide column and away from the antenna side (θ ≈ 90°)
    **[TVP: mock-up]**. Outside the cup:
    * **jumper fitted:** normal operation;
@@ -452,10 +482,10 @@ slot, runs up the bore and leaves through the upper slot to the module's u.FL (U
    * **PPK2 ammeter mode:** VIN to the pack side, VOUT to the board side, GND to GND, in series with the real pack;
    * **PPK2 source mode or bench supply:** board side and GND, pack side left open.
 
-   Check that the extra mated PH pair fits in the bay past the pack's lead end (x ≈ −27.5 to −33)
-   **[TVP: mock-up]**.
-   Leave the breakout in engineering units. On a unit that must ship without it, remove it only when the main
-   board, hub and rotor come off anyway (the stop screws sit under the ring, §11.3).
+   Check that the splice and the tail fit beside the pack's lead end (x ≈ −27.5 to −33) and keep clear of the
+   spider (the model has the leads 1.4 mm under the pressed plate) **[TVP: mock-up]**.
+   Leave the breakout in engineering units. On a unit that must ship without it, swap it for a plain lead only
+   when the main board, hub and rotor come off anyway (the stop screws sit under the ring, §11.3).
 
 ### 7.3 Detent actuator, carriage and detent magnet
 
@@ -483,9 +513,11 @@ magnet radially from r = 29.0 (click) to r = 21.5 (free) along θ = 90°, 1.0 mm
    * Use the VIC-TECH slider with the spring-preloaded anti-backlash nut and check the total lash at the carriage
      (≤ 0.03 mm with a dial indicator and ±0.5 N reversal). A separate anti-lash spring toward PARK does not fit
      as a near-constant force here and would drop the thrust margin below 1×.
-   * The thrust margin of the 8 mm motor is only ≈ 0.9–1.4× at rest on a rating given at 500 PPS. Keep the
-     friction low (PTFE tape, lubricated slot), move the carriage only with the rotor at rest or below 1 rev/s,
-     and step the loaded 0–4 mm zone at ≤ 300 PPS. Gate: slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the
+   * The thrust margin of the 8 mm motor is only ≈ 0.9–1.4× at rest on a rating given at 500 PPS, and the SPICE
+     motor model gives at most 0.93 N from any battery VSYS against the verified 0.8–1.15 N worst-case load
+     (architecture risk R4; hardware/sim, MD-4; §13 #26). Keep the friction low (PTFE tape, lubricated slot) and
+     the carriage preload low (the load must stay ≤ 0.5 N), move the carriage only with the rotor at rest or below
+     1 rev/s, and step the loaded 0–4 mm zone at ≤ 300 PPS. Gate: slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the
      real carriage. If it fails, fall back to an N20 or Ø6 planetary gearmotor; the 10 mm stepper does not fit the
      bowl.
    * The M2×0.4 lead screw self-locks, so the carriage cannot be pushed by hand. Move it only by stepping
@@ -504,24 +536,28 @@ magnet radially from r = 29.0 (click) to r = 21.5 (free) along θ = 90°, 1.0 mm
 
 The TC2030 SWD pads are under the OLED glass (SPEC §8). **Fit the panel only after** bring-up B-7 (SWD),
 B-8.7 (MCUboot DFU and at least one serial-recovery route proven **with the TC2030 removed**) and B-9.9a (bare
-boost verified at 13 V and discharged).
+boost verified at 12.7–13.3 V and discharged).
 
 1. **Mock up first.** Cut a 1:1 paper or Kapton copy of the FPC, fold it 180° behind the glass and check the
    insertion depth, contact side and pin 1. The free tail after the fold is only about 5 mm before the COF IC
    ([display verifier]).
 2. **Discharge +13V_OLED.** Before inserting the FPC, touch a 1 kΩ resistor across the boost output cap. The
    rail decays only through the 551 kΩ FB divider: about 12 µF effective gives τ ≈ 6–7 s.
-3. With power off, open the ZIF lid. The AFC01-S30FCA-00 is **bottom-contact**: after the fold, the FPC
+3. **Inspect J20 pins 1–2** at 10–20× before inserting: pin 1 (GND) sits next to pin 2 (the 13 V VCC) at
+   0.5 mm pitch, and a bridge or solder ball there shorts the boost output. Firmware can only react afterwards:
+   it records OLED_VCC_EN in retained RAM and keeps the OLED off after a brown-out or BAT_OCP reset
+   (hardware/sim, OLED-V3).
+4. With power off, open the ZIF lid. The AFC01-S30FCA-00 is **bottom-contact**: after the fold, the FPC
    contacts face the PCB. Insert squarely up to the stiffener and close the lid.
-4. **Bend rules:** radius ≥ 0.5 mm, ≥ 1 mm preferred. Bend only between the glass edge and the COF driver IC,
+5. **Bend rules:** radius ≥ 0.5 mm, ≥ 1 mm preferred. Bend only between the glass edge and the COF driver IC,
    never across the IC or the 4 mm stiffener, and do not press on the IC area.
-5. **Mounting:** support the glass on its back perimeter only, outside the 28.86 mm viewing area, with thin foam
+6. **Mounting:** support the glass on its back perimeter only, outside the 28.86 mm viewing area, with thin foam
    tape on the bracket rim (0.3–0.5 mm per the display research; the model leaves room for 0.2 mm). The
    **active-area centre (1.47 mm off the glass centre, away from the FPC edge) goes on the dial axis**, not the
    glass centre. Keep ≥ 0.3 mm of air gap to the window, which is the 0.7 mm cover glass bonded in the top cover
    (the model leaves 0.6 mm). The window and top cover carry press loads; the glass must not
    ([display research](https://newhavendisplay.com/content/specs/NHD-1.5-128128G.pdf)).
-6. **Light separation:** the opaque light-box inner wall must seal to the PCB (≤ 0.1 mm or thin black foam) and
+7. **Light separation:** the opaque light-box inner wall must seal to the PCB (≤ 0.1 mm or thin black foam) and
    to the cover. The diffuser ring and the OLED window are separate parts, otherwise LED light pipes into the
    window.
 
@@ -725,7 +761,7 @@ FA to the base.
 | A5 | SWD: recover, UICR, flash the bring-up image | B-7 |
 | A6 | First firmware: clocks, DC/DC, SAADC, USB CDC | B-8.1–B-8.6 |
 | A7 | Peripheral smoke tests that need no mechanics: QSPI, I2C, IMU, BQ25180, battery and press network, piezo, LED ring, **bare boost at 13 V** | B-9.1–B-9.9a |
-| A8 | Mount the actuator on the main board (§7.3): bond and shim the rails, fit the carriage with its FR4 link plate, zero-lash leaf and detent magnet, and screw the stepper saddle to the θ = 60° hole H4 with a brass M2 (H5 at θ = 120° stays unused). Plug the motor lead into J40. Run the driver, motor and home-sensor tests on the bench. **End at PARK with all IN low and nSLEEP low** | B-9.10a–c |
+| A8 | Mount the actuator on the main board (§7.3): bond and shim the rails, fit the carriage with its FR4 link plate, zero-lash leaf and detent magnet, and screw the stepper saddle to the θ = 60° hole H4 with a brass M2 (H5 at θ = 120° stays unused). Plug the motor lead into J40. Run the driver, motor and home-sensor tests on the bench. **End at PARK with all IN low and nSLEEP low**, after the ≥ 3 ms brake (SPEC §5.6) | B-9.10a–c |
 | A9 | **MCUboot and recovery gate**, with the TC2030 removed and a battery on J2. Record which recovery route works | B-8.7 |
 
 Keep steel tools away from the main board from A8 on, because the detent magnet is fitted.
@@ -745,8 +781,9 @@ Keep steel tools away from the main board from A8 on, because the detent magnet 
 4. **Antenna** onto its shelf, centred at (0, 23.5) with the cable end toward −x (§7.1). Before bonding, mate the
    RF test pigtail to the antenna plug (u.FL cycle 1) and run **B-11.2 a**. Bond the flex and run **B-11.2 b**.
    Lead the coax to its riser point (−14.6, 19.9), tape it, and leave the pigtail mated for B-11.2 c.
-5. **Battery** (§7.2): polarity check, foam tape, pack against the θ = 0° end stop, leads up past the board edge at
-   θ ≈ 195°. Fit the **breakout lead** and bring its tail out through the dev-cup port (§7.2 step 6), jumper open.
+5. **Battery** (§7.2): polarity check, foam tape, pack against the θ = 0° end stop, leads routed beside the pack
+   toward θ ≈ 222°, where they come up over the base-board edge to J2 (SPEC §8). Fit the **breakout lead** and
+   bring its tail out through the dev-cup port (§7.2 step 6), jumper open.
 6. **Base board.** Lower it with the tab about 1.5 mm short of the wall, slide it outward into the USB slot so the
    USB-C mating face ends flush to +0.3 mm proud at r = 35.0 (opening = receptacle + 0.3 mm,
    [mechanical research]), then fit the brass M2 screw through H1 at θ = 270°. Run **B-11.2 c**, then unmate the
@@ -804,8 +841,8 @@ face down once it is seated. Make every connection with the board held just abov
    the §6 table.
 2. Hold the main board 10–20 mm above the hub, on edge or upside down, with the carriage still at PARK from A8.
    Check that the motor lead is in J40. Plug the harness into J1. Then **either**:
-   * **Normal build:** mate the antenna plug to the module's u.FL (1 cycle each). With the current placement the
-     mated plug collides with the hub (§2.4 item 8); **or**
+   * **Normal build:** mate the antenna plug to the module's u.FL (1 cycle each), which faces outward at r ≈ 23
+     (§2.4 item 8); **or**
    * **RF test build (Stage R follows):** fit the RF test pigtail instead. Mate it to the antenna plug on the bowl
      side, then tape the pigtail radially along the board underside at θ ≈ 200° (clear of the TMAG at 270° and the
      actuator at 35–160°) and up around the board edge at r = 32. It crosses ≈ 2.4 mm above the ring's top face,
@@ -815,7 +852,8 @@ face down once it is seated. Make every connection with the board held just abov
 
    Dress the service loops and Kapton-tape the coax, and the mated pair or pigtail, to the board underside so
    nothing hangs into the rotor's swept volume: r ≤ 12.2 below z 26.0, and the carrier web at z ≤ 19 (see §2.4
-   item 8).
+   item 8). **Tack the coax up with Kapton where it passes between U12 and the module's inner corner:** it clears
+   U12 by 0.13 mm and the rotating cap ring (r 9–13) by only 0.44 mm (SPEC §8, §7.1).
 3. Lower the board onto the hub over the M4 spigot, with H1–H3 over the hub's tapped holes. Fit the M4 × 0.5
    brass nut with Loctite 222 and tighten it to 0.10 N·m with a pin spanner. That one nut clamps board → hub →
    608 inner race → lower spacer → plate → spindle flange (`docs/mechanical.md` §4). Check the magnet-to-track gap
@@ -867,7 +905,10 @@ or through the breakout (B-1).
 2. OLED bracket, fixed with 3 brass M2 × 6 countersunk screws through H1–H3 into the hub, then the panel (§7.4).
    Test the display (B-9.9b) on a bench supply or the PPK2 through the breakout (B-1).
 3. Diffuser ring (opal PMMA, r 27–30) glued into the top cover, and the 0.7 mm cover glass bonded into its Ø33
-   recess. Snap the cover (Ø30 OLED window, cover OD r = 32.5) onto the light box.
+   recess. **NFC coil:** with the cover held just above the light box, solder the coil's flex tail to the J11
+   pads (main top, r 21.5, θ 222°; flat pads, because a header does not fit under the display glass, SPEC §5.2)
+   **[TVP: tail route past the OLED bracket on the mock-up]**. Snap the cover (Ø30 OLED window, cover OD
+   r = 32.5) onto the light box, then run B-9.11.
 4. From here on, firmware updates go over MCUboot (USB CDC or BLE SMP), and SWD needs the top and OLED removed.
    **Write the serial-recovery route that passed B-8.7 into the unit log and on a label under the base**, for
    example "hold the dial through the 20 s reset and keep holding until the USB port re-enumerates" (route a)
@@ -875,8 +916,8 @@ or through the breakout (B-1).
 
 ### 11.8 Stage G: final acceptance
 
-1. Radiated and link checks (B-11.3). The S11 measurements (B-11.2) were done in Stages B and R and are not
-   repeated here.
+1. Radiated and link checks (B-11.3), and the NFC read check (B-9.11) if it was not run in Stage F. The S11
+   measurements (B-11.2) were done in Stages B and R and are not repeated here.
 2. Sleep and mode currents (B-10), with the PPK2 on the breakout tail.
 3. The full pass/fail table (B-14).
 4. Ring to GND < 10 MΩ with the rotor turning slowly (`docs/mechanical.md` §4) **[TVP]**.
@@ -899,7 +940,7 @@ or through the breakout (B-1).
 
 | # | Item | Status |
 |---|---|---|
-| 1 | TPS22917 CT: C7 must go CT–VSYS (SLVSDW8B) (§2.4 item 3) | **Done:** `main_power.py` has C7 = 1 nF from LSW_CT to VSYS, QOD through R4 = 100 Ω to VLED, R3 = 100 kΩ ON pull-down; the OLED switch U21 has C37 = 1 nF CT–VSYS |
+| 1 | TPS22917 CT: C7 must go CT–VSYS (SLVSDW8B) (§2.4 item 3) | **Done:** `main_power.py` has C7 = 1 nF from LSW_CT to VSYS, QOD through R4 = 68 Ω to VLED (VLED to 10 % in ≤ 26.6 ms, SPICE), R3 = 100 kΩ ON pull-down; the OLED switch U21 has C37 = 1 nF CT–VSYS and its QOD tied to OLED_VIN |
 | 2 | SPEC's base-board bosses at r = 15 overlapped the battery footprint | **Done:** SPEC §8 and the base board use one M2 hole at r = 20, θ 270° outside the pack (now along θ 0°/180°), a printed rib under the θ 90° edge and the USB-C shell (§2.2, §11.2) |
 | 3 | Antenna did not fit on the floor at x = −26 | **Done:** SPEC §8 moved it to a printed shelf centred on y = +23.5 (z 5.5–6, about 6 mm above the desk, corners at r ≤ 33). Desk sensitivity remains (B-11.2e) |
 | 4 | Coax length (§7.1) | **Done:** SPEC §5.2 and §8 specify 146153-0100 (100 mm); the -0050 is too short (§4.3) |
@@ -909,10 +950,10 @@ or through the breakout (B-1).
 | 8 | Harness lead part numbers and lengths, including the lift loop; 28 AWG on pins 1–4 and 8 (§6) | Open |
 | 9 | Knife-edge balance sensitivity; IMU dynamic trim response (§10) | TVP |
 | 10 | Folded-FPC fit under the glass (§7.4 mock-up) | TVP |
-| 11 | Module and mated u.FL over the hub: U10 is placed per SPEC (bottom, r 14.5, θ 215°, u.FL toward the centre); the model puts its inner end at r 6.8, ≈ 1.5 mm into the brass hub, and the plug 0.2 mm into the rotating cap ring (§2.4 item 8, `docs/mechanical.md` §3B B1) | **Open: move U10 (inner end r ≥ 8.8, u.FL outward) or show clearance before ordering** |
+| 11 | Module and mated u.FL over the hub: the earlier placement (r 14.5, u.FL toward the centre) put the module's inner end ≈ 1.5 mm into the brass hub and the plug 0.2 mm into the rotating cap ring (§2.4 item 8, `docs/mechanical.md` §3B B1) | **Done:** U10 centred at r 17.3, θ 215°, inner end r ≥ 8.8, u.FL facing outward (SPEC §8); the clash check passes. The coax passes 0.13 mm from U12 and 0.44 mm above the cap ring, so it is Kapton-tacked at D2 (§11.4) |
 | 12 | Bearing "wave-spring preload" (SPEC §8): a single 608 cannot be axially preloaded by a spring without a reaction against the stationary side. In the model the wave washer and cap ring only form a compliant drop seat. The rotor weight (≈ 1.3 N) exceeds the ±0.7 N detent pull, so the balls should stay loaded anyway **[TVP]** | Restate in SPEC |
 | 13 | FA springs did not match the model's installed length | **Done:** re-specced to the pockets: wire 0.32, free length 4.72, 2.60 mm installed, 1.33 N each, 0.50 mm to solid at the hard stop (§4.3). Measure the rate **[TVP]** |
-| 14 | J2 location | **Done:** SPEC §8 and the board put J2 on the base-board top at r = 17, θ = 222°, mouth radially outward, with BAT+/GND silk. It is still buried after Stage C, hence the breakout (§7.2). Its height against the rotor web is item #24 |
+| 14 | J2 location and height | **Done:** SPEC §8 and the board put J2 on the base-board top at r = 17, θ = 222°, mouth radially outward, with BAT+/GND silk, and J2 is now the 2.95 mm side-entry SM04B-SRSS-TB (pins 1–2 BAT+, 3–4 GND) instead of the ≈ 5.5 mm PH part (#24). It is still buried after Stage C, hence the breakout (§7.2) |
 | 15 | Spindle and hub exit slots were too small for the harness and the coax | **Done in the model:** 5.0 mm-wide lower window at θ 120° (z 14.45–16.35) and upper slot at θ 270° (z 25.8–28.25), with a 5.0 mm C-gap in the hub (§6) |
 | 16 | Magnet pocket depth: SPEC and the model say 2.05; ≥ 2.20 is needed to set Ø2×2 ±0.05 magnets flush (§8.1) | SPEC change |
 | 17 | The earlier model's Ø2 "ship-mode/reset access" hole under the switch was covered by the pack | **Closed:** the current model has no such hole; the spindle's solid bottom carries the press pad |
@@ -920,10 +961,12 @@ or through the breakout (B-1).
 | 19 | Antenna 1.75 mm in plan from the pack instead of ≥ 4 mm, and the θ 60° guide ear 0.75 mm above it (§7.1). A ≤ 30 mm-wide pack would restore 4.0 mm (`docs/mechanical.md` §3 A1) | Measure S11 (B-11.2) |
 | 20 | Ring ESD bleed path (ring → PB strap in silver epoxy → cap ring → wave washer → 608 → spindle → brass hub → H1–H3 → GND, SPEC §8, `docs/mechanical.md` §4) (§10.1, §11.4) | **TVP:** ring to GND < 10 MΩ with the rotor turning slowly |
 | 21 | Base-board RT1 placement | **Done:** RT1 is on the top side (SPEC §8); it reads board and pack-air temperature, not the cell skin |
-| 22 | LED-cavity silk: the stock LED footprints' silk marks (D101–D148) and R42's reference lie in r 27–30 (§2.1) | Open, before ordering |
+| 22 | LED-cavity silk: the stock LED footprints' silk marks (D101–D148) lie in r 27–30 (§2.1); R42 has moved to r 24.1 | Open, before ordering |
 | 23 | L20 courtyard reaches r ≈ 19.9, ≈ 7 mm in plane from the r = 27 edge of the track annulus (§2.4 item 2) | Check before ordering |
-| 24 | Other model clash items (§2.4 item 10): J1's mated plug only 0.15 mm above the rotating hub (B2), J2 (≈ 5.5 mm tall) and its plug into the pressed rotor web and the FA ring (B3), R42 under the top-cover skirt (B5); keep the M4-nut keep-out on the main-board top (A7) and the actuator-corridor height rule (A11) | **Open:** fix B2, B3 and B5 or show clearance before ordering |
+| 24 | Other model clash items (§2.4 item 10): J1's mated plug only 0.15 mm above the rotating hub (B2), the PH battery connector J2 (≈ 5.5 mm tall) and its plug into the pressed rotor web and the FA ring (B3), R42 under the top-cover skirt (B5) | **Done:** J1 at r 19.5, J2 = SM04B-SRSS-TB, R42 at r 24.1; the clash check shows only the intended contacts. The M4-nut keep-out (r ≤ 4.6, A7) and the actuator-corridor height rule (A11) stay in force for later changes |
 | 25 | Stepper can and lead screw 3.1–4.6 mm from the track, against SPEC's 10 mm rule; free-mode cogging unknown (§7.3, `docs/mechanical.md` §3 A12) | Bench test before PCB freeze **[TVP]** |
+| 26 | Actuator thrust: the SPICE motor model gives the VSM08102 at most 0.93 N from any battery VSYS against a 0.8–1.15 N worst-case load (architecture risk R4; hardware/sim, MD-4) (§4.3, §7.3) | **Open:** cut the carriage preload and anti-lash spring so the load stays ≤ 0.5 N, or change the actuator; the 10 mm sibling does not fit the bowl in the model |
+| 27 | NFC coil: inductance, C16/C17 tuning (180 pF for ≈ 1.4–1.5 µH) and the tail route from the cover to J11 (§4.3, §11.7) | TVP on the prototype (bring-up B-9.11) |
 
 Source abbreviations used above: "[x research]" and "[x verifier]" refer to the subsystem research and its
 independent verification, which SPEC.md was built from. Where the two differ, the verifier's corrected value is
