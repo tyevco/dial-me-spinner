@@ -62,8 +62,14 @@ def arch_sleep_budget() -> dict:
                     out[key + "_desk"] = float(md.group(1))
                     out["_dec"][key + "_desk"] = len(md.group(2) or "")
                 if key == "oled":
-                    mm = re.search(r"maximum\s+([0-9.]+)\s*[–-]\s*([0-9.]+)\s*µA", cells[-1])
-                    out["oled_max"] = float(mm.group(2))
+                    # "maximum 46 µA at 25 °C, 72 µA at 60 °C" (per temperature), or the older "maximum 35–40 µA"
+                    mm = re.search(r"maximum\s+([0-9.]+)\s*µA\s+at\s+25\s*°C,?\s*([0-9.]+)\s*µA\s+at\s+60\s*°C",
+                                   cells[-1])
+                    if mm:
+                        out["oled_max"], out["oled_max_60"] = float(mm.group(1)), float(mm.group(2))
+                    else:
+                        mm = re.search(r"maximum\s+([0-9.]+)\s*[–-]\s*([0-9.]+)\s*µA", cells[-1])
+                        out["oled_max"] = out["oled_max_60"] = float(mm.group(2))
                 break
     missing = {k for _, k in keys} - set(out)
     assert not missing, f"architecture.md §8.2 sleep rows not found: {missing}"
@@ -550,10 +556,11 @@ OLED_MAX_ISSUE = ("DESIGN ISSUE: at datasheet maxima the OLED sleep current exce
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=OLED_MAX_ISSUE)
 @pytest.mark.parametrize("temp", [25.0, 60.0])
 def test_oled_sleep_within_architecture_max(main, base, budget, temp, check):
-    """architecture.md §8.2 / §6.3: OLED sleep 'maximum 35-40 µA' -- datasheet-max IC currents."""
+    """architecture.md §8.2 / §6.3: OLED sleep maximum (datasheet-max IC currents) at 25 °C and at 60 °C."""
     sim, r = simulate(main, base, temp=temp, maxc=1)
     check(f"OLED + boost sleep current, datasheet max, {temp:+.0f} C", ua(r["by_cat"]["oled"]),
-          hi=budget["oled_max"], unit="µA", source="docs/architecture.md §8.2 OLED row 'maximum 35–40 µA'")
+          hi=budget["oled_max"] if temp <= 25 else budget["oled_max_60"], unit="µA",
+          source="docs/architecture.md §8.2 OLED row 'maximum …'")
 
 
 def test_sleep_max_corner(main, base, budget, check):
@@ -727,9 +734,10 @@ def test_fault_oled_res_pulldown_100k(main, base, budget, check):
     main.override("R20", "100k")
     sim, r = simulate(main, base)
     i = ua(r["by_cat"]["oled"])
-    check("FAULT R20=100k: OLED sleep current (typ) exceeds the architecture maximum (detected)", i,
-          lo=budget["oled_max"], unit="µA", source="docs/architecture.md §8.2 OLED row 'maximum 35–40 µA'")
-    assert i > budget["oled_max"]
+    # the typical sleep line is the detector: the 25 °C datasheet-max line sits only ~1 µA below this fault's 47 µA
+    check("FAULT R20=100k: OLED sleep current (typ) exceeds the architecture typical OLED line (detected)", i,
+          lo=budget["oled"], unit="µA", source="docs/architecture.md §8.2 OLED row, sleep column")
+    assert i > budget["oled"] + 10
 
 
 @pytest.mark.fault
