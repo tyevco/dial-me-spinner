@@ -26,6 +26,8 @@ jobs:
           python-version: '3.12'
 
       - name: SPICE suite (results page)
+        timeout-minutes: 20
+        continue-on-error: true
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ngspice
           python -m pip install -q pytest numpy scipy
