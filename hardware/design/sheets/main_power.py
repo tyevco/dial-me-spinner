@@ -35,7 +35,7 @@ def build(d):
     d.add("J1", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
           "Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
-          fields={"MPN": "BM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160413"})
+          fields={"MPN": "BM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160398"})
     d.add("C1", "Device:C", "22u", C0805, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "LCSC": "C45783"})
 

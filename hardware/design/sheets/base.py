@@ -92,7 +92,8 @@ def build(d):
 
     d.group("USB-C input and protection",
             "HRO TYPE-C-31-M-12 (sink, USB 2.0). Separate 5.1k Rd per CC pin; D+/D- pairs tied at the connector.\n"
-            "USBLC6-2SC6 and SMF5.0A within 5 mm of J1; route D+/D- through the ESD pads (flow-through) as a 90R pair.")
+            "USBLC6-2SC6 and SMF5.0A within 5 mm of J1; route D+/D- through the ESD pads (flow-through) as a 90R pair.\n"
+            "J1 body (3.26 mm tall, 7.35 mm deep) reaches r ~27.6, under the FA lower plate (r <= 30): plate needs a relief there.")
     d.add("R1", "Device:R", "5.1k", R0402, pins={"1": "USB_CC1", "2": "GND"},
           fields={"MPN": "0402WGF5101TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25905"})
     d.add("R2", "Device:R", "5.1k", R0402, pins={"1": "USB_CC2", "2": "GND"},
@@ -127,9 +128,13 @@ def build(d):
     d.add("C3", "Device:C", "4.7u", C0603, pins={"1": "VBAT", "2": "GND"},
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
 
-    d.group("Battery and NTC",
-            "J2 pin 1 = BAT+, pin 2 = GND. Hobby LiPo PH polarity is not standard: check every pack!\n"
-            "RT1 10k B3435 NTC on TS/MR, placed against the cell; Kelvin-return its GND to U1 D2. No cap on TS/MR.")
+    d.group("Battery connector J2 and NTC RT1 (TS/MR)",
+            "J2 pin 1 = BAT+, pin 2 = GND. PH lead polarity varies by vendor:\n"
+            "check every pack! J2 (~5.5 mm tall) needs a lower-plate cut-out.\n"
+            "RT1 on TS/MR: top side, at the board edge farthest from U1\n"
+            "(>= 10 mm), no copper shared with U1. Bottom side has no parts,\n"
+            "so RT1 reads board temperature, not the cell. GND Kelvin to D2.\n"
+            "No cap on TS/MR (TS bias is pulsed 4 ms / 196 ms).")
     d.add("J2", "Connector_Generic_MountingPin:Conn_01x02_MountingPin", "BATT",
           "Connector_JST:JST_PH_S2B-PH-SM4-TB_1x02-1MP_P2.00mm_Horizontal",
           pins={"1": "VBAT", "2": "GND", "MP": "GND"},
@@ -141,7 +146,7 @@ def build(d):
     d.group("Centre press switch and ship-mode wake",
             "SW1 at the board centre (top). Press: VBAT -> 1k -> SW1 -> SW_GATE (1M to GND, ~4 uA while held).\n"
             "Q1A pulls TS/MR low (ship wake / 20 s HW reset); Q1B pulls BTN_N low (nRF SENSE wake). BTN_N pull-up is on main.")
-    d.add("R3", "Device:R", "1k", R0402, pins={"1": "VBAT", "2": "SW_HI"},
+    d.add("R3", "Device:R", "1k", R0402, pins={"1": "SW_HI", "2": "VBAT"},
           fields={"MPN": "0402WGF1001TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C11702"})
     d.add("SW1", "Switch:SW_Push", "TS-1187A", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
           pins={"1": "SW_HI", "2": "SW_GATE"}, rot=270,
@@ -158,7 +163,9 @@ def build(d):
           pins={"5": "SW_GATE", "3": "BTN_N", "4": "GND"}, unit=2, datasheet=q_ds, fields=q_fields)
 
     d.group("Board-to-board link (to main board through the spindle)",
-            "JST SH 12-way vertical; identical pinout on the main board (SPEC §2). C4 sits next to J3.")
+            "JST SH 12-way vertical; identical pinout on the main board (SPEC §2). C4 sits next to J3.\n"
+            "Only 1.7 mm (~1.2 mm pressed) under the FA lower plate: J3 + mated SHR plug need a plate\n"
+            "cut-out (the harness exits through it into the spindle).")
     d.add("J3", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
           "Connector_JST:JST_SH_BM12B-SRSS-TB_1x12-1MP_P1.00mm_Vertical",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
@@ -167,9 +174,9 @@ def build(d):
           fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
 
     d.group("Test points and power flags",
-            "PWR_FLAGs mark VBUS (USB-C) and GND as externally driven for ERC.")
+            "PWR_FLAGs mark VBUS (USB-C) and GND\nas externally driven for ERC.")
+    d.add("#FLG01", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "VBUS"}, in_bom=False, on_board=False, rot=90)
+    d.add("#FLG02", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "GND"}, in_bom=False, on_board=False, rot=90)
     for i, net in enumerate(["VBUS", "VBAT", "VSYS", "GND"], start=1):
         d.add(f"TP{i}", "Connector:TestPoint", net, "TestPoint:TestPoint_Pad_D1.0mm",
               pins={"1": net}, in_bom=False)
-    d.add("#FLG01", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "VBUS"}, in_bom=False, on_board=False, rot=90)
-    d.add("#FLG02", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "GND"}, in_bom=False, on_board=False, rot=90)

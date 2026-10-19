@@ -305,7 +305,7 @@ class _SheetWriter:
             dx, dy = _rot(-math.cos(math.radians(pin.angle)), math.sin(math.radians(pin.angle)), r)
             ln = STUB + (self.label_len(net) if net else 0)
             if net in self.d.power_nets:
-                ln = STUB + 6
+                ln = STUB + (3.3 + len(net) * CHAR_W if abs(dx) > 0.5 else 6.5)
             xs.append(px + dx * ln)
             ys.append(py + dy * ln)
             if net and abs(dx) < 0.5:  # vertical label: text extends sideways a little
@@ -421,7 +421,10 @@ class _SheetWriter:
         bot = max(c[1] for c in corners)
         right = max(c[0] for c in corners)
         two_pin = len(sym.pins_for_unit(p.unit)) <= 2
-        if two_pin and r in (90, 270):
+        horiz = two_pin and all(
+            abs(_rot(math.cos(math.radians(pn.angle)), -math.sin(math.radians(pn.angle)), r)[0]) > 0.5
+            for pn in sym.pins_for_unit(p.unit))
+        if two_pin and horiz:
             ref_at = [ox, round(oy + top - 1.6, 4), r % 180]
             val_at = [ox, round(oy + bot + 1.6, 4), r % 180]
             ref_just = val_just = None
