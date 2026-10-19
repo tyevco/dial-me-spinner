@@ -1,0 +1,30 @@
+* =====================================================================================================
+* sleep_current__b5819w.lib -- B5819W 40 V / 1 A Schottky (CJ), DC model with reverse leakage vs VR and T
+*
+* Part      : Jiangsu Changjiang (CJ) B5819W, SOD-123, marking SL (main board D21, TPS61040 rectifier)
+* Datasheet : https://www.lcsc.com/datasheet/C8598.pdf  (CJ "B5817W-5819W", rev "D, Mar, 2015")
+*
+* Modelled:
+*   Forward  : diode, IS 25 nA, N 1.0, RS 0.1 ohm -> VF about 0.47 V at 1 A (max 0.6 V at 1 A, EC table).
+*              Only matters for completeness: D21 never conducts forward in sleep.
+*   Reverse  : behavioural leakage fitted to the "Reverse Characteristics" figure (page 2, typical, pulsed),
+*              read off the 300 dpi plot:
+*                Ta = 25 C : 4.9 uA at VR = 1 V, 8.4 uA at 10 V, 12.5 uA at 20 V, 33 uA at 40 V
+*                Ta = 75 C : 55 uA at 1 V, 81 uA at 10 V, 111 uA at 20 V
+*                Ta = 100 C: 415 uA at 1 V
+*              IR(VR,T) = IR1 * 11.25^((T-25)/50) * exp(0.06*(VR-1)) * (1 - exp(-VR/0.0257))
+*              IR1 = 4.86 uA (25 C, 1 V); 11.25 = 75 C / 25 C ratio at 1 V; 0.06/V = 25 C slope from 1 to 10 V.
+*              The (1 - exp(-VR/Vt)) factor takes the current to zero at VR = 0 like any junction.
+*              T is the TEMP parameter (deg C), passed by the test with the deck temperature.
+*   Limits   : only IR <= 1 mA at VR = 40 V (25 C) is guaranteed; there is no maximum at low VR, so both
+*              corners use the typical curve (MAXC is accepted but unused).
+*
+* NOT modelled: leakage below VR = 1 V and below 25 C (the figure starts at 1 V and 25 C: the model
+*   extrapolates, -10 C gives about 0.9 uA), part-to-part spread of the typical curve, capacitance, recovery.
+* =====================================================================================================
+.subckt SC_B5819W a k params: TEMP=25 MAXC=0
+.param ir1 = {4.86u * pow(11.25, (TEMP - 25)/50)}
+D1 a k DB5819W_FWD
+Blk k a I = 'ir1 * exp(0.06*(max(v(k,a),0) - 1)) * (1 - exp(-max(v(k,a),0)/0.0257))'
+.model DB5819W_FWD D(IS=25n N=1.0 RS=0.1 BV=45 IBV=1m)
+.ends SC_B5819W
