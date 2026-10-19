@@ -1014,11 +1014,13 @@ def route(path, minutes=30, threads=1, optimizer_passes=20, drop_nets=()):
                         f"--router.job_timeout={minutes // 60:02d}:{minutes % 60:02d}:00",
                         f"--router.optimizer.max_passes={optimizer_passes}", "--gui.enabled=false"],
                        timeout=(minutes + 60) * 60, stdout=log, stderr=subprocess.STDOUT)
-    if not os.path.exists(ses):
-        raise RuntimeError("Freerouting produced no session file")
+    if not os.path.exists(ses):  # Freerouting 2.1 sometimes dies on an internal error; keep the board as it was
+        print(f"WARN: Freerouting produced no session file (see {path.replace('.kicad_pcb', '.freerouting.log')})")
+        return False
     pcbgen.import_ses(path, ses, path)
     for f in (dsn, ses):
         os.remove(f)
+    return True
 
 
 def main():
@@ -1028,6 +1030,8 @@ def main():
     ap.add_argument("--minutes", type=int, default=30, help="Freerouting time budget for the first attempt")
     ap.add_argument("--attempts", type=int, default=3, help="re-run Freerouting on the routed board while connections remain")
     ap.add_argument("--finish", action="store_true", help="only clean up an already routed board (no re-placement)")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue routing the board as it is (no re-placement, no new fan-out), then finish it")
     a = ap.parse_args()
     for board in BOARDS:
         if a.board and board != a.board:
@@ -1039,11 +1043,15 @@ def main():
             rpt, counts = drc(out, warn)
             print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
             continue
-        out = generate(board, pours=not a.route)
-        print(f"[{board}] placed ->", out)
+        if a.resume:
+            out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            a.route = True
+        else:
+            out = generate(board, pours=not a.route)
+            print(f"[{board}] placed ->", out)
         if a.route:
-            drop = ()
-            if BOARDS[board].get("gnd_fanout"):
+            drop = ("GND",) if BOARDS[board].get("gnd_fanout") else ()
+            if BOARDS[board].get("gnd_fanout") and not a.resume:
                 b = pcbnew.LoadBoard(out)
                 done, left = pcbgen.fanout_vias(b, "GND")
                 pcbnew.SaveBoard(out, b)
