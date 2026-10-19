@@ -76,9 +76,11 @@ VBUVLO = 3.0             # BQ25180 BUVLO setting 3.0 V (CHARGECTRL1 0x92): lowes
 SAG = 0.3                # power research design rule: total system peak keeps the cell sag below 0.3 V
 
 # battery and USB corners for VSYS as the charger delivers it: VBAT 3.0 / 3.7 / 4.2 V (SYS = VBAT on battery);
-# on USB SYS is regulated to 4.5 V +/-2 % (VBUS 5.0 / 5.5 V); at VBUS 4.5 V SYS = VBUS - IIN*RON_IN (<= 4.5 V),
-# which lies inside the same 4.41-4.59 V window.
+# on USB SYS is regulated to SYS_REG +/-2 % (VBUS 5.0 / 5.5 V): 4.312-4.488 V with the firmware's 4.4 V, 4.41-4.59 V at
+# the 4.5 V POR default / allowed alternative (the abs-worst window, VSYS_USB_MAX = 4.59 V); at VBUS 4.5 V
+# SYS = VBUS - IIN*RON_IN (<= 4.5 V), which lies inside the same windows.
 VSYS_BATT = [3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.7, 4.2]
+VSYS_USB_FW = [round(SYS_REG_FW * (1 - SYS_REG_ACC), 3), SYS_REG_FW, round(SYS_REG_FW * (1 + SYS_REG_ACC), 3)]
 VSYS_USB = [round(SYS_REG * (1 - SYS_REG_ACC), 3), SYS_REG, round(SYS_REG * (1 + SYS_REG_ACC), 3)]
 VSYS_USB_MAX = VSYS_USB[-1]
 TEMPS = [-10, 25, 60]
@@ -188,6 +190,24 @@ def cap_draws(d, refs, n, seed):
     rng = random.Random(seed)
     for _ in range(n):
         yield {r: rng.uniform(-1, 1) for r in refs}
+
+
+# --------------------------------------------------------------------------------------------- SPEC text
+SPEC_MD = os.path.join(spicelib.HW, "design", "SPEC.md")
+
+
+def spec_ldo_iq():
+    """(typ, max) LDO Iq in A as SPEC.md section 3 states it ('* **LDO**: ... Iq ≤ 2 µA typ / 4 µA max, ...'), and it
+    must still be the SPEC_LDO_IQ text these tests quote: a SPEC change fails here instead of moving a bound silently."""
+    with open(SPEC_MD, encoding="utf-8") as f:
+        text = f.read()
+    sec = re.search(r"(?ms)^## 3\. .*?(?=^## )", text)
+    assert sec, f"{SPEC_MD}: section 3 not found"
+    ldo = re.search(r"(?m)^\* \*\*LDO\*\*:.*$", sec.group(0))
+    assert ldo, "SPEC.md section 3: no '* **LDO**:' bullet"
+    assert SPEC_LDO_IQ in ldo.group(0), f"SPEC.md section 3 LDO bullet no longer says {SPEC_LDO_IQ!r}: {ldo.group(0)!r}"
+    m = re.search(r"Iq ≤ ([0-9.]+) µA typ / ([0-9.]+) µA max", ldo.group(0))
+    return float(m.group(1)) * 1e-6, float(m.group(2)) * 1e-6
 
 
 # --------------------------------------------------------------------------------------------- netlist access
