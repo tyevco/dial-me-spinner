@@ -481,8 +481,8 @@ def rated_reference(pps, ke, lph, stall):
 
 def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, rds=RDS_MAX, lph=L_NOM, ke=KE_MAX,
                  other=FW_LED_CAP + I_SYS, end="hold", cscale=None, aged=True, t_pre=2e-3, t_hold=1e-3, extra=(),
-                 ilim=ILIM_MIN):
-    ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end)
+                 ilim=ILIM_MIN, t_tail=1e-3):
+    ctrl, tm = fullstep_plan(pps, nsteps, t_pre=t_pre, t_hold=t_hold, end=end, t_tail=t_tail)
     deck = new_deck(f"full step {pps} PPS {sup} {temp}C")
     power(deck, main, base, sup, temp, other=other, cscale=cscale, aged=aged, ilim=ilim)
     ts = tm["ts"]
@@ -491,7 +491,7 @@ def run_stepping(main, base, sup, temp, pps, *, nsteps=8, stall=False, tol=0.0, 
     for net, pts in ctrl.items():
         gpio_out(deck, main, net, pts)
     deck += list(extra)
-    step = min(ts / 400, 2e-6)
+    step = min(ts / 400, 5e-6)                         # L/R >= 0.1 ms; every step edge is a PWL breakpoint
     deck.tran(f"{step:.3g}", f"{tm['t_stop']:.6g}", 0, f"{step:.3g}")
     vs = main.node("VSYS")
     a1, a2 = main.pin("U40", "OUT1"), main.pin("U40", "OUT2")
@@ -609,7 +609,7 @@ def test_turnoff_kick_monte_carlo(main, base, check):
         der = float(rng.uniform(0.5, 1.0))
         cs = {r: der * (1 + float(rng.uniform(-tol_of[r], tol_of[r]))) for r in refs}
         w, tm = run_stepping(main, base, sup, 25, 446, nsteps=0, stall=True, rds=RDS_TYP, lph=L_NOM, other=3e-3,
-                             end="coast", cscale=cs, aged=False, t_pre=2e-3, t_hold=0.3e-3)
+                             end="coast", cscale=cs, aged=False, t_pre=1.5e-3, t_hold=0.2e-3, t_tail=0.5e-3)
         _, vs = window(w, "vsys", tm["t_x"] - 1e-4, tm["t_stop"])
         vmax.append(float(vs.max()))
     vmax = np.array(vmax)
@@ -619,16 +619,19 @@ def test_turnoff_kick_monte_carlo(main, base, check):
 
 
 # ------------------------------------------------ firmware drive: 25 kHz slow-decay 8-µstep sine
-def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=25e3):
+def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=25e3, t_hold0=1e-3):
     """PWM command lists for the four IN pins (firmware.md §5.3). Positive current: IN1 = 1, IN2 PWM with duty
-    1 - |d| (IN2 high = brake/slow decay). Edge-aligned 'up' counter: the drive part comes first."""
+    1 - |d| (IN2 high = brake/slow decay). Edge-aligned 'up' counter: the drive part comes first.
+    µstep 0 is held for t_hold0 first (the firmware's pre-energise, shortened to > 5 L/R)."""
     d_pk = min(1.0, i_target * FW_R_COIL / vsys_meas)
     tpwm = 1.0 / fpwm
     t_ustep = 1.0 / (pps * 8)
     n_pwm = int(round(t_ustep / tpwm)) or 1
     tr = {n: [] for n in ("MOT_A_IN1", "MOT_A_IN2", "MOT_B_IN1", "MOT_B_IN2")}
     t = t_start
-    for u in range(n_full * 8 + 1):
+    seq = [0] * int(round(t_hold0 / (n_pwm * tpwm))) + list(range(n_full * 8 + 1))
+    t_step0 = t_start + (len(seq) - n_full * 8 - 1) * n_pwm * tpwm
+    for u in seq:
         th = math.radians(11.25 * u)
         for coil, val in (("A", d_pk * math.cos(th)), ("B", d_pk * math.sin(th))):
             hi, pw = (f"MOT_{coil}_IN1", f"MOT_{coil}_IN2") if val >= 0 else (f"MOT_{coil}_IN2", f"MOT_{coil}_IN1")
@@ -644,7 +647,7 @@ def microstep_ctrl(pps, n_full, t_start, vsys_meas, i_target=FW_I_TARGET, fpwm=2
                     tr[pw].append((tp, 0))
                     tr[pw].append((tp + on * tpwm, 1))
         t += n_pwm * tpwm
-    return {n: _pwl(v, edge=20e-9) for n, v in tr.items()}, t, d_pk
+    return {n: _pwl(v, edge=20e-9) for n, v in tr.items()}, t, d_pk, t_step0
 
 
 MICRO_CASES = [("VBAT3.7-25C", "VBAT3.7", 25, None), ("VBUS5.0-25C", "VBUS5.0", 25, "slow"),
@@ -668,13 +671,14 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     """The real drive: 446 PPS, 8 µsteps, 25 kHz PWM, slow decay, d scaled by the idle VSYS. Checks the VM ripple
     from the 25 kHz current pulses, VSYS peak, BAT pin, link current and the torque-vector magnitude."""
     sup = SUP[supname]
-    pps, n_full = 446, 2
-    t_on, t_e = 50e-6, 50e-6 + FW_WAKE_WAIT
-    ctrl, t_end, d_pk = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)
+    pps, n_full = 446, 1
+    t_on, t_e = 50e-6, 100e-6                         # the firmware's 1 ms wake wait adds nothing here (twake 30 us)
+    ctrl, t_end, d_pk, t_s0 = microstep_ctrl(pps, n_full, t_e, sup.vsys_idle)
     ctrl["MOT_NSLEEP"] = _pwl([(t_on, 1)])
     deck = new_deck(f"microstep {cid}")
     power(deck, main, base, sup, temp)
-    drivers(deck, main, temp, rds=RDS_MAX, ke=KE_MAX, pps=pps, t0=t_e - 0.5 / pps, tg=t_e, tstop=t_end)
+    # rotor turns from the first µstep on, field angle 11.25 deg per µstep -> emf phase reference t_s0
+    drivers(deck, main, temp, rds=RDS_MAX, ke=KE_MAX, pps=pps, t0=t_s0, tg=t_s0, tstop=t_end)
     for net, pts in ctrl.items():
         gpio_out(deck, main, net, pts)
     deck.tran("1u", f"{t_end:.6g}", 0, "2u")       # every PWM edge is a PWL breakpoint; 0.2 us steps give the same
@@ -683,7 +687,7 @@ def test_firmware_microstep_pwm(main, base, check, cid, supname, temp, xf):
     res = deck.run()
     check_ran(res)
     w = res["waves"]
-    t1 = t_e + 1.0 / pps                                # after the first full step
+    t1 = t_s0                                           # the full step after the pre-energise
     t, ia = window(w, "i(via)", t1, t_end)
     _, ib = window(w, "i(vib)", t1, t_end)
     _, v = window(w, f"v({vs})", t1, t_end)
@@ -795,7 +799,7 @@ def test_fault_motor_connector_bridge_trips_ocp(main, base, check):
     for net, c in {"MOT_NSLEEP": _pwl([(t_on, 1)]), "MOT_A_IN1": _pwl([(100e-6, 1)]), "MOT_A_IN2": 0,
                    "MOT_B_IN1": 0, "MOT_B_IN2": 0}.items():
         gpio_out(deck, main, net, c)
-    deck.tran("20n", "1.5m", 0, "50n")
+    deck.tran("50n", "1.4m", 0, "0.5u")
     deck.meas("tran ipk MAX v(xu40.ih1)")
     deck.meas("tran t_off WHEN v(xu40.ok)=0.5 FALL=1")
     deck.meas("tran t_retry WHEN v(xu40.ok)=0.5 RISE=1")

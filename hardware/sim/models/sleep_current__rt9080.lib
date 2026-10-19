@@ -18,14 +18,14 @@
 * NOT modelled: IQ vs temperature (no curve in DS9080-09), ground current in dropout (VIN < 3.3 V, not
 *   specified), line/load regulation, VOUT accuracy (+-2 %), output discharge (EN is tied to VIN), dynamics.
 * =====================================================================================================
-.subckt SC_RT9080 vin en gnd vout params: MAXC=0 KGND=0
+.subckt SC_RT9080 vin en vss vout params: MAXC=0 KGND=0
 .param iq = {MAXC > 0.5 ? 4u : 2u}
 .param vnom = 3.3
 .param rpass = 0.52
 * EN rising threshold 0.9 V (EC table VEN_R); EN is tied to VIN on this board, so this only gates ship mode
-Eout vx gnd vol = '((vnom + v(vin,gnd) - sqrt((vnom - v(vin,gnd))**2 + 1e-6))/2) * (v(en,gnd) > 0.9 ? 1 : 0)'
+Eout vx vss vol = '((vnom + v(vin,vss) - sqrt((vnom - v(vin,vss))**2 + 1e-6))/2) * (v(en,vss) > 0.9 ? 1 : 0)'
 Rpass vx vy {rpass}
 Vsns vy vout 0
-Fin vin gnd Vsns 1
-Bgnd vin gnd I = '(v(en,gnd) > 0.9 ? 1 : 0) * (iq + KGND * max(i(Vsns), 0))'
+Fin vin vss Vsns 1
+Bgnd vin vss I = '(v(en,vss) > 0.9 ? 1 : 0) * (iq + KGND * max(i(Vsns), 0))'
 .ends SC_RT9080

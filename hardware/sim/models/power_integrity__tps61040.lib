@@ -3,6 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Texas Instruments TPS61040DBVR PFM boost (U20)
 * Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf   SLVS413L (Oct 2002, revised Aug 2026)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED (input side only; the 13 V output, D21 and the panel are folded into an input power PIN):
 *   Constant input power: I = PIN / VIN (the converter regulates its output, so its input current rises as

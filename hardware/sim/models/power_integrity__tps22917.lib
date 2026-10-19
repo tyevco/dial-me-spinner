@@ -3,6 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Texas Instruments TPS22917DBVR, 1-5.5 V, 2 A, 80 mOhm ultra-low-leakage load switch
 * Datasheet : https://www.ti.com/lit/ds/symlink/tps22917.pdf   SLVSDW8B (Sept 2017, revised Dec 2021)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED:
 *   RON      on-resistance, passed by the test from 7.5 RON (IOUT = 200 mA):

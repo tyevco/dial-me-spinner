@@ -33,14 +33,28 @@ Limits (every one from a datasheet, quoted in each check's source string):
 The "capped" scenarios apply the firmware power policy of docs/firmware.md (5.8, 6.3, 7.4, 12.4): LED average
 150 mA sustained / 300 mA bursts at VBAT >= 3.65 V, 100 mA below 3.60 V and while the actuator moves, only a
 2 mA red cue below 3.53 V, SHIP below 3.48 V, actuator moves only at VSYS >= 3.40 V (park >= 3.30 V).
+
+Corners: nominal (pack 100 mOhm, contacts as new, 25 C typical RON), worst (200 mOhm pack, contacts after
+environmental tests, 60 C datasheet-max RON / dropout, VSYS-GND wires 5 mm apart, every capacitor at -tol),
+cold (-10 C, same but copper colder). VBAT 3.0 / 3.7 / 4.2 V plus the firmware policy thresholds; VBUS
+4.5 / 5.0 / 5.5 V with SYS_REG -2 % / nominal / +2 %.
+
+What the simulation shows (rev A netlists; xfail tests carry the evidence):
+  * Uncapped (no firmware limit) the system draws ~1.33 A: VLED 3.06 V at VBAT 3.7 V worst corner and V(BAT)
+    below BUVLO at 3.0 V -> the firmware LED limiter is a hardware protection function.
+  * With the firmware AVERAGE caps every steady-state point passes (VLED >= 3.34 V worst corner).
+  * But the cap limits the average only: with all LEDs lit and their PWM aligned the ring pulls 0.72 A for
+    70-210 us, VLED falls to 3.10-3.25 V at VBAT <= 3.70 V; a peak (lit-channel) budget is derived per VBAT
+    (test_led_peak_budget_vs_vbat) and verified (test_proposed_peak_cap_fix).
+  * USB with no usable pack: the firmware USB budgets exceed ILIM min (SYS collapses).
+  * Ground offset between the boards <= ~47 mV; the I2C low level seen by the BQ25180 is 0.30 V (VIL 0.4 V).
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
-import numpy as np
 import pytest
 
 from spicelib import Deck, Design
@@ -749,6 +763,20 @@ def test_led_rail_inrush(main, base, check, cname):
     check(f"{tag}: I(BAT) peak", worst["ibat"], hi=IBAT_OCP, unit="A", source=SRC_OCP)
     check(f"{tag}: TPS22917 switch current peak", worst["ilsw"], hi=LSW_IPLS, unit="A", source=SRC_LSW)
     check(f"{tag}: +3V3 min", worst["v3v3"], lo=V3V3_MIN, unit="V", source=SRC_3V3)
+
+
+def test_mlcc_dc_bias_stress(main, base, check):
+    """Stress angle: every capacitor on both boards at 50 % of its netlist value (an assumed X5R DC-bias loss at
+    3.7-4.5 V, not a datasheet figure), firmware full budget with aligned LED PWM and TX bursts at 3.70 V: the
+    droop is set by the battery path, so the minimums must not move materially."""
+    s = System(main, base, NOMINAL)
+    vbat, cap, icc, motor = fw_scenarios(s.n_led)["full@3.70"]
+    half = {r: 0.5 for d in (main, base) for r in d.comps if r[0] == "C" and r[1:2].isdigit()}
+    r = run_tran(s.deck("dc-bias stress", fw_loads(s.n_led, cap, icc, motor, sync=True), vbat=vbat, scale=half),
+                 stop=1.2e-3)
+    tag = "all MLCC x0.5, full@3.70 nominal, aligned PWM"
+    check_supply(check, s, r, tag, extra=[(f"{tag}: GND offset main-base, peak", max(r["gnd_max"], -r["gnd_min"]),
+                                           None, BQ_VIL, "V", SRC_BQ_VIL + " (offset alone)")])
 
 
 @pytest.mark.fault

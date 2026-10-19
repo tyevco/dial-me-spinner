@@ -1,0 +1,35 @@
+* =====================================================================================================
+* sleep_current__ssd1351.lib -- SSD1351 PMOLED panel (NHD-1.5-128128G) in sleep with VCC unpowered, DC model
+*
+* Part      : Newhaven NHD-1.5-128128G (SSD1351U3 COF), on main board ZIF J20; pin-identical Orient
+*             AOC128128A0-1.50W
+* Datasheets: https://newhavendisplay.com/content/specs/NHD-1.5-128128G.pdf  (NHD-1.5-128128G, rev 3, 04/16/2024)
+*             Solomon Systech SSD1351 Advance Information Rev 1.3, Oct 2009 (LCSC copy of the Solomon PDF)
+*
+* Sleep state (firmware §7.2: AEh, ABh 00 = internal VDD regulator off, then OLED_VCC_EN low, RES# held high):
+*   ICI      VCI sleep current 4 uA typ / 20 uA max at VCI = 2.8 V (NHD "Supply Current (Sleep) ICI,SLEEP").
+*            Applied as a constant current; VCI is 3.3 V here (no voltage dependence given).
+*   IDDIO    VDDIO sleep current: no typical, 10 uA max (SSD1351 Table 12-1 ISLP_VDDIO, internal VDD,
+*            "No panel attached") -> 0 typical, 10 uA in the max corner.
+*   ESD path VCI/VDDIO -> VCC: "Since an ESD protection circuit is connected between VCI, VDDIO and VCC, VCC
+*            becomes lower than VCI whenever VCI, VDDIO is ON and VCC is OFF" (SSD1351 Rev 1.3 §8.9, Note 1).
+*            Modelled as one junction diode from VCI to VCC. Its I-V is not specified: a generic on-chip
+*            junction (IS 1e-15 A, N 1) is used, giving VF about 0.57 V at 5 uA, 25 C (VF moves about -2 mV/C).
+*   ISLP_VCC no typical, 10 uA max at VCC = 16 V (SSD1351 Table 12-1). Max corner only, as a 1.6 Mohm VCC->GND
+*            equivalent (linear scaling from 16 V to the real VCC is an assumption).
+*   RES#, CS#, D/C#, SCLK, SDIN: CMOS inputs, no DC current modelled (no input-leakage figure in either sheet).
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: IREF / VCOMH / VSL outputs (internal references off in sleep, VCC far below their 6 V+ headroom),
+*   temperature dependence of ICI (none given), the VDD regulator (off in sleep, ABh 00).
+* =====================================================================================================
+.subckt SC_SSD1351_SLEEP vci vddio vcc vss params: MAXC=0
+.param ici   = {MAXC > 0.5 ? 20u : 4u}
+.param iddio = {MAXC > 0.5 ? 10u : 0}
+.param rvcc  = {MAXC > 0.5 ? 1.6meg : 1e15}
+Bci vci vss I = 'ici * tanh(v(vci,vss)/0.05)'
+Bddio vddio vss I = 'iddio * tanh(v(vddio,vss)/0.05)'
+Desd vci vcc DSSD1351ESD
+Rvcc vcc vss {rvcc}
+.model DSSD1351ESD D(IS=1e-15 N=1)
+.ends SC_SSD1351_SLEEP

@@ -6,8 +6,9 @@
 * Modelled (section 5.4 Electrical Characteristics):
 *   * Line capacitance CL = 0.5 pF typ (DQA package, VIO = 2.5 V, f = 1 MHz, I/O to GND); the tests may
 *     raise it by the 0.07 pF max channel variation (delta CIO-TO-GND). No max CL is published.
-*   * Leakage ILEAK = 10 nA max at VIO = 2.5 V, 25 C: DC current source pin -> gnd (param ileak). Figure 5-5
-*     (typical) rises from ~5 pA at 25 C to ~20 pA at 60 C; the tests scale the 10 nA max by 4x at 60 C.
+*   * Leakage ILEAK = 10 nA max at VIO = 2.5 V: DC current source pin -> gnd (param ileak). Section 5.4 applies
+*     "over operating free-air temperature range", so 10 nA already covers 60 C; Figure 5-5 (typical) rises
+*     from ~5 pA at 25 C to ~20 pA at 60 C. The tests scale the 10 nA by 4x at 60 C (extra margin).
 *   * Clamp: one diode, cathode on the I/O and anode on GND: reverse breakdown BV = 6.5 V (VBR min at
 *     1 mA) for positive strikes, forward conduction below about -0.6 V for negative ones
 *     (Figure 5-1 shows conduction below about -0.8 V). VRWM 5.5 V, so it never conducts on a 3.3 V bus.

@@ -42,6 +42,19 @@
 *   are typical-only in the PS; package/module trace from the die to module pad 22 (a few mm, part of CPAD here).
 *
 * Pins: out = pad, ctl = ideal logic input (0 V = low, 1 V = high, referenced to gnd), vdd, gnd
+*
+* Second subckt NRF52840_GPIO_BOUND (added by the independent verifier): the WEAKEST output stage the PS
+*   still guarantees. The PS gives only one I-V point per corner (IOH/IOL at a 0.4 V drop) and the tRF/tHRF
+*   table is typical-only ("based on simulations"), so the tanh shape above, scaled to the min corner, is an
+*   assumption. A MOSFET output's I(Vds) is monotonic and concave, so the guaranteed lower envelope is
+*       I >= IOH(min) * min(Vds / 0.4 V, 1)      (and the same for IOL)
+*   i.e. a resistor 0.4 V / IOH up to 0.4 V and a constant IOH beyond. Use it with the PS min column
+*   (SD 1 mA / HD 6 mA source, 1 mA / 6 mA sink) to get the datasheet-guaranteed edge rates.
+*   Pre-driver TEDGE and CPAD as above (they shift both edges alike and hardly matter here).
+*
+* Third subckt NRF52840_GPIO_HIZ: the pad with the output and input buffer disconnected (PIN_CNF reset
+*   value 0x00000002 = input, buffer disconnected, no pull; PS v1.1 6.9.2 PIN_CNF[n]): CPAD and the clamps only.
+*   The PS gives no pad leakage figure, so none is modelled (the LED-side leakage dominates the test).
 * =====================================================================================================
 .subckt NRF52840_GPIO_OUT out ctl vdd gnd params: IOH=2m IOL=2m VK=3.0 TEDGE=2.5n CPAD=3p
 .param ISU={IOH/tanh(0.4/VK)} ISD={IOL/tanh(0.4/VK)}
@@ -55,3 +68,27 @@ Desdh out vdd D_NRF_ESD
 Desdl gnd out D_NRF_ESD
 .model D_NRF_ESD D(IS=1e-15 N=1 RS=5)
 .ends NRF52840_GPIO_OUT
+* -----------------------------------------------------------------------------------------------------
+* PS-guaranteed lower bound (see the header): I = s * IOH * min(Vds/0.4, 1), reverse conduction allowed.
+* VKU / VKD > 0 switch that side to the tanh shape of NRF52840_GPIO_OUT instead (used for the fast side of a
+* skew corner, e.g. pull-up at the guaranteed bound and pull-down at the PS max column with the fitted shape).
+.subckt NRF52840_GPIO_BOUND out ctl vdd gnd params: IOH=1m IOL=1m VKU=0 VKD=0 TEDGE=2.5n CPAD=3p
+.param ISU={VKU > 0 ? IOH/tanh(0.4/max(VKU,1e-3)) : IOH} ISD={VKD > 0 ? IOL/tanh(0.4/max(VKD,1e-3)) : IOL}
+.param KU={VKU > 0 ? 1 : 0} KD={VKD > 0 ? 1 : 0} VU={max(VKU,1e-3)} VD={max(VKD,1e-3)}
+Rpre ctl s 1k
+Cpre s gnd {TEDGE/2.1972/1k}
+Bup vdd out I = max(min(v(s,gnd),1),0)*ISU*(KU*tanh(v(vdd,out)/VU) + (1-KU)*max(min(v(vdd,out)/0.4,1),-1))
+Bdn out gnd I = max(min(1-v(s,gnd),1),0)*ISD*(KD*tanh(v(out,gnd)/VD) + (1-KD)*max(min(v(out,gnd)/0.4,1),-1))
+Cpad out gnd {CPAD}
+Desdh out vdd D_NRF_ESD_B
+Desdl gnd out D_NRF_ESD_B
+.model D_NRF_ESD_B D(IS=1e-15 N=1 RS=5)
+.ends NRF52840_GPIO_BOUND
+* -----------------------------------------------------------------------------------------------------
+* pad high-Z (reset / DFU / pin not yet configured): CPAD and the clamps only
+.subckt NRF52840_GPIO_HIZ out vdd gnd params: CPAD=3p
+Cpad out gnd {CPAD}
+Desdh out vdd D_NRF_ESD_Z
+Desdl gnd out D_NRF_ESD_Z
+.model D_NRF_ESD_Z D(IS=1e-15 N=1 RS=5)
+.ends NRF52840_GPIO_HIZ

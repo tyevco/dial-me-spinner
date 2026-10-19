@@ -167,15 +167,18 @@ def _vsys_only(main):
     return [r for r in main.comps if set(main.pins.get(r, {}).values()) <= {"VSYS", "GND"}]
 
 
-def oled_input(deck, main, temp_boost=True, panel_esd=False):
-    """U21's load: C37/C41/C38/R25/L20/D21/output caps/FB divider from the netlist, TPS61040 averaged model."""
-    deck.include(LIB_BST).include(LIB_D21)
+def oled_input(deck, main, boost=True, panel_esd=False):
+    """U21's load: C37/C41/C38/R25/L20/D21/output caps/FB divider from the netlist, TPS61040 averaged model
+    (boost=False leaves U20 out, for decks that only need the ON/OFF state of U21)."""
+    deck.include(LIB_D21)
     deck += main.passives(nets={"OLED_VIN", "OLED_BST_SW", "+13V_OLED", "OLED_BST_FB", "GND", "VSYS",
                                 "OLED_LSW_CT", "OLED_VCC_EN"}, exclude=_vsys_only(main))
     a, k = main.pin("D21", "A"), main.pin("D21", "K")
     deck += f"XD21 {a} {k} LSW_B5819W"
-    u = {f: main.pin("U20", f) for f in ("VIN", "SW", "FB", "EN", "GND")}
-    deck += f"XU20 {u['VIN']} {u['SW']} {u['FB']} {u['EN']} {u['GND']} {k} LSW_TPS61040_AVG"
+    if boost:
+        deck.include(LIB_BST)
+        u = {f: main.pin("U20", f) for f in ("VIN", "SW", "FB", "EN", "GND")}
+        deck += f"XU20 {u['VIN']} {u['SW']} {u['FB']} {u['EN']} {u['GND']} {k} LSW_TPS61040_AVG"
     if panel_esd:
         deck.include(LIB_PNL)
         j = main.pins["J20"]
@@ -185,6 +188,21 @@ def oled_input(deck, main, temp_boost=True, panel_esd=False):
         deck += (f"XJ20 {spicelib.node_name(vci)} {spicelib.node_name(vddio)} {spicelib.node_name(vcc)} 0 "
                  f"LSW_SSD1351_ESD")
     return deck
+
+
+def si(v):
+    """Value string the netlist parser accepts (spicelib.parse_value has no exponent form): 1.1e-9 -> '1.1n'."""
+    for mult, suf in ((1e6, "M"), (1e3, "k"), (1.0, ""), (1e-3, "m"), (1e-6, "u"), (1e-9, "n"), (1e-12, "p")):
+        if abs(v) >= mult:
+            return f"{v / mult:.6g}{suf}"
+    return f"{v / 1e-15:.6g}f"
+
+
+def scaled(main, scale):
+    """Apply a {ref: multiplier} tolerance draw to the design as value overrides."""
+    for ref, k in scale.items():
+        main.override(ref, si(main.value(ref) * k))
+    return main
 
 
 def run(deck, *, need=()):
@@ -258,12 +276,34 @@ def test_model_ron_qod_and_on_threshold(check, vin):
         check(f"{nm} model @{vin} V", v, SW_VIL_MAX, SW_VIH_MIN, "V", f"{DS_SW} Table 7.3 VIL max / VIH min")
 
 
+# ======================================================================================== helpers on waveforms
+def first_cross(t, v, level, rising=True, after=0.0):
+    """Time of the first crossing of `level` after `after` (linear interpolation), or None."""
+    for i in range(1, len(t)):
+        if t[i] < after:
+            continue
+        a, b = v[i - 1], v[i]
+        if (rising and a < level <= b) or (not rising and a > level >= b):
+            return t[i - 1] + (level - a) * (t[i] - t[i - 1]) / (b - a)
+    return None
+
+
+def at(t, v, when):
+    for i in range(1, len(t)):
+        if t[i] >= when:
+            return v[i - 1] + (v[i] - v[i - 1]) * (when - t[i - 1]) / (t[i] - t[i - 1])
+    return v[-1]
+
+
 # ======================================================================================== 2. U2 LED rail turn-on
-def _u2_turn_on_deck(main, base, corner, temp=25, t_on=0.5e-3, stop=9e-3, ron_add=0.0):
+U2_CASES = [(c, 25) for c in CORNERS] + [("bat3.0", -10), ("bat4.2", 60)]
+
+
+def u2_turn_on(main, base, corner, temp=25, t_on=0.5e-3, stop=8e-3):
     d = Deck(f"U2 turn-on {corner} {temp}C")
     vsys_network(d, main, base, corner, temp)
     sense(d, "n_vsys", "n_u2_vin", "n_iu2")               # U2 VIN pin current -> V(n_iu2)
-    tps22917(d, main, "U2", ron_add=ron_add, vin_node="n_u2_vin")
+    tps22917(d, main, "U2", vin_node="n_u2_vin")
     led_rail(d, main)
     d += f"VCTL n_ctl_led 0 PWL(0 0 {t_on} 0 {t_on + 1e-7} 1)"
     d += "VOE n_oe_led 0 1"
@@ -274,34 +314,373 @@ def _u2_turn_on_deck(main, base, corner, temp=25, t_on=0.5e-3, stop=9e-3, ron_ad
     d.meas(f"tran iinrush MAX v(n_iu2) FROM={t_on} TO={stop}")
     d.meas(f"tran ibat MAX v(n_ibat) FROM={t_on} TO={stop}")
     d.meas(f"tran vledend FIND v(n_vled) AT={stop}")
-    return d
-
-
-@pytest.mark.parametrize("corner", list(CORNERS))
-def test_u2_turn_on_supply_corners(main, base, check, corner):
-    """LED_PWR_EN rises: VLED ramp time, inrush through U2 and the battery, VSYS droop -> +3V3 floor."""
-    t_on, stop = 0.5e-3, 9e-3
-    d = _u2_turn_on_deck(main, base, corner, t_on=t_on, stop=stop)
+    d.wave("v(n_vled)")
     r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vledend"))
-    v0 = r["vsys0"]
-    d2 = _u2_turn_on_deck(main, base, corner, t_on=t_on, stop=stop)
-    d2.meas(f"tran t10 WHEN v(n_vled)={0.1 * v0} RISE=1")
-    d2.meas(f"tran t90 WHEN v(n_vled)={0.9 * v0} RISE=1")
-    r2 = run(d2, need=("t10", "t90"))
-    ton, tr = r2["t90"] - t_on, r2["t90"] - r2["t10"]
+    t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
+    r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on)
+    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
+    r["t_on"] = t_on
+    return r
+
+
+def check_u2_turn_on(check, main, r, tag, usb, vbat):
+    ton, tr = r["t90"] - r["t_on"], r["t90"] - r["t10"]
     c7 = main.value("C7")
-    check(f"U2 tON (ON -> VLED 90 %) {corner}", ton, None, FW_LED_WAIT, "s",
-          "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN; SPEC 5.1 '~4 ms'")
-    vin_k = 3.6 if v0 < 4.3 else 5.0
-    check(f"U2 tR vs Table 7.6 {corner}", tr, 0.8 * SW_TR_K[vin_k] * c7 / 1e-12, 1.2 * SW_TR_K[vin_k] * c7 / 1e-12, "s",
-          f"{DS_SW} Table 7.6 tR {SW_TR_K[vin_k] * 1e6:.1f} us/pF x C7 (+-20 %, VIN {vin_k} V row)")
-    check(f"U2 inrush peak {corner}", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
-    if not CORNERS[corner]["usb"]:
-        check(f"battery current peak {corner}", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A setting")
+    check(f"U2 tON (ON -> VLED 90 %) {tag}", ton, None, FW_LED_WAIT, "s",
+          "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN (SPEC 5.1 '~4 ms')")
+    vin_k = 3.6 if r["vsys0"] < 4.3 else 5.0
+    check(f"U2 tR vs Table 7.6 x C7 {tag}", tr, 0.8 * SW_TR_K[vin_k] * c7 / 1e-12, 1.2 * SW_TR_K[vin_k] * c7 / 1e-12,
+          "s", f"{DS_SW} Table 7.6 tR {SW_TR_K[vin_k] * 1e6:.1f} us/pF x C7 (+-20 %, VIN {vin_k} V row)")
+    check(f"U2 inrush peak {tag}", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
+    if not usb:
+        check(f"battery current peak {tag}", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A setting")
     v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
-    check(f"+3V3 min during U2 turn-on {corner}", v3, W25_VCC_MIN, None, "V",
+    check(f"+3V3 min during U2 turn-on {tag}", v3, W25_VCC_MIN, None, "V",
           "W25Q128JV VCC min 2.7 V; RT9080 DS9080-09 dropout 0.53 V @ 0.6 A")
-    if CORNERS[corner]["usb"] or CORNERS[corner]["vbat"] >= 3.48:
-        check(f"+3V3 min vs POFWARN {corner}", v3, POF_LIMIT, None, "V",
-              "docs/firmware.md POFWARN 2.9 V + nRF52840 PS VPOFTOL 5 % (in the firmware's VBAT >= 3.48 V envelope)")
-    check(f"VLED settles to VSYS {corner}", r["vledend"], 0.98 * v0, None, "V", f"{DS_SW} Table 9-2 ON=H: VOUT = VIN")
+    if usb or vbat >= 3.48:
+        check(f"+3V3 min vs POFWARN {tag}", v3, POF_LIMIT, None, "V",
+              "docs/firmware.md POFWARN 2.9 V + nRF52840 PS VPOFTOL 5 % (firmware envelope VBAT >= 3.48 V)")
+    check(f"VLED settles to VSYS {tag}", r["vledend"], 0.98 * r["vsys0"], None, "V", f"{DS_SW} Table 9-2 ON=H: VOUT = VIN")
+
+
+@pytest.mark.parametrize("corner,temp", U2_CASES)
+def test_u2_turn_on_supply_and_temperature(main, base, check, corner, temp):
+    """LED_PWR_EN rises: VLED ramp time, inrush through U2 and the battery, VSYS droop -> +3V3 floor."""
+    r = u2_turn_on(main, base, corner, temp)
+    c = CORNERS[corner]
+    check_u2_turn_on(check, main, r, f"{corner} {temp}C", c["usb"], c["vbat"])
+
+
+def test_u2_turn_on_tolerance_extremes(main, base, check):
+    """C7 (CT) and the bulk C8/C9 at their netlist tolerance corners: slowest tON and largest inrush."""
+    worst_ton, worst_i = 0.0, 0.0
+    for sc in main.extremes(["C7", "C8", "C9"]):
+        scaled(main, sc)
+        r = u2_turn_on(main, base, "bat4.2", stop=7e-3)
+        main.reset()
+        worst_ton = max(worst_ton, r["t90"] - r["t_on"])
+        worst_i = max(worst_i, r["iinrush"])
+    check("U2 tON worst tolerance corner (C7/C8/C9)", worst_ton, None, FW_LED_WAIT, "s",
+          "docs/architecture.md 7: firmware waits >= 5 ms after LED_PWR_EN")
+    check("U2 inrush worst tolerance corner (C7/C8/C9)", worst_i, None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
+
+
+@pytest.mark.fault
+def test_fault_ct_cap_missing_inrush(main, base, check):
+    """C7 left off (or tomb-stoned): CT open -> full-speed turn-on into ~49 uF must exceed the switch / BATOCP limit."""
+    main.remove("C7")
+    r = u2_turn_on(main, base, "bat4.2", stop=3e-3)
+    detects(check, "U2 inrush with C7 missing", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
+    detects(check, "battery current with C7 missing", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A")
+
+
+# ======================================================================================== 3. U2 off: QOD discharge of VLED
+def u2_turn_off(main, base, corner="bat4.2", temp=25, t_off=5e-3, stop=50e-3, ideal_vsys=None):
+    """U2 on, then LED_PWR_EN low at t_off: time until VLED < 10 % (datasheet tFALL end point)."""
+    d = Deck(f"U2 QOD {corner}")
+    if ideal_vsys is None:
+        vsys_network(d, main, base, corner, temp)
+    else:                                                  # fast variant for Monte Carlo
+        d += [f"VSYSI n_vsys 0 {ideal_vsys}", "B3V3 n_p3v3 0 V = min(3.3, V(n_vsys) - 0.044)"]
+    tps22917(d, main, "U2")
+    led_rail(d, main)
+    d += f"VCTL n_ctl_led 0 PWL(0 0 0.1m 0 0.1001m 1 {t_off} 1 {t_off + 1e-7} 0)"
+    d += "VOE n_oe_led 0 1"
+    gpio(d, main, "LED_PWR_EN", "n_ctl_led", "n_oe_led")
+    d.tran("20u", f"{stop}")
+    d.meas(f"tran vled0 FIND v(n_vled) AT={t_off * 0.99}")
+    d.wave("v(n_vled)")
+    r = run(d, need=("vled0",))
+    t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
+    t10 = first_cross(t, v, 0.1 * r["vled0"], rising=False, after=t_off)
+    t90 = first_cross(t, v, 0.9 * r["vled0"], rising=False, after=t_off)
+    r["t_off10"] = (t10 - t_off) if t10 else float("inf")
+    r["tfall"] = (t10 - t90) if (t10 and t90) else float("inf")
+    return r
+
+
+def _cl_vled(main):
+    return sum(main.value(r) for r in main.on_net("VLED", "C") if main.fitted(r))
+
+
+@pytest.mark.parametrize("corner", ["bat3.0", "bat4.2", "usb5.0"])
+def test_u2_qod_discharge(main, base, check, corner):
+    """LED_PWR_EN low: VLED must be discharged (< 10 %) within the firmware's 30 ms allowance; tFALL vs Eq. 4."""
+    r = u2_turn_off(main, base, corner)
+    check(f"VLED to 10 % after LED_PWR_EN low {corner}", r["t_off10"], None, FW_LED_OFF, "s",
+          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+    eq4 = 2.2 * (main.value("R4") + SW_QOD) * _cl_vled(main)
+    check(f"tFALL vs SLVSDW8B Eq. 4 {corner}", r["tfall"], 0.85 * eq4, 1.15 * eq4, "s",
+          f"{DS_SW} 9.3.3 Eq. 4 tFALL = 2.2 (R4 + QOD 150 Ohm) CL (+-15 % model correlation)")
+
+
+def test_u2_qod_discharge_tolerance_extremes(main, base, check):
+    """C8, C9, R4 at their tolerance corners (the 48 x 100 nF at nominal): slowest VLED discharge."""
+    worst = 0.0
+    for sc in main.extremes(["C8", "C9", "R4"]):
+        scaled(main, sc)
+        worst = max(worst, u2_turn_off(main, base, "bat4.2", stop=40e-3, ideal_vsys=4.2)["t_off10"])
+        main.reset()
+    check("VLED to 10 % worst C8/C9/R4 corner", worst, None, FW_LED_OFF, "s",
+          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+
+
+@pytest.mark.slow
+def test_u2_qod_discharge_monte_carlo(main, base, check):
+    """Monte Carlo (200 draws) over every VLED capacitor and R4 within their netlist tolerances."""
+    refs = [r for r in main.on_net("VLED", "C") if main.fitted(r)] + ["R4"]
+    times = []
+    for sc in main.monte_carlo(refs, 200, seed=7):
+        scaled(main, sc)
+        times.append(u2_turn_off(main, base, stop=40e-3, ideal_vsys=4.2)["t_off10"])
+        main.reset()
+    times.sort()
+    check("VLED to 10 %: Monte Carlo max of 200", times[-1], None, FW_LED_OFF, "s",
+          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+
+
+@pytest.mark.fault
+def test_fault_qod_resistor_wrong_value(main, base, check):
+    """R4 fitted as 1 k instead of 100 R (a one-digit BOM slip): the discharge must miss the 30 ms allowance."""
+    main.override("R4", "1k")
+    r = u2_turn_off(main, base, "bat4.2", stop=60e-3, ideal_vsys=4.2)
+    detects(check, "VLED to 10 % with R4 = 1k", r["t_off10"], None, FW_LED_OFF, "s",
+            "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+
+
+# ======================================================================================== 4. ON pins vs GPIO, reset
+@pytest.mark.parametrize("corner", ["bat3.0", "bat4.2"])
+def test_on_pins_vs_gpio_levels(main, base, check, corner):
+    """ON levels for both switches with the nRF pin driven high (min drive), low, and released (reset, leakage)."""
+    out = {}
+    for state, (ctl, oe, leak) in {"high": (1, 1, 0.0), "low": (0, 1, 0.0), "reset": (0, 0, 1e-6)}.items():
+        d = Deck(f"ON pins {state} {corner}")
+        vsys_network(d, main, base, corner)
+        tps22917(d, main, "U2")
+        tps22917(d, main, "U21")
+        d += main.passives(nets={"LED_PWR_EN", "OLED_VCC_EN", "GND"})
+        d += [f"VCTL n_ctl 0 {ctl}", f"VOE n_oe 0 {oe}"]
+        # min drive (largest output resistance) and +1 uA sourcing pad leakage in reset: worst for each level
+        gpio(d, main, "LED_PWR_EN", "n_ctl", "n_oe", rout=ROUT["sd_min"], ileak=leak)
+        gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe", rout=ROUT["sd_min"], ileak=leak)
+        d.op()
+        d.print_op(f"v({main.node('LED_PWR_EN')})", f"v({main.node('OLED_VCC_EN')})", "v(n_p3v3)")
+        r = run(d, need=("op_0", "op_1"))
+        out[state] = (r["op_0"], r["op_1"])
+    src_hi = f"{DS_SW} Table 7.3 VIH 1.0..5.5 V; {DS_NRF} VOH (IOH,SD min)"
+    src_lo = f"{DS_SW} Table 7.3 VIL max 0.35 V"
+    for i, ref in enumerate(("U2", "U21")):
+        check(f"{ref} ON driven high {corner}", out["high"][i], SW_VIH_MIN, SW_VIH_MAX, "V", src_hi)
+        check(f"{ref} ON driven low {corner}", out["low"][i], None, SW_VIL_MAX, "V", src_lo)
+        check(f"{ref} ON in MCU reset (+1 uA leak, ASSUMED) {corner}", out["reset"][i], None, SW_VIL_MAX, "V",
+              src_lo + "; R3/R25 pull-down; nRF pad leakage not specified -> 1 uA assumed")
+
+
+def mcu_reset(main, base, stop=40e-3, t_rst=6e-3, leak=100e-9):
+    """Both rails on, then the MCU resets at t_rst (pads released, small sourcing leakage): do both switches open?"""
+    d = Deck("MCU reset")
+    vsys_network(d, main, base, "bat4.2")
+    tps22917(d, main, "U2")
+    led_rail(d, main)
+    tps22917(d, main, "U21")
+    oled_input(d, main, boost=False)          # only U21's ON/OFF state matters here
+    d += ["VCTL n_ctl 0 PWL(0 0 0.1m 0 0.1001m 1)", f"VOE n_oe 0 PWL(0 1 {t_rst} 1 {t_rst + 1e-7} 0)"]
+    gpio(d, main, "LED_PWR_EN", "n_ctl", "n_oe", ileak=leak)
+    gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe", ileak=leak)
+    d.tran("20u", f"{stop}")
+    d.meas(f"tran vled0 FIND v(n_vled) AT={t_rst * 0.99}")
+    d.meas(f"tran von2 FIND v({main.node('LED_PWR_EN')}) AT={stop}")
+    d.meas(f"tran von21 FIND v({main.node('OLED_VCC_EN')}) AT={stop}")
+    d.wave("v(n_vled)")
+    r = run(d, need=("vled0", "von2", "von21"))
+    t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
+    t10 = first_cross(t, v, 0.1 * r["vled0"], rising=False, after=t_rst)
+    r["t_off10"] = (t10 - t_rst) if t10 else float("inf")
+    return r
+
+
+def test_mcu_reset_turns_both_rails_off(main, base, check):
+    """Through an MCU reset the pull-downs (not the TPS22917 smart pull-down, which is disconnected once ON was high)
+    must take both ON pins below VIL and the LED rail must discharge within the 30 ms allowance."""
+    r = mcu_reset(main, base)
+    check("U2 ON after MCU reset (100 nA leak, ASSUMED)", r["von2"], None, SW_VIL_MAX, "V", f"{DS_SW} Table 7.3 VIL max")
+    check("U21 ON after MCU reset (100 nA leak, ASSUMED)", r["von21"], None, SW_VIL_MAX, "V", f"{DS_SW} Table 7.3 VIL max")
+    check("VLED to 10 % after MCU reset", r["t_off10"], None, FW_LED_OFF, "s",
+          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+
+
+@pytest.mark.fault
+def test_fault_on_pulldown_missing_in_reset(main, base, check):
+    """R3 left off: after ON was driven high the TPS22917 smart pull-down is disconnected (Table 9-1), so a released
+    pad with any sourcing leakage keeps the LED rail on through reset."""
+    main.remove("R3")
+    r = mcu_reset(main, base, stop=30e-3)
+    detects(check, "U2 ON after MCU reset with R3 missing", r["von2"], None, SW_VIL_MAX, "V", f"{DS_SW} Table 7.3 VIL max")
+    detects(check, "VLED to 10 % after reset with R3 missing", r["t_off10"], None, FW_LED_OFF, "s",
+            "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+
+
+# ======================================================================================== 5. phantom powering via LED_DIN
+def phantom_op(main, base, corner="bat4.2", temp=25, rout=ROUT["hd_max"], esd=None):
+    """U2 off (LED_PWR_EN low, QOD active), P0.06 driven HIGH: clamp current into D101.DIN and the VLED it builds."""
+    d = Deck(f"phantom {corner} {temp}C")
+    d += f".temp {temp}"
+    vsys_network(d, main, base, corner, temp)
+    tps22917(d, main, "U2")
+    led_rail(d, main, esd=esd)
+    d += main.passives(nets={"LED_DIN_MCU", "LED_DIN_R", "LED_DIN", "GND"})
+    d += ["VCTL0 n_ctl0 0 0", "VCTL1 n_ctl1 0 1", "VOE n_oe 0 1"]
+    gpio(d, main, "LED_PWR_EN", "n_ctl0", "n_oe")
+    gpio(d, main, "LED_DIN_MCU", "n_ctl1", "n_oe", rout=rout)
+    d.op()
+    n_mcu, n_r, n_din = main.node("LED_DIN_MCU"), main.node("LED_DIN_R"), main.node("LED_DIN")
+    d.print_op(f"v({n_mcu})", f"v({n_r})", f"v({n_din})", "v(n_vled)", "v(n_vsys)")
+    r = run(d, need=("op_0", "op_1", "op_2", "op_3"))
+    r["i_din"] = (r["op_0"] - r["op_1"]) / main.value("R40") - r["op_1"] / main.value("R41")
+    r["vi_over_vdd"] = r["op_2"] - r["op_3"]
+    r["vled"] = r["op_3"]
+    return r
+
+
+@pytest.mark.parametrize("corner,temp", [("bat4.2", 25), ("bat3.0", -10), ("usb5.0", 60)])
+def test_phantom_vled_and_din_current(main, base, check, corner, temp):
+    """Firmware fault: P0.06 high (high drive, strongest pad) while VLED is off.  The 220 R limits the clamp current
+    and U2's QOD (R4 + 150 R) holds VLED down; VLED must stay far below the LED supply range."""
+    r = phantom_op(main, base, corner, temp)
+    check(f"phantom VLED (P0.06 high, U2 off) {corner} {temp}C", r["vled"], None, WS_VDD_MIN, "V",
+          f"{DS_WS} p.2 VDD 3.3 V min (ring must not be phantom-powered into operation)")
+    check(f"DIN clamp current (record) {corner} {temp}C", r["i_din"], None, None, "A",
+          "informational: (V(P0.06) - V(LED_DIN_R))/R40 - V(LED_DIN_R)/R41")
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with P0.06 high and VLED off, R40 = 220 R lets ~6 mA into "
+                   "D101's DIN clamp, which then sits more than 0.7 V above VLED (WS2812C abs max VI <= VDD + 0.7 V); "
+                   "only firmware prevents it (fit U43 SN74LV1T34 / raise R40, see design_findings)")
+@pytest.mark.parametrize("corner,temp", [("bat4.2", 25), ("bat3.0", -10)])
+def test_phantom_din_abs_max(main, base, check, corner, temp):
+    r = phantom_op(main, base, corner, temp)
+    check(f"DIN - VDD with P0.06 high, VLED off {corner} {temp}C", r["vi_over_vdd"], None, WS_VI_OVER_VDD, "V",
+          f"{DS_WS} p.2 abs max VI <= VDD + 0.7 V (clamp I-V ASSUMED generic Si, IS 1e-14)")
+
+
+def test_phantom_normal_off_state(main, base, check):
+    """Normal sequence (firmware drives P0.06 low before LED_PWR_EN low): VLED and DIN stay at ground."""
+    d = Deck("LED rail off, DIN low")
+    vsys_network(d, main, base, "bat4.2")
+    tps22917(d, main, "U2", isd_out=SW_ISD_MAX_85C)
+    led_rail(d, main)
+    d += main.passives(nets={"LED_DIN_MCU", "LED_DIN_R", "LED_DIN", "GND"})
+    d += ["VCTL0 n_ctl0 0 0", "VOE n_oe 0 1"]
+    gpio(d, main, "LED_PWR_EN", "n_ctl0", "n_oe")
+    gpio(d, main, "LED_DIN_MCU", "n_ctl0", "n_oe")
+    d.op()
+    d.print_op("v(n_vled)", f"v({main.node('LED_DIN')})")
+    r = run(d, need=("op_0", "op_1"))
+    check("VLED off (ISD max leaking into VOUT)", r["op_0"], None, 0.1 * 4.2, "V",
+          f"{DS_SW} Table 9-2 ON=L + QOD: VOUT = GND; Table 7.5 ISD 100 nA max; 10 % = tFALL end point")
+    check("LED_DIN with P0.06 low", r["op_1"], None, 0.7, "V", f"{DS_WS} p.3 VIL max 0.7 V")
+
+
+# ======================================================================================== 6. U21 OLED boost input turn-on
+U21_CASES = [(c, 25) for c in ("bat3.0", "bat3.7", "bat4.2", "usb4.5", "usb5.5")] + [("bat3.0", -10)]
+
+
+def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
+    d = Deck(f"U21 turn-on {corner} {temp}C")
+    d += f".temp {temp}"
+    vsys_network(d, main, base, corner, temp)
+    sense(d, "n_vsys", "n_u21_vin", "n_iu21")
+    tps22917(d, main, "U21", vin_node="n_u21_vin")
+    oled_input(d, main)
+    d += [f"VCTL n_ctl 0 PWL(0 0 {t_on} 0 {t_on + 1e-7} 1)", "VOE n_oe 0 1"]
+    gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
+    d.tran("2u", f"{stop}")
+    d.meas(f"tran vsys0 FIND v(n_vsys) AT={t_on * 0.9}")
+    d.meas(f"tran vsysmin MIN v(n_vsys) FROM={t_on} TO={stop}")
+    d.meas(f"tran iinrush MAX v(n_iu21) FROM={t_on} TO={stop}")
+    d.meas(f"tran ibat MAX v(n_ibat) FROM={t_on} TO={stop}")
+    d.meas(f"tran v13end FIND v({main.node('+13V_OLED')}) AT={stop}")
+    d.meas(f"tran vinend FIND v({main.node('OLED_VIN')}) AT={stop}")
+    d.wave(f"v({main.node('OLED_VIN')})", "v(n_iu21)", "v(n_u21_vin)")
+    r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "v13end", "vinend"))
+    w = r["waves"]
+    t, v = w["time"], w[f"v({main.node('OLED_VIN')})"]
+    r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
+    r["t_on"] = t_on
+    # energy dissipated in U21 during the ramp: (VIN - VOUT) * I
+    e = 0.0
+    for i in range(1, len(t)):
+        p0 = (w["v(n_u21_vin)"][i - 1] - v[i - 1]) * w["v(n_iu21)"][i - 1]
+        p1 = (w["v(n_u21_vin)"][i] - v[i]) * w["v(n_iu21)"][i]
+        e += 0.5 * (p0 + p1) * (t[i] - t[i - 1])
+    r["e_u21"] = e
+    return r
+
+
+@pytest.mark.parametrize("corner,temp", U21_CASES)
+def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
+    """OLED_VCC_EN rises: OLED_VIN ramp, then the TPS61040 (EN tied to OLED_VIN) starts at its UVLO while U21 is still
+    ramping, so the U21 inrush is the boost's soft-start current, not C x dV/dt."""
+    r = u21_turn_on(main, base, corner, temp)
+    tag = f"{corner} {temp}C"
+    c = CORNERS[corner]
+    check(f"U21 tON (ON -> OLED_VIN 90 %) {tag}", r["t90"] - r["t_on"], None, FW_OLED_WAIT, "s",
+          "docs/architecture.md 7: 'set OLED_VCC_EN, wait >= 200 ms, then AFh'")
+    check(f"U21 inrush peak (boost soft start) {tag}", r["iinrush"], None, SW_IMAX, "A", f"{DS_SW} Table 7.1 IMAX 2 A")
+    check(f"U21 energy during the ramp (record) {tag}", r["e_u21"], None, None, "J",
+          "informational: no SOA / transient thermal data in SLVSDW8B")
+    if not c["usb"]:
+        check(f"battery current peak, OLED on {tag}", r["ibat"], None, BQ_BATOCP, "A", f"{DS_BQ} IBAT_OCP 1.5 A setting")
+    v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
+    check(f"+3V3 min during U21 turn-on {tag}", v3, W25_VCC_MIN, None, "V",
+          "W25Q128JV VCC min 2.7 V; RT9080 DS9080-09 dropout 0.53 V @ 0.6 A")
+    if c["usb"] or c["vbat"] >= 3.48:
+        check(f"+3V3 min vs POFWARN, OLED on {tag}", v3, POF_LIMIT, None, "V",
+              "docs/firmware.md POFWARN 2.9 V + nRF52840 PS VPOFTOL 5 % (firmware envelope VBAT >= 3.48 V)")
+    check(f"OLED_VIN within TPS61040 VIN range after the ramp {tag}", r["vinend"], 1.8, 6.0, "V",
+          f"{DS_BST} Table 5.3 VIN 1.8..6 V")
+
+
+# ======================================================================================== 7. U21 off: back-powering
+def u21_off_state(main, base, temp, panel_esd=True, stop=20.0, isd_out=None, v13_0=0.0):
+    """U21 off (OLED_VCC_EN low), +3V3 up.  Paths into OLED_VIN / +13V_OLED: U21 off-state leakage (VIN->VOUT),
+    the SSD1351 VCI/VDDIO->VCC ESD path, then D21 reverse leakage from +13V_OLED back into OLED_VIN (QOD open)."""
+    d = Deck(f"U21 off {temp}C")
+    d += f".temp {temp}"
+    vsys_network(d, main, base, "bat3.7", temp)
+    isd = isd_out if isd_out is not None else (SW_ISD_MAX_85C if temp > 25 else 10e-9)
+    tps22917(d, main, "U21", isd_out=isd)
+    oled_input(d, main, panel_esd=panel_esd)
+    d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
+    gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
+    n13, nin, nfb = main.node("+13V_OLED"), main.node("OLED_VIN"), main.node("OLED_BST_FB")
+    if v13_0:
+        d += f".ic v({n13})={v13_0}"
+    d.tran("1m", f"{stop}", extra="uic" if v13_0 else "")
+    d.meas(f"tran vin_end FIND v({nin}) AT={stop}")
+    d.meas(f"tran vin_max MAX v({nin})")
+    d.meas(f"tran v13_end FIND v({n13}) AT={stop}")
+    d.meas(f"tran vfb_end FIND v({nfb}) AT={stop}")
+    return run(d, need=("vin_end", "vin_max", "v13_end", "vfb_end"))
+
+
+def test_u21_off_leakage_alone_keeps_boost_off(main, base, check):
+    """Without the panel's ESD path, U21's worst-case off leakage (ISD max) alone cannot enable the boost."""
+    r = u21_off_state(main, base, 60, panel_esd=False)
+    check("OLED_VIN, U21 off, ISD max, no panel path, 60 C", r["vin_max"], None, BST_EN_VIL, "V",
+          f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN) / {DS_SW} Table 7.5 ISD 100 nA max")
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: with OLED_VCC_EN low, the SSD1351 VCI->VCC ESD path holds "
+                   "+13V_OLED near +3V3 and D21's reverse leakage then charges the floating OLED_VIN (U21 QOD open) "
+                   "above the TPS61040 EN VIL max (EN tied to VIN): the boost is not guaranteed off and draws IQ "
+                   "from +3V3 (fix: tie U21 QOD to OLED_VIN, see design_findings)")
+@pytest.mark.parametrize("temp", [-10, 25, 60])
+def test_u21_off_backpower_via_panel_and_d21(main, base, check, temp):
+    r = u21_off_state(main, base, temp, panel_esd=True)
+    check(f"+13V_OLED held by the panel ESD path (record) {temp}C", r["v13_end"], None, None, "V",
+          "SSD1351 Rev 1.3 8.9 Note (1)")
+    check(f"FB - OLED_VIN with OLED off {temp}C", r["vfb_end"] - r["vin_end"], None, BST_FB_OVER_VIN, "V",
+          f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
+    check(f"OLED_VIN with OLED off (boost EN = VIN) {temp}C", r["vin_max"], None, BST_EN_VIL, "V",
+          f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN): boost guaranteed off")

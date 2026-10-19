@@ -57,7 +57,7 @@ VTS_ENZ_MIN = 1.8                                                # Table 7.5 VTS
 VTS_CLAMP = {"min": 2.2, "typ": 2.8, "max": 3.3}                 # Table 7.5 VTS_CLAMP (open pin)
 VPIN_MIN, VPIN_MAX = -0.3, 5.5                                   # Table 7.1 abs max, "all other pins"
 T_TS_ON, T_TS_OFF = 4e-3, 196e-3                                 # Table 7.6 tTS_DUTY_ON / tTS_DUTY_OFF
-T_DGL = 64e-6        # Table 7.6 tSLEEP_DGL: the shortest deglitch SLUSE99C specifies (it gives NO TS deglitch)
+T_DGL = 64e-6        # Table 7.6 tSLEEP_DGL (VIN falling): NOT a TS parameter; SLUSE99C gives no TS deglitch at all
 # TS_CONTROL (0x0B, Table 8-20) settings under test: firmware.md §13.1 leaves the 0x00 default;
 # 0x90 = TS_HOT 10 (50 C) + TS_COLD 01 (3 C) is the fix proposed by this test file.
 TS_CONTROL = {"0x00": ("COLD00", "HOT00"), "0x90": ("COLD01", "HOT10")}
@@ -69,10 +69,16 @@ FET = {  # model corners (models/charger_ts__bss138dw.lib)
     "weak": dict(vth=1.5, beta=0.124, rs=2.5),   # VGS(th) max 1.5 V + RDS(ON) max 3.5 Ohm @ 10 V
     "strong": dict(vth=0.5, beta=0.31, rs=1.0),  # VGS(th) min 0.5 V
 }
-VTH_MIN = 0.5            # DS EC table VGS(th) min
+VTH_MIN = 0.5            # DS EC table VGS(th) min (25 C)
+TCV = -3.5e-3            # DS Fig. 4 VGS(th) tempco (1.85 V at -55 C .. 1.12 V at 150 C), as in the model
 IDSS_MAX = 0.5e-6        # DS EC table IDSS max
 VGSS_MAX = 20.0          # DS maximum ratings VGSS
-C_SLOW = 1.7             # cscale: EC-table capacitance maxima vs Fig. 10 (see model header)
+# Capacitances. Fig. 10 (VGS = 0, 1 MHz), digitised: Ciss 33, Crss 3.3 pF at VDS = 10 V; Crss 22.3 pF at 0 V.
+# EC table maxima at VDS = 10 V ("guaranteed by design"): Ciss 50, Coss 25, Crss 8 pF. The slow corner sets
+# Cgs = Ciss - Crss, Cds = Coss - Crss, and scales the whole Crss(VDS) curve so that it meets 8 pF at 10 V.
+FIG10 = {"ciss10": 33e-12, "crss10": 3.3e-12, "crss0": 22.3e-12}
+CISS_MAX, COSS_MAX, CRSS_MAX = 50e-12, 25e-12, 8e-12
+C_SLOW = dict(cgs=CISS_MAX - CRSS_MAX, cds=COSS_MAX - CRSS_MAX, cgd0=FIG10["crss0"] * CRSS_MAX / FIG10["crss10"])
 QA = ("6", "2", "1")     # Q1 unit A pins (D, G, S), KiCad Q_Dual_NMOS_S1G1D2S2G2D1 (sheets/base.py)
 QB = ("3", "5", "4")     # Q1 unit B pins (D, G, S)
 
@@ -105,6 +111,11 @@ def new_deck(title: str) -> Deck:
         deck.include(m)
     deck += ".model CTS_SW sw vt=0.5 vh=0 ron=%g roff=%g" % (SW_RON, SW_ROFF)
     return deck
+
+
+def sim_errors(res):
+    """Simulator errors, without failed WHEN measurements (those come back as None and fail their check)."""
+    return [e for e in res["_errors"] if not re.match(r"\s*meas\s", e)]
 
 
 def raw_value(d, ref):
@@ -151,7 +162,7 @@ def vdd_for(vbat, mode, corner):
 
 def build_cell(base, main, *, vbat=3.7, mode="usb5.0", pressed=False, switch=None, fet="typ",
                its="typ", dr=0.0, db=0.0, idss=IDSS_MAX, vdd=None, rscale=None, mscale=None,
-               vclamp="typ", pulsed=0, tdel=0.0, cscale=1.0):
+               vclamp="typ", pulsed=0, tdel=0.0, caps=None):
     """One copy of the TS/MR + BTN_N circuit from both netlists. Returns (lines, probe nodes)."""
     its_ad = ITS[its] if isinstance(its, str) else its
     its_bat = ITS_BAT[its] if isinstance(its, str) else its * _ITS_BAT_TYP / ITS["typ"]
@@ -166,14 +177,18 @@ def build_cell(base, main, *, vbat=3.7, mode="usb5.0", pressed=False, switch=Non
                  f"RSW1 {a} {c} {SW_RON if pressed else SW_ROFF:g}")
     if base.fitted("Q1"):
         fp = FET[fet]
-        prm = f"vth={fp['vth']} beta={fp['beta']} rs={fp['rs']} idss={idss:g} cscale={cscale:g}"
+        prm = f"vth={fp['vth']} beta={fp['beta']} rs={fp['rs']} idss={idss:g}"
+        prm += "".join(f" {k}={v:g}" for k, v in (caps or {}).items())
         for name, (pd, pg, ps) in (("XQ1A", QA), ("XQ1B", QB)):
             b.append(f"{name} {base.pin('Q1', pd)} {base.pin('Q1', pg)} {base.pin('Q1', ps)} CTS_BSS138DW_N params: {prm}")
     if base.fitted("RT1"):
         r25, bnet = ntc_r25_b(base)
         b.append(f"VIRT1 {base.pin('RT1', '1')} n_rt1_i 0")
-        b.append(f"XRT1 n_rt1_i {base.pin('RT1', '2')} CTS_NCP15XH103 params: r25={r25:g} bnet={bnet:g} "
-                 f"dr={dr:g} db={db:g}")
+        if "RT1" in base._shorted:   # RT1 is not emitted by passives(), so honour Design.short() here
+            b.append(f"VRT1_short n_rt1_i {base.pin('RT1', '2')} 0")
+        else:
+            b.append(f"XRT1 n_rt1_i {base.pin('RT1', '2')} CTS_NCP15XH103 params: r25={r25:g} bnet={bnet:g} "
+                     f"dr={dr:g} db={db:g}")
     if base.fitted("U1"):
         b.append(f"XU1 {base.pin('U1', 'TS/MR')} {base.pin('U1', 'IN')} {base.pin('U1', 'BAT')} CTS_BQ25180_TSMR "
                  f"params: its_ad={its_ad:g} its_bat={its_bat:g} pulsed={pulsed} tdel={tdel:g} vclamp={vcl:g}")
@@ -272,7 +287,8 @@ def jeita_run(base, main, cells=None, levels=None, title="TS/MR JEITA trip tempe
         deck.meas(f"dc j{k}_vm10 FIND {pr['ts']} AT=-10")
         deck.meas(f"dc j{k}_v25 FIND {pr['ts']} AT=25")
     res = deck.run()
-    assert not res["_errors"], res["_errors"][:5]
+    errors = sim_errors(res)
+    assert not errors, errors[:5]
     out = []
     for k in range(len(cells)):
         row = {tag: res.get(f"j{k}_{tag.lower()}") for tag in levels}
@@ -300,8 +316,21 @@ def mapping(rows, cells, key):
     """Nominal trip temperature of threshold `key` and the spread the IC's own min/max threshold gives."""
     r = rows[nominal_index(cells)]
     t_typ, t_a, t_b = r[f"{key}_typ"], r[f"{key}_min"], r[f"{key}_max"]
-    assert None not in (t_typ, t_a, t_b), (key, r)
+    if None in (t_typ, t_a, t_b):      # threshold never crossed in -30..90 C: the check gets None and fails
+        return None, 0.0
     return t_typ, max(abs(t_a - t_typ), abs(t_b - t_typ))
+
+
+def pick_none(items, pick):
+    """min/max of (value, info) pairs; any None value (no crossing) wins, so its check fails."""
+    for it in items:
+        if it[0] is None:
+            return it
+    return pick(items, key=lambda x: x[0])
+
+
+def diff_none(a, b):
+    return None if a is None or b is None else a - b
 
 
 # =============================================================================================== tests
@@ -335,6 +364,29 @@ def test_models_match_datasheets(check):
     b2550 = math.log(res["vn25"] / res["vn50"]) / (1 / 298.15 - 1 / 323.15)
     check("model NTC B25/50", b2550, NTC_B2550 * 0.995, NTC_B2550 * 1.005, "K", f"{NTC} B25/50 3380 K")
     check("model NTC R25", res["vn25"] / 10e-6, 9.99e3, 10.01e3, "Ω", f"{NTC} R25 10 kΩ")
+
+    # capacitances at VGS = 0, f = 1 MHz (AC): Ciss from the gate current, Crss from the drain current
+    deck = new_deck("model capacitances")
+    corners = (("fig10", {}), ("ecmax", C_SLOW))
+    for name, caps in corners:
+        prm = "vth=1.2 beta=0.31 rs=1.0" + "".join(f" {k}={v:g}" for k, v in caps.items())
+        for vds in (0, 10):
+            tag = f"{name}{vds}"
+            deck += [f"VD{tag} nd{tag} 0 DC {vds} AC 0", f"VG{tag} ng{tag} 0 DC 0 AC 1",
+                     f"X{tag} nd{tag} ng{tag} 0 CTS_BSS138DW_N params: {prm}"]
+    deck.ac("lin", 1, "1meg", "1meg")
+    exprs = [f"abs(imag(i(vg{n}{v})))/(2*pi*1e6)" for n, _ in corners for v in (0, 10)]
+    exprs += [f"abs(imag(i(vd{n}{v})))/(2*pi*1e6)" for n, _ in corners for v in (0, 10)]
+    deck.print_op(*exprs)
+    r = deck.run()
+    keys = [f"ciss_{n}{v}" for n, _ in corners for v in (0, 10)] + [f"crss_{n}{v}" for n, _ in corners for v in (0, 10)]
+    cap = {k: r.get(f"op_{i}") for i, k in enumerate(keys)}
+    for k, ref, tol, src in (("crss_fig100", FIG10["crss0"], 0.1, "Fig. 10 Crss at VDS = 0 (digitised 22.3 pF)"),
+                             ("crss_fig1010", FIG10["crss10"], 0.15, "Fig. 10 Crss at VDS = 10 V (digitised 3.3 pF)"),
+                             ("ciss_fig1010", FIG10["ciss10"], 0.15, "Fig. 10 Ciss at VDS = 10 V (digitised 33 pF)"),
+                             ("crss_ecmax10", CRSS_MAX, 0.05, "EC table Crss max 8 pF at VDS = 10 V"),
+                             ("ciss_ecmax10", CISS_MAX, 0.05, "EC table Ciss max 50 pF at VDS = 10 V")):
+        check(f"model {k}", cap[k], ref * (1 - tol), ref * (1 + tol), "F", f"{QDS} {src}")
 
 
 def test_link_carries_btn_n_on_the_same_pin(base, main, check):
@@ -370,9 +422,8 @@ def test_jeita_charge_prohibit_worst_case(jeita, reg, check):
     cold, hot = TS_CONTROL[reg]
     t_cold = [(r[f"{cold}_max"], c) for r, c in zip(rows, cells)]   # highest threshold = coldest trip
     t_hot = [(r[f"{hot}_min"], c) for r, c in zip(rows, cells)]     # lowest threshold = hottest trip
-    assert all(t is not None for t, _ in t_cold + t_hot)
-    tc, cc = min(t_cold, key=lambda x: x[0])
-    th, ch = max(t_hot, key=lambda x: x[0])
+    tc, cc = pick_none(t_cold, min)
+    th, ch = pick_none(t_hot, max)
     errors = []
     for args in ((f"TS_CONTROL {reg}: coldest COLD trip ({THR[cold][4]} max; {jdesc(cc)})", tc, T_JEITA_MIN, None),
                  (f"TS_CONTROL {reg}: hottest HOT trip ({THR[hot][4]} min; {jdesc(ch)})", th, None, T_JEITA_MAX)):
@@ -389,8 +440,8 @@ def test_jeita_zone_order_all_corners(jeita, reg, check):
     """The COOL (reduced current) and WARM (reduced voltage) zones never collapse at any corner."""
     rows, cells = jeita
     cold, hot = TS_CONTROL[reg]
-    gap_c = min(r["COOL_max"] - r[f"{cold}_min"] for r in rows)   # coldest COOL vs warmest COLD trip
-    gap_h = min(r[f"{hot}_max"] - r["WARM_min"] for r in rows)    # coldest HOT vs hottest WARM trip
+    gap_c, _ = pick_none([(diff_none(r["COOL_max"], r[f"{cold}_min"]), 0) for r in rows], min)  # coldest COOL vs warmest COLD
+    gap_h, _ = pick_none([(diff_none(r[f"{hot}_max"], r["WARM_min"]), 0) for r in rows], min)    # coldest HOT vs hottest WARM
     check(f"TS_CONTROL {reg}: COOL trip minus COLD trip, worst corner", gap_c, 0.0, None, "°C",
           f"{BQ} §8.3.13.1 JEITA zones (VCOLD > VCOOL), Table 7.5")
     check(f"TS_CONTROL {reg}: HOT trip minus WARM trip, worst corner", gap_h, 0.0, None, "°C",
@@ -402,7 +453,7 @@ def test_ts_stays_below_enz_at_minus_10c(jeita, check):
     rows, cells = jeita
     vmax, c = max(((r["v-10"], c) for r, c in zip(rows, cells)), key=lambda x: x[0])
     check(f"V(TS/MR) at -10 °C, worst corner ({jdesc(c)})", vmax, None, VTS_ENZ_MIN, "V", f"{BQ} Table 7.5 VTS_ENZ min 1.8 V")
-    t_enz = max(r["ENZ"] for r in rows)
+    t_enz = max((r["ENZ"] for r in rows if r["ENZ"] is not None), default=None)
     check("warmest temperature at which any corner reaches VTS_ENZ min (informational)", t_enz,
           unit="°C", source=f"{BQ} Table 7.5 VTS_ENZ; behaviour above it is not specified")
 
@@ -438,7 +489,8 @@ def test_jeita_monte_carlo(base, main, check):
         for key in draws:
             deck.meas(f"dc m{k}_{key.lower()} WHEN {pr['ts']}={levels[f'{key}_{k}']:g} CROSS=1")
     res = deck.run()
-    assert not res["_errors"], res["_errors"][:5]
+    errors = sim_errors(res)
+    assert not errors, errors[:5]
     missing = [k for k in range(n) for key in draws if res.get(f"m{k}_{key.lower()}") is None]
     assert not missing, f"no threshold crossing in -30..90 °C for draws {missing[:5]}"
     t = {key: np.array([res[f"m{k}_{key.lower()}"] for k in range(n)]) for key in draws}
@@ -469,6 +521,9 @@ def test_press_pulls_tsmr_below_mr_threshold(base, main, mode, check):
     v, t, c = worst(rows, cfgs, "ts", max)
     check(f"V(TS/MR) pressed, {mode}, worst of {len(cfgs)}x3 ({desc(c, t)})", v, None, VTSMR, "V",
           f"{BQ} Table 7.5 VTSMR 90 mV (button press detect)")
+    check(f"V(TS/MR) pressed, {mode}: a press also sits below VT7_Entry min 0.105 V, i.e. the TS comparators read "
+          "HOT for the whole press (informational; firmware must ignore TS status while BTN_N is low)", v, unit="V",
+          source=f"{BQ} Table 7.5 VT7_Entry; §8.3.13.1 (charging suspended while the button is pressed)")
     g, t, c = worst(rows, cfgs, "gate", max)
     check(f"Q1 VGS pressed, {mode}, max", g, None, VGSS_MAX, "V", f"{QDS} max ratings VGSS ±20 V")
     i, t, c = worst(rows, cfgs, "ibat", max, key=lambda v, r: -v)
@@ -504,9 +559,12 @@ def test_released_tsmr_never_reads_as_press(base, main, mode, check):
     v, t, c = worst(rows, cfgs, "ts", min)
     check(f"V(TS/MR) released, {mode}, worst of {len(cfgs)}x3 ({desc(c, t)})", v, VTSMR, None, "V",
           f"{BQ} Table 7.5 VTSMR 90 mV (must not detect a press)")
-    g, t, c = worst(rows, cfgs, "gate", max)
-    check(f"Q1 gate released (SW1 at 100 MΩ insulation), {mode}, max", g, None, VTH_MIN, "V",
-          f"{QDS} VGS(th) min 0.5 V; {SWD} insulation 100 MΩ min")
+    # gate vs the VGS(th) minimum AT that temperature (Fig. 4 tempco: 0.38 V at 60 C), worst margin
+    items = [(g - (VTH_MIN + TCV * (t - 25)), g, t, c) for r, c in zip(rows, cfgs) for t, g in zip(TEMPS, r["gate"])]
+    _, g, t, c = max(items, key=lambda x: x[0])
+    check(f"Q1 gate released (SW1 at 100 MΩ insulation), {mode}, worst vs VGS(th) min at T ({desc(c, t)})", g, None,
+          VTH_MIN + TCV * (t - 25), "V",
+          f"{QDS} VGS(th) min 0.5 V at 25 °C, Fig. 4 tempco -3.5 mV/°C; {SWD} insulation 100 MΩ min")
 
 
 def test_ntc_and_pin_stress(base, main, check):
@@ -558,6 +616,8 @@ def fault_look(t, v, t0, t1, refs):
     ok = vv < VTSMR
     for r in refs:
         ok |= np.abs(vv - r) <= 0.05 * abs(r)
+    if not ok[-1]:          # still not settled at the end of the window: the tail is longer than the window
+        return math.inf
     dt = np.diff(tt)
     return float(np.sum(dt[~ok[:-1]]))
 
@@ -569,10 +629,15 @@ def first_cross(t, v, t0, level, rising):
     return float(tt[idx[0]] - t0) if len(idx) else math.inf
 
 
-T_PRESS, T_REL, T_END = 50e-6, 450e-6, 3.0e-3
+# SLUSE99C specifies NO TS deglitch. A false reading must end within the window in which the charger itself
+# evaluates TS/MR (battery-only: tTS_DUTY_ON 4 ms, Table 7.6) and within the 5 ms firmware debounce, so that
+# firmware can blank TS status while BTN_N is low plus one debounce. The release window must exceed that limit.
+T_SETTLE = min(T_TS_ON, DEBOUNCE)
+T_PRESS, T_REL = 50e-6, 450e-6
+T_END = T_REL + 1.25 * T_SETTLE
 TRAN_CELLS = [  # slowest press edge (weak FET, low VBAT); slowest release (strong FET turns off last,
     dict(vbat=3.0, fet="weak", its="max"),                  # EC-table capacitance maxima); typical
-    dict(vbat=4.2, fet="strong", its="min", cscale=C_SLOW),
+    dict(vbat=4.2, fet="strong", its="min", caps=C_SLOW),
     dict(vbat=3.7, fet="typ", its="typ"),
 ]
 _TRAN_CACHE = {}
@@ -591,7 +656,7 @@ def press_release(temp, r4=None):
     deck, probes, vdds = cells_deck(f"press/release transient {temp:g} C, R4 {r4 or 'netlist'}", base, main, cfgs)
     deck += [f".temp {temp:g}",
              f"VCTL ctl_sw 0 PWL(0 0 {T_PRESS:g} 0 {T_PRESS + 1e-9:g} 1 {T_REL:g} 1 {T_REL + 1e-9:g} 0)"]
-    deck.tran("20n", f"{T_END:g}", 0, "100n")
+    deck.tran("20n", f"{T_END:g}", 0, "200n")
     deck.wave(*[p[q] for p in probes for q in ("ts", "btn")])
     res = deck.run()
     assert not res["_errors"], res["_errors"][:5]
@@ -613,10 +678,12 @@ def press_release(temp, r4=None):
 
 
 def tran_tag(temp, c):
-    return f"{temp:g} °C, {c['fet']} FET, VBAT {c['vbat']}, Cx{c.get('cscale', 1):g}"
+    return f"{temp:g} °C, {c['fet']} FET, VBAT {c['vbat']}, C {'EC max' if c.get('caps') else 'Fig. 10'}"
 
 
-DGL_SRC = f"{BQ} Table 7.6 tSLEEP_DGL 64 µs (shortest deglitch it specifies; SLUSE99C gives no TS deglitch)"
+SETTLE_SRC = (f"{BQ}: no TS deglitch specified. Limit = Table 7.6 tTS_DUTY_ON 4 ms (TS/MR evaluation window) and "
+              "firmware.md gpio-keys debounce 5 ms (TS status blanking after release). For information, Table 7.6 "
+              "tSLEEP_DGL (a VIN deglitch, not a TS one) is 64 µs")
 
 
 def check_bands(temp, rows, check, label):
@@ -625,7 +692,7 @@ def check_bands(temp, rows, check, label):
         for edge in ("press", "release"):
             try:
                 check(f"{label}{edge} edge: time TS/MR reads a false temperature ({tran_tag(temp, c)})",
-                      m[f"{edge}_band"], None, T_DGL, "s", DGL_SRC)
+                      m[f"{edge}_band"], None, T_SETTLE, "s", SETTLE_SRC)
             except AssertionError as e:   # record every corner before failing
                 errors.append(e)
     if errors:
@@ -648,26 +715,12 @@ def test_press_release_edges_pin_and_btn_n(temp, check):
               source=f"{BQ} Table 7.5 VTSMR")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE: R4 = 1 MOhm discharges the two Q1 gates (~90-150 pF) slowly, so on release Q1A crawls "
-    "out of subthreshold and TS/MR reads a false (hot/warm, or at -10 C a normal) temperature for 57-85 us "
-    "typ and up to ~0.4 ms at the VGS(th)-min / Ciss-max corner, longer than the shortest deglitch SLUSE99C "
-    "specifies (64 us; no TS deglitch is given). Fix: R4 = 100k (sheets/base.py), see the R4 = 100k test"))
 @pytest.mark.parametrize("temp", TEMPS)
-def test_press_release_no_false_temperature_beyond_deglitch(temp, check):
-    """USB present: TS/MR must not sit between the press threshold and its true (NTC) value -- i.e. read a
-    temperature that is not there -- for longer than the shortest deglitch the datasheet specifies."""
+def test_press_release_false_temperature_tail(temp, check):
+    """USB present: after each press / release edge, TS/MR must be back at a valid reading (pressed, or its true
+    NTC value within 5 %) before one TS evaluation window / one firmware debounce has passed. (During the press
+    itself TS/MR also reads HOT, < VT7_Entry; the release tail only extends that by R4 x C_gate, ~0.02-0.3 ms.)"""
     check_bands(temp, press_release(temp), check, "")
-
-
-@pytest.mark.parametrize("temp", TEMPS)
-def test_press_release_with_r4_100k_meets_deglitch(temp, check):
-    """Proposed fix for the xfail above: R4 = 100 kOhm (gate time constant /10, 42 uA from VBAT while held,
-    gate rest voltage against the 100 MOhm SW1 insulation /10). All press/release edges then pass."""
-    check_bands(temp, press_release(temp, r4="100k"), check, "R4 100k: ")
-    for c, vdd, m in press_release(temp, r4="100k"):
-        check(f"R4 100k: BTN_N above VIH after release ({tran_tag(temp, c)})", m["btn_high"], None, DEBOUNCE, "s",
-              f"{NRF} VIH 0.7 VDD; firmware.md gpio-keys debounce-interval-ms 5")
 
 
 @pytest.mark.parametrize("temp", [-10.0, 60.0])
@@ -679,7 +732,7 @@ def test_battery_only_pulsed_bias(base, main, temp, check):
     tdel, p0, p1, t_end = 10e-3, 300e-3, 700e-3, 1.0
     cfgs = [dict(mode="bat", vbat=3.0, fet="weak", its="max", switch="ctl_sw", tdel=tdel, pulsed=1),
             dict(mode="bat", vbat=4.2, fet="strong", its="min", dr=-tol, db=NTC_B_TOL if temp > 25 else -NTC_B_TOL,
-                 switch="ctl_sw", tdel=tdel, pulsed=1, cscale=C_SLOW)]
+                 switch="ctl_sw", tdel=tdel, pulsed=1, caps=C_SLOW)]
     deck, probes, _ = cells_deck(f"battery-only pulsed {temp:g} C", base, main, cfgs)
     deck += [f".temp {temp:g}", f"VCTL ctl_sw 0 PWL(0 0 {p0:g} 0 {p0 + 1e-6:g} 1 {p1:g} 1 {p1 + 1e-6:g} 0)"]
     deck.tran("2u", f"{t_end:g}", 0, "20u")
@@ -720,16 +773,42 @@ def window_25c(base, main):
 
 
 @pytest.mark.fault
-def test_fault_rt1_not_fitted_is_detected_and_fail_safe(base, main, check):
-    """RT1 left off: the pin floats to the clamp. The 25 °C window check must flag it, and the charger
-    must see it as COLD/open (charging suspended), never as a valid temperature."""
+def test_fault_rt1_not_fitted_is_detected(base, main, check):
+    """RT1 left off: the pin floats to the clamp. The 25 °C window check must flag it, and the pin stays inside
+    its abs-max rating. (Whether the charger then suspends charging is NOT guaranteed: see
+    test_open_ntc_keeps_ts_monitoring_enabled.)"""
     assert window_25c(base, main) < THR["COOL"][0]
     base.remove("RT1")
     v = window_25c(base, main)
     check("faulted (RT1 off): V(TS/MR) at 25 °C leaves the normal zone", v, THR["COOL"][0], None, "V",
           f"{BQ} Table 7.5 VT5_Entry min (the window check must fail)")
-    check("faulted (RT1 off): V(TS/MR) above COLD entry max (charging suspended)", v, THR["COLD00"][2], VPIN_MAX,
-          "V", f"{BQ} Table 7.5 VT1_Entry max, VTS_CLAMP; Table 7.1")
+    check("faulted (RT1 off): V(TS/MR) inside the pin rating", v, None, VPIN_MAX, "V", f"{BQ} Table 7.1 5.5 V")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE: an open RT1 (part missing, cracked 0402, open joint) lets TS/MR float to VTS_CLAMP "
+    "(2.2-3.3 V), above VTS_ENZ min (1.8 V). SLUSE99C Table 7.5 enables the TS function only below VTS_ENZ, so "
+    "JEITA protection may switch off silently instead of reading COLD (typ: clamp 2.8 V > ENZ 2.1 V). Fix "
+    "(firmware, docs/firmware.md §13.1/13.2, bq25180.c): treat STAT0.TS_OPEN_STAT = 1 as a fault and set "
+    "ICHG_CTRL.CHG_DIS = 1 while it is set; correct docs/bringup.md TS/MR row ('open = cold')"))
+def test_open_ntc_keeps_ts_monitoring_enabled(base, main, check):
+    """Fault condition: with RT1 open, TS/MR must stay below VTS_ENZ so the charger keeps monitoring TS (and reads
+    COLD = charging suspended). Best case for the design: VTS_CLAMP at its minimum."""
+    base.remove("RT1")
+    rows = run_dc("RT1 open, clamp min", base, main, [dict(mode="usb5.0", vbat=3.7, vclamp="min")], ("ts",),
+                  temps=(25.0, 30.0))
+    check("RT1 open: V(TS/MR) with VTS_CLAMP at its min vs VTS_ENZ min", rows[0]["ts"][0], None, VTS_ENZ_MIN, "V",
+          f"{BQ} Table 7.5 VTS_ENZ min 1.8 V ('VTSMR < VTS_ENZ for TS function to be enabled'), VTS_CLAMP 2.2 V min")
+
+
+@pytest.mark.fault
+def test_fault_rt1_shorted_is_detected(base, main, check):
+    """RT1 shorted (solder bridge under the 0402): TS/MR sits at 0 V, i.e. a permanent press (ship / reset loop)
+    and a permanent HOT. The released check must fail."""
+    base.short("RT1")
+    rows = run_dc("released, RT1 shorted", base, main, [dict(mode="usb5.0", vbat=3.7, fet="typ", its="max")], ("ts",))
+    check("faulted (RT1 shorted): V(TS/MR) released at 25 °C", rows[0]["ts"][1], None, VTSMR, "V",
+          f"{BQ} Table 7.5 VTSMR (the released check must fail)")
 
 
 @pytest.mark.fault

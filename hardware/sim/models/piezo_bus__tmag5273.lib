@@ -15,8 +15,8 @@
 *   * The pins are 5.5 V tolerant (abs max VOUT/VIN 7 V, Table 5.1): no clamp to VCC; only the NMOS body
 *     diode to GND.
 * Limits the tests apply (not in the model): VIH 0.7*VCC / VIL 0.3*VCC (Table 5.3), IOUT <= 2 mA
-*   (Table 5.3 recommended), tINT = 10 us INT pulse (Table 5.5), fI2C 400 kHz / 1 MHz Fm+ with input rise
-*   ticr 300 ns / ticr_fmp 120 ns (Table 5.10), tmeasure 50 us min conversion (Table 5.11, CONV_AVG=000b).
+*   (Table 5.3 recommended), tINT = 10 us typ INT pulse (Table 5.5), fI2C 400 kHz / 1 MHz Fm+ with input rise
+*   ticr 300 ns / ticr_fmp 120 ns (Table 5.10), tmeasure 50 us TYP conversion (Table 5.11, CONV_AVG=000b; no min is published).
 * NOT modelled: the I2C state machine, output fall-time control (tFALL_INT 6 ns typ), temperature drift.
 * =====================================================================================================
 .subckt TMAG5273_OD pin gnd on params: iol=2m vol=0.4 vg=3.3 ci=10p ioz=100n vt=0.5

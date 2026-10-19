@@ -18,6 +18,11 @@ Supply corners. Every circuit here runs from +3V3, an RT9080-33 LDO on VSYS (DS9
 0.31 V dropout at 600 mA). VBAT 3.7 / 4.2 V and USB VBUS 4.5 / 5.0 / 5.5 V (VSYS = 4.5 V from the
 BQ25180) all leave the LDO in regulation, so +3V3 = 3.3 V +/-2 %. At VBAT 3.0 V the LDO is in dropout,
 so +3V3 is about 2.99 V. The base-side parts see VBAT directly (BTN_N gate drive).
+
+TWIM master timing (TWIM table below): the nRF52840 at 400 kHz holds SCL low for only 1.25 us (Nordic errata
+219), which test_twim_tlow_400k_errata219 shows violating tLOW at every receiver (strict xfail, design issue
+in the firmware configuration); test_twim_tlow_errata219_remedy is the fixed configuration. The pin model's
+gate ramp (EDGE) is calibrated to the PS tHRF,25pF / tRF,25pF edge rates.
 """
 
 from __future__ import annotations
@@ -115,7 +120,10 @@ CSETS = {
 # Ground offset between the boards: main-board current returns through 3 GND wires (pins 3, 4, 8),
 # 28 AWG (SPEC §2) 0.213 ohm/m x 0.10 m plus 2 x 40 mohm JST SH contacts (eSH, after environment tests).
 R_GND = (0.213 * 0.10 + 2 * 0.040) / 3
-I_GND = {"idle": 0.0, "fw_cap": 0.7, "hw_worst": 1.35}     # docs/architecture.md §4.2 (A)
+I_GND = {"idle": 0.0, "fw_cap": 0.7, "hw_worst": 1.35,    # docs/architecture.md §4.2 (A)
+         # fault angle (stalled motor, shorted LED, ...): the BQ25180 caps what SYS can deliver at its abs max
+         # discharge current, 1.5 A DC and 2.5 A for < 20 ms (SLUSE99C §7.1); an I2C transfer can fall inside.
+         "sys_absmax_dc": 1.5, "sys_absmax_20ms": 2.5}
 GB = "n_gnd_b"                                              # base-board ground node
 
 
@@ -557,7 +565,9 @@ def sys_bus(d, b, vdd, cs, ctls, scale=None, vofs=0.0, vbat=3.7, temp=25, tstop=
     deck += f"XBSDA {bn['I2C_SDA']}_q {GB} {c['sda_bq']} BQ25180_OD ci={cs['c_dev']:g}"
     deck += f"VAM_BINT {bn['CHG_INT_N']} {bn['CHG_INT_N']}_q 0"
     deck += f"XBINT {bn['CHG_INT_N']}_q {GB} {c['int_bq']} BQ25180_OD ci={cs['c_dev']:g}"
-    deck += base_lines(b.passives(nets={"VBAT", "SW_HI", "SW_GATE", "CHG_TSMR", "GND"}))   # R3 R4 RT1 C3
+    # R3, R4, C3. RT1 (NTC on CHG_TSMR) is skipped by passives() (ref "RT1" is not R<digit>); it only loads
+    # Q1A's drain on TS/MR, not BTN_N, and Q1A's drain is otherwise held by its body diode / IDSS here.
+    deck += base_lines(b.passives(nets={"VBAT", "SW_HI", "SW_GATE", "CHG_TSMR", "GND"}))
     deck += f"VVBAT {bnode(b.node('VBAT'))} {GB} DC {vbat:.4g}"
     # SW1 (TS-1187A, generic 0.1 ohm contact) between SW_HI and SW_GATE
     deck += (f"SSW1 {bnode(b.pin('SW1', '1'))} {bnode(b.pin('SW1', '2'))} {c['sw1']} {GB} SWTACT")
@@ -733,7 +743,8 @@ def twim_tlow_checks(main, base, check, sys_rate, tmag_rate, drive=("SD", "min")
 
 @pytest.mark.xfail(strict=True, reason=(
     "DESIGN ISSUE (firmware config): nRF52840 errata 219, the TWIM at 400 kHz drives SCL low for only 1.25 us; "
-    "the bus tLOW is 1.27 us at the TMAG5273 and 1.22-1.28 us at the LIS2DW12 / BQ25180, below 1.3 us "
+    "the bus tLOW is 1.26 us at the TMAG5273, 1.22-1.23 us at the LIS2DW12 and 1.27-1.28 us at the BQ25180, "
+    "below 1.3 us "
     "(UM10204 Table 11, LIS2DW12 Table 7, TMAG5273 Table 5.10). docs/firmware.md sets I2C_BITRATE_FAST on "
     "i2c0 and i2c1 with no workaround. Fix: see test_twim_tlow_errata219_remedy"))
 def test_twim_tlow_400k_errata219(main, base, check):

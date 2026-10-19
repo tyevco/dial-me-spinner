@@ -1,0 +1,24 @@
+* =====================================================================================================
+* sleep_current__w25q128jv.lib -- W25Q128JV QSPI NOR flash in deep power-down, DC model
+*
+* Part      : Winbond W25Q128JVSIQ (main board U11, VCC = +3V3, /CS pulled up by R10 and the nRF CSN pull-up)
+* Datasheet : https://www.winbond.com/resource-files/w25q128jv%20revf%2003272018%20plus.pdf
+*             (W25Q128JV Revision F, March 27, 2018)
+*
+* Modelled (§9.4 DC Electrical Characteristics):
+*   ICC2  power-down current 1 uA typ / 20 uA max, /CS = VCC, VIN = GND or VCC
+*   ILI   input leakage +-2 uA max: max corner only, as a sink on /CS (the only flash input held at a rail;
+*         SCK and IO0-IO3 float in sleep because the nRF QSPI sleep pinctrl disconnects them).
+*   MAXC = 0 typical, 1 datasheet maximum.
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: the floating SCK / IO0-IO3 inputs. ICC2 is specified with every input at GND or VCC; a floating
+*   CMOS input can draw extra through-current, which a DC model cannot predict. Standby ICC1 (10 / 60 uA)
+*   applies if deep power-down is not entered (firmware §12.5 requires it).
+* =====================================================================================================
+.subckt SC_W25Q128JV_PD vcc csn vss params: MAXC=0
+.param icc2 = {MAXC > 0.5 ? 20u : 1u}
+.param ili  = {MAXC > 0.5 ? 2u : 0}
+Bcc vcc vss I = 'icc2 * tanh(v(vcc,vss)/0.05)'
+Bcs csn vss I = 'ili * tanh(v(csn,vss)/0.1)'
+.ends SC_W25Q128JV_PD

@@ -7,8 +7,8 @@
 *   * Digital output stage: level-1 NMOS / PMOS calibrated to the Table 4 limits
 *       VOL = 0.2 V max at IOL = 4 mA,  VOH = VDD_IO - 0.2 V min at IOH = 4 mA
 *     (footnote 5: 4 mA is the maximum driving capability). These are the weakest compliant parts.
-*   * LIS2DW12_OD : SDA open drain ("Default: (SDA) input open drain", Table 3 pin 4).
-*   * LIS2DW12_PP : INT1/INT2 push-pull ("Default: push-pull output forced to Gnd", Table 3 pins 11/12;
+*   * LIS2DW12_OD : SDA open drain ("Default: (SDA) input open drain", Table 12 "Internal pin status", pin 4).
+*   * LIS2DW12_PP : INT1/INT2 push-pull ("Default: push-pull output forced to Gnd", Table 12 pins 11/12;
 *     CTRL3.PP_OD = 0). Logic input `in` 0..1 V selects low/high.
 *   * LIS2DW12_IN : SCL input.
 *   * Pin capacitance ci = 10 pF: not given in DS11811, so the I2C-bus device limit is used

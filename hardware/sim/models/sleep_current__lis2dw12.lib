@@ -1,0 +1,23 @@
+* =====================================================================================================
+* sleep_current__lis2dw12.lib -- LIS2DW12 accelerometer, low-power mode 1 at 12.5 Hz (wake config), DC model
+*
+* Part      : STMicroelectronics LIS2DW12TR (main board U31, VDD = VDD_IO = +3V3, CS and SA0 tied high)
+* Datasheet : https://www.st.com/resource/en/datasheet/lis2dw12.pdf  (DS11811 Rev 8)
+*
+* Modelled:
+*   IddLP    1 uA typ, Low-Power Mode 1, ODR 12.5 Hz, low-noise off (Table 4 IddLP and Table 10), at Vdd = 1.8 V,
+*            T = 25 C. "Typical specifications are not guaranteed" (Table 4 note 1); there is no maximum and no
+*            figure for Vdd = 3.3 V, so the value is used as is (architecture.md budgets 1.5 uA for 3.3 V).
+*   INT1/INT2 push-pull outputs (VOL <= 0.2 V at 4 mA): idle low, driving no-pull nRF inputs -> 50 ohm to GND.
+*   CS and SDO/SA0 internal pull-ups to VDD_IO are tied to +3V3 on this board: no current.
+*   MAXC accepted, unused (no maximum in the datasheet).
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: supply-voltage and temperature dependence (not specified), SCL/SDA input leakage (not given),
+*   wake-up event processing.
+* =====================================================================================================
+.subckt SC_LIS2DW12_LP1 vdd vddio scl sda int1 int2 vss params: MAXC=0
+Bdd vdd vss I = '1u * tanh(v(vdd,vss)/0.05)'
+Rint1 int1 vss 50
+Rint2 int2 vss 50
+.ends SC_LIS2DW12_LP1

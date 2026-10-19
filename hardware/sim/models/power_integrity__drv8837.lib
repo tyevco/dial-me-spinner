@@ -3,6 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Texas Instruments DRV8837DSGR (U40 coil A, U41 coil B)
 * Datasheet : https://www.ti.com/lit/ds/symlink/drv8837.pdf   SLVSBA4F (June 2012, revised April 2021)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED:
 *   Full-on drive (both outputs static, d = 1): VM current = VM / RCOIL, where RCOIL = coil + rDS(on)

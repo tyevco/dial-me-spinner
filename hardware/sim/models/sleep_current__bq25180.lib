@@ -1,0 +1,56 @@
+* =====================================================================================================
+* sleep_current__bq25180.lib -- BQ25180 1S charger / power path, battery-only and ship mode, DC model
+*
+* Part      : Texas Instruments BQ25180YBGR (base board U1), VIN = 0 (no USB)
+* Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf  (SLUSE99C, September 2021, revised January 2023)
+*
+* Battery-only mode (SC_BQ25180_BATT, BATFET on, push-button function enabled = EN_PUSH 1, firmware §13):
+*   IQ_BAT   4 uA typ / 5 uA max with push-button function enabled, VIN < VUVLO, VBAT 3.6 V, 0..85 C
+*            (Table 7.5 IQ_BAT, second row). The first row (3 uA typ / 3.5 uA max) has the push button off.
+*   ITS      the TS/MR current source is pulsed in battery-only mode: ITSMR 60 uA typ (Table 7.5, "Battery
+*            only mode") for tTS_DUTY_ON 4 ms every tTS_DUTY_ON + tTS_DUTY_OFF = 4 + 196 ms (Table 7.6)
+*            -> 1.2 uA average, sourced from BAT out of the TS/MR pin into the external NTC/button network.
+*            IQ_BAT is a BAT-pin figure with the push button on, so it is taken to contain this average; the
+*            model therefore splits it: core BAT->GND = IQ_BAT - 1.2 uA, plus the 1.2 uA TS/MR source.
+*   VTS_CLAMP 2.8 V typ active clamp on TS/MR (Table 7.5) -- keeps the node bounded if TS/MR is open.
+*   RON_BAT  55 mohm typ / 90 mohm max BATFET (Table 7.5)
+*   ILKG     SCL, SDA, /INT high-level leakage <= 1 uA max each (Table 7.5, I2C and logic pins); no typical
+*            value -> 0 in the typical corner, 1 uA in the max corner (sinks into the pin when pulled high).
+*
+* Ship mode (SC_BQ25180_SHIP, EN_RST_SHIP = 10, wake on button or adapter):
+*   IBAT_SHIP 3.2 uA typ / 4.5 uA max, VBAT 3.6 V, push-button function enabled (average current), 0..85 C
+*            (Table 7.5). Split the same way: core = IBAT_SHIP - 1.2 uA, plus the pulsed TS/MR source.
+*   SYS pull-down: "enabled once the device enters shipmode and after disconnecting the BATFET" (§8.3.4.1
+*            Table 8-2). Its resistance is not specified: 1 kohm is assumed; it only sets VSYS = 0.
+*   BATFET off: open.
+*
+* MAXC = 0 typical, 1 datasheet maximum. No temperature data inside 0..85 C beyond the max -> constant.
+* NOT modelled: VIN present (charging / adapter mode), BUVLO / VBATPOR thresholds, watchdog, the pulse shape
+*   of the TS source (averaged), BATFET off-state leakage (not specified), IQ dependence on VBAT (spec at 3.6 V).
+* =====================================================================================================
+.subckt SC_BQ25180_BATT in sys bat tsmr scl sda intn vss params: MAXC=0
+.param iqbat = {MAXC > 0.5 ? 5u : 4u}
+.param its   = {60u * 4m / (4m + 196m)}
+.param ron   = {MAXC > 0.5 ? 90m : 55m}
+.param ilkg  = {MAXC > 0.5 ? 1u : 0}
+Rbatfet bat sys {ron}
+Iqcore bat vss DC {iqbat - its}
+Its bat tsmr DC {its}
+Vclamp nclamp vss 2.8
+Dclamp tsmr nclamp DBQCLAMP
+Bscl scl vss I = 'ilkg * tanh(v(scl,vss)/0.1)'
+Bsda sda vss I = 'ilkg * tanh(v(sda,vss)/0.1)'
+Bint intn vss I = 'ilkg * tanh(v(intn,vss)/0.1)'
+.model DBQCLAMP D(IS=1e-14 N=1)
+.ends SC_BQ25180_BATT
+
+.subckt SC_BQ25180_SHIP in sys bat tsmr scl sda intn vss params: MAXC=0
+.param iship = {MAXC > 0.5 ? 4.5u : 3.2u}
+.param its   = {60u * 4m / (4m + 196m)}
+Iqcore bat vss DC {iship - its}
+Its bat tsmr DC {its}
+Vclamp nclamp vss 2.8
+Dclamp tsmr nclamp DBQCLAMPS
+Rsyspd sys vss 1k
+.model DBQCLAMPS D(IS=1e-14 N=1)
+.ends SC_BQ25180_SHIP

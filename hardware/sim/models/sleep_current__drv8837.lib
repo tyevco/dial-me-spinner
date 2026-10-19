@@ -1,0 +1,27 @@
+* =====================================================================================================
+* sleep_current__drv8837.lib -- DRV8837 H-bridge in sleep (nSLEEP low), DC model
+*
+* Part      : Texas Instruments DRV8837DSGR (main board U40, U41; VM = VSYS, VCC = +3V3, shared nSLEEP)
+* Datasheet : https://www.ti.com/lit/ds/symlink/drv8837.pdf  (SLVSBA4F, June 2012, revised April 2021)
+*
+* Modelled (Table 6.5 Electrical Characteristics, TA = 25 C):
+*   IVMQ   VM sleep-mode supply current 30 nA typ / 95 nA max (VM = 5 V, VCC = 3 V, nSLEEP = 0)
+*   IVCCQ  VCC sleep-mode supply current 5 nA typ / 25 nA max (VM = 5 V, VCC = 3 V, nSLEEP = 0)
+*   RPD    100 kohm internal pull-down on IN1, IN2 and nSLEEP (Table 6.5 RPD, typ)
+*   Outputs high-Z in sleep.
+*   MAXC = 0 typical, 1 datasheet maximum.
+* Valid only while nSLEEP < VIL = 0.25 x VCC (Table 6.5, min of the falling threshold): the test checks this.
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: awake state, output off-state leakage IOFF (+-200 nA at VOUT = 0; the coils have no DC path to a
+*   supply in sleep), IVMQ/IVCCQ vs temperature (Figures 6-3/6-4 not digitised), dependence on VM/VCC.
+* =====================================================================================================
+.subckt SC_DRV8837_SLEEP vm vcc in1 in2 nsleep out1 out2 vss params: MAXC=0
+.param ivmq  = {MAXC > 0.5 ? 95n : 30n}
+.param ivccq = {MAXC > 0.5 ? 25n : 5n}
+Bvm vm vss I = 'ivmq * tanh(v(vm,vss)/0.05)'
+Bvcc vcc vss I = 'ivccq * tanh(v(vcc,vss)/0.05)'
+Rin1 in1 vss 100k
+Rin2 in2 vss 100k
+Rnsl nsleep vss 100k
+.ends SC_DRV8837_SLEEP

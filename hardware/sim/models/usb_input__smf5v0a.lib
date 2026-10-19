@@ -6,16 +6,20 @@
 *             https://www.littelfuse.com/assetdocs/tvs-diodes-smf-datasheet  (LCSC mirror C151296)
 * Cross-ref : Vishay SMF5V0A..SMF58A datasheet Rev. 2.4, 04-Jul-2023, doc 85881
 *             https://www.vishay.com/doc?85881  (same SOD-123FL / DO-219AB die family)
-* Vendor model: Littelfuse publishes no SPICE model for the SMF series. Vishay's family library
+* Vendor model: no Littelfuse SMF SPICE model could be obtained (product page refuses scripted
+*             access). Vishay's family library
 *             https://www.vishay.com/docs/86542/spice_vishay_smf5v0a-to-smf58a.zip (rev 24.09.2024)
-*             contains NO SMF5V0A entry (first entry is SMF6V0A), so this is a datasheet fit that
-*             reuses the Vishay family structure (forward diode with BV + soft-leakage reverse diode,
-*             CJ shape M = 0.39 / VJ = 0.92 from their SMF6V0A, "RS without heating").
+*             contains NO SMF5V0A entry (first entry is SMF6V0A), so this is a datasheet fit. From the
+*             Vishay family models it takes the exponential reverse-leakage shape (their N = 13 reverse
+*             diode), the CJ shape (M = 0.39, VJ = 0.92 of SMF6V0A) and the unheated RS (0.02 ohm).
+*             Breakdown is an offset forward diode instead of SPICE BV (BV did not converge under the
+*             0.8 ns IEC 61000-4-2 edge).
 *
 * Modelled (Littelfuse table "Electrical Characteristics", TA = 25 C, unless noted):
 *   VBR      6.40 V min / 7.00 V max at IT = 10 mA          -> param vbr (default 6.70 = mid)
 *   VC       9.2 V max at IPP = 21.7 A (10/1000 us)          -> param rd: rd = (9.2 - 7.0)/21.7 = 0.101 ohm
-*            makes the vbr = 7.00 corner meet VC (model: rd = 0.098 gives 9.19 V; heating included = worst case).
+*            makes the vbr = 7.00 corner meet VC (model: vbr 6.995 + rd 0.0924 gives VBR(10 mA) 7.00 V,
+*            VC 9.19 V; heating included = worst case).
 *            Fast (ns..us) pulses see the unheated die: Vishay family model RS = 0.02 ohm -> rd = 0.02.
 *   IR       400 uA max at VR = 5.0 V (Littelfuse; Vishay: 5 uA max) -> param ilk = leakage at 5.0 V,
 *            nlk = its emission coefficient (Vishay family: 13). For ilk = 400u, nlk = 22 keeps the
@@ -27,27 +31,32 @@
 *   IPP 21.7 A (10/1000 us), PPPM 200 W, IEC 61000-4-2 30 kV contact: ratings, checked in the tests.
 *
 * NOT modelled:
-*   - VBR temperature coefficient (not given in either datasheet; Vishay's family models carry no TBV1),
-*     so VBR is temperature-independent; leakage and VF follow the SPICE default IS(T) law (Littelfuse
-*     Fig. 5 shows VF falling ~1.5 mV/C, which the default EG/XTI reproduces to first order).
-*   - knee shape below IT: NBV = 1 (Vishay family uses 0.5; 1 keeps ns-edge ESD runs convergent and
-*     moves V(1 mA) by only -60 mV)
-*   - self-heating during long pulses (rd corner 0.098 ohm bounds it), package/lead inductance (the
+*   - VBR and IR temperature coefficients (given in neither datasheet; Vishay's family models carry no
+*     TBV1), so breakdown and leakage are temperature-independent. VF follows the SPICE default IS(T) law
+*     (Littelfuse Fig. 5 shows VF falling ~1.5 mV/C, which the default EG/XTI reproduces to first order).
+*   - knee shape below IT: ~60 mV/decade (Vishay family: NBV 0.5, i.e. ~30 mV/decade); V(1 mA) is ~60 mV
+*     below VBR(10 mA)
+*   - self-heating during long pulses (rd corner 0.0924 ohm bounds it), package/lead inductance (the
 *     tests add layout inductance explicitly), turn-on delay (DS: < 1 ns from 0 V to VBR min).
 *
 * Pins: K = cathode (pin 1, VBUS on the base board), A = anode (pin 2, GND).
-* Corners used by the tests: typ (vbr 6.70, rd 0.02), clamp-max (vbr 7.00, rd 0.098),
+* Corners used by the tests: typ (vbr 6.70, rd 0.02), clamp-max (vbr 6.995, rd 0.0924),
 *                            clamp-min/leak-max (vbr 6.42, rd 0.02, ilk 400u, nlk 22): with the
 *                            400 uA leakage this still gives V(10 mA) >= 6.40 V (VBR min).
 * =====================================================================================================
 .subckt USBIN_SMF5V0A K A params: vbr=6.70 rd=0.02 ilk=5u nlk=13 cj0=800p
 * forward conduction (anode -> cathode), Littelfuse Fig. 7 fit, junction capacitance Fig. 6
 Dfwd  A K USBIN_SMF5V0A_DF
-* reverse breakdown: IS tiny and N = 3 so this diode does not take part in forward conduction
-Dbrk  A K USBIN_SMF5V0A_DZ
-* soft reverse leakage (Vishay family topology: reverse-oriented high-N diode), scaled to ilk at 5.0 V
-Dlk   K A USBIN_SMF5V0A_DL
+* reverse breakdown as a forward diode behind a (vbr - 0.5956 V) offset: V(K,A) = vbr at IT = 10 mA, ~60 mV/decade
+* knee, rd above it. (SPICE BV breakdown did not converge under the 0.8 ns IEC edge.) EG = Vf(10 mA), XTI = 0 makes
+* the knee temperature-independent (no VBR temperature coefficient is specified).
+Dbrk  K kz USBIN_SMF5V0A_DZ
+Vbrk  kz A {vbr-0.5956}
+* soft reverse leakage, exponential like the Vishay family's reverse high-N diode (slope 1/(nlk*25.9 mV)),
+* = ilk at 5.0 V, zero at 0 V; written as a B source so that it carries NO temperature dependence (none is
+* specified; a SPICE diode would make it fall with temperature through Vt, which is unphysical). The exponent
+* is soft-limited at 5 (x148) so it stays bounded far into breakdown, where Dbrk carries the current anyway.
+Blk   K A I=ilk*(exp(5*tanh((v(K,A)-5.0)/(5*nlk*0.025865)))-exp(5*tanh(-5.0/(5*nlk*0.025865))))
 .model USBIN_SMF5V0A_DF D(IS=9.7e-12 N=1.34 RS=0.066 CJO={cj0} M=0.39 VJ=0.92 TT=0)
-.model USBIN_SMF5V0A_DZ D(IS=1e-20 N=3 RS={rd} BV={vbr} IBV=10m NBV=1 CJO=0)
-.model USBIN_SMF5V0A_DL D(IS={ilk/exp(5.0/(nlk*0.025865))} N={nlk} RS=0 CJO=0)
+.model USBIN_SMF5V0A_DZ D(IS=1e-12 N=1 RS={rd} CJO=0 EG=0.5956 XTI=0)
 .ends USBIN_SMF5V0A

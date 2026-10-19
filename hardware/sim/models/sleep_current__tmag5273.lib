@@ -1,0 +1,42 @@
+* =====================================================================================================
+* sleep_current__tmag5273.lib -- TMAG5273 3D Hall sensor in Wake-up & Sleep mode, average current, DC model
+*
+* Part      : Texas Instruments TMAG5273A2QDBVR (main board U30, VCC = +3V3, I2C on TWIM0 + open-drain INT)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tmag5273.pdf  (SLYS045C, June 2021, revised April 2026)
+*
+* Modelled (§5.5 "Average power during wake-up and sleep (W&S) mode", ICC_DCM, LP_LN = 0):
+*   ICC_DCM at VCC = 3.3 V: 1-channel 160 uA @ 1 ms, 1.21 uA @ 5000 ms; 4-channel 240 uA @ 1 ms, 1.22 uA @ 5000 ms
+*            at VCC = 1.8 V: 1-channel 156 uA / 1.00 uA;               4-channel 233 uA / 1.02 uA
+*   Each pair is fitted with I(T) = Ifloor + Q/T (a fixed charge per wake-up plus a floor):
+*     Q = (I1ms - I5s) / (1/1ms - 1/5s),  Ifloor = I5s - Q/5s
+*   The firmware arms W&S with the Z and X channels (SENSOR_CONFIG_1 0x52/0x57, firmware §4.8): NCH = 2, so Q is
+*   interpolated linearly between the 1- and 4-channel fits; Q and Ifloor are interpolated linearly in VCC
+*   between 1.8 V and 3.3 V. TSLEEP = wake-up interval (100 ms DEEP in SLEEP, 10 ms ARMED in DESK_IDLE).
+*   -> 3.03 uA at 100 ms, 3.3 V.
+*   IOZ      SDA / INT output leakage +-100 nA max (§5.5 Electrical Characteristics IOZ, VOZ = 5.5 V): max corner only, as a sink.
+*   ISLEEP 5 nA (true sleep, not used here: W&S mode is armed in SLEEP).
+*   MAXC = 0 typical, 1 = add the IOZ leakage (no maximum is given for ICC_DCM).
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: the latched INT low state (that is a wake event, the firmware clears it), standby 0.45 mA
+*   after a wake that is not serviced, temperature (Figures 5-1..5-4 not digitised), conversion pulses (averaged).
+* =====================================================================================================
+.subckt SC_TMAG5273_WS vcc scl sda intn vss params: TSLEEP=0.1 NCH=2 MAXC=0
+.param q1_33 = {(160u - 1.21u)/(1/1m - 1/5)}
+.param q4_33 = {(240u - 1.22u)/(1/1m - 1/5)}
+.param q1_18 = {(156u - 1.00u)/(1/1m - 1/5)}
+.param q4_18 = {(233u - 1.02u)/(1/1m - 1/5)}
+.param f1_33 = {1.21u - q1_33/5}
+.param f4_33 = {1.22u - q4_33/5}
+.param f1_18 = {1.00u - q1_18/5}
+.param f4_18 = {1.02u - q4_18/5}
+.param wch   = {(NCH - 1)/3}
+.param q_33  = {q1_33 + wch*(q4_33 - q1_33)}
+.param q_18  = {q1_18 + wch*(q4_18 - q1_18)}
+.param fl_33 = {f1_33 + wch*(f4_33 - f1_33)}
+.param fl_18 = {f1_18 + wch*(f4_18 - f1_18)}
+.param ioz   = {MAXC > 0.5 ? 100n : 0}
+Bcc vcc vss I = '((fl_18 + (fl_33 - fl_18)*(v(vcc,vss) - 1.8)/1.5) + (q_18 + (q_33 - q_18)*(v(vcc,vss) - 1.8)/1.5)/TSLEEP) * tanh(v(vcc,vss)/0.05)'
+Bsda sda vss I = 'ioz * tanh(v(sda,vss)/0.1)'
+Bint intn vss I = 'ioz * tanh(v(intn,vss)/0.1)'
+.ends SC_TMAG5273_WS

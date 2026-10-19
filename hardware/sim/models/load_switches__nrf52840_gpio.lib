@@ -16,9 +16,12 @@
 *     CPAD = 3 pF (PS "Pad capacitance"), plus a leakage current ileak (A, + = sourced INTO the pad node).
 *     The PS gives NO pad leakage figure; ileak is a test ASSUMPTION and must be stated by the test.
 *   Control: node OUT (0 / 1 V logic) selects the level, node OE (0 / 1 V) enables the driver.
+*   Pad clamps to VDD and GND: implied by the absolute maximum VI/O = -0.3 V .. VDD + 0.3 V (PS v1.1 chapter 9 Absolute
+*     maximum ratings); the PS gives no I-V, so they are generic silicon junctions (IS 1e-14, N 1, RS 10 Ohm,
+*     ASSUMPTION).  They only matter for a released pad whose node would otherwise float.
 * NOT modelled: VOH/VOL non-linearity beyond the 0.4 V point (the Thevenin line is optimistic at large currents
 *   for 'min' drive and pessimistic for 'max'), edge rate control, the internal 13 kOhm pull resistors (not used
-*   on these pins), input threshold (VIH 0.7 VDD / VIL 0.3 VDD are limits in the tests), ESD clamps.
+*   on these pins), input threshold (VIH 0.7 VDD / VIL 0.3 VDD are limits in the tests).
 * =====================================================================================================
 
 .subckt LSW_NRF_GPIO PAD VDD GND OUT OE params: rout=200 cpad=3p ileak=0
@@ -27,4 +30,7 @@ a_OE     %vd(OE GND) %gd(NDRV PAD) lsw_nrf_oe
 .model lsw_nrf_oe aswitch(cntl_off=0.2 cntl_on=0.8 r_off=1e12 r_on={rout} log=TRUE limit=TRUE)
 C_PAD    PAD GND {cpad}
 I_LEAK   GND PAD DC {ileak}
+D_CLH    PAD VDD lsw_nrf_esd
+D_CLL    GND PAD lsw_nrf_esd
+.model lsw_nrf_esd d (is=1e-14 n=1.0 rs=10)
 .ends LSW_NRF_GPIO
