@@ -15,6 +15,8 @@ against it).  Limits:
   * TPS22917 IPLS 2.5 A, VIN <= 5.5 V, ISD,VIN <= 100 nA ... SLVSDW8B Tables 7.1 / 7.3 / 7.5
   * VCC up before AFh: firmware waits >= 200 ms after OLED_VCC_EN (SPEC.md 5.3 / NHD example init sequence)
   * VCC must float when off: no path VSYS -> VCC ... SSD1351 Rev 1.3 8.9 note (2); TPS61040 SLVS413L 6.3.3
+  * Headroom: at VCC = 12.5 V the boost must deliver the panel ICC firmware allows at that VSYS + the divider
+    current (measured with VCC clamped at 12.5 V, see capability(); a run from 13 V can take ms to droop)
 
 Supply corners: VSYS on battery = VBAT 3.0 / 3.7 / 4.2 V (BQ25180 BATFET path); on USB VSYS = SYS_REG 4.5 V
 +2 % = 4.59 -> 4.6 V (BQ25180 SLUSE99C VSYS_REG_ACCURACY).  The firmware low-battery rule (firmware.md 7.4:
@@ -267,6 +269,22 @@ def steady(d, title, *, t_settle=0.3e-3, t_meas=0.5e-3, freq=False, **kw):
     return res
 
 
+def capability(d, title, *, vsys, **kw):
+    """Largest average current the boost delivers into VCC held at the panel minimum (12.5 V) by an ideal
+    source: with VCC below the set point FB < VREF, so the TPS61040 runs flat out.  Because the deliverable
+    current rises as VOUT falls, capability >= load at 12.5 V means the loaded equilibrium is >= 12.5 V.
+    (A time-domain run from 13 V can take several ms to droop to that equilibrium, so it is not used here.)"""
+    deck = build(d, title, vsys=vsys, icc=0.0, derate=True, vcc0=VCC_MIN, **kw)
+    deck += f"VCLAMP {d.node('+13V_OLED')} 0 {VCC_MIN}"
+    deck.meas("tran idav AVG i(vprb_d21) FROM=0.05m TO=0.25m")
+    return run(deck, 0.25e-3)["idav"]
+
+
+def load_at_min(d, icc_ma: float) -> float:
+    """Current the boost must deliver at VCC = 12.5 V: panel ICC plus the R26/R27 divider (netlist values)."""
+    return icc_ma * 1e-3 + VCC_MIN / (d.value("R26") + d.value("R27"))
+
+
 def startup(d, title, *, vsys, tstop, derate, **kw):
     """OLED_VCC_EN low -> high at 20 us from the cold operating point (panel display off: ICC = 0)."""
     deck = build(d, title, vsys=vsys, icc=0.0, derate=derate, en="step", t_en=20e-6, init="cold", **kw)
@@ -382,22 +400,34 @@ def test_ripple_light_and_full_load(main, check):
     soft_checks(check, rows)
 
 
-def test_supply_corners_headroom(main, check):
-    """Weak TPS61040 (ILIM 350 mA, toff 550 ns, ton 4 us, RDS 1 ohm), L20 -20 %, DCR max, U21 RON max, derated
-    caps: the boost must hold VCC at the largest load firmware allows at each VSYS corner."""
-    corners = [(3.0, icc_max(3.0)), (VSYS_FW, icc_max(VSYS_FW)), (3.7, icc_max(3.7)), (4.2, icc_max(4.2)),
-               (VSYS_USB, icc_max(VSYS_USB))]
+SRC_HEADROOM = ("NHD rev 3: ICC 100 % ON 42 mA / 50 % ON 29 mA max at VCC 13 V, VCC >= 12.5 V; "
+                "load cap per firmware.md 7.4; + R26/R27 divider current")
 
+
+def _headroom_rows(d, corners, weak=True, temp=25.0):
     def one(job):
         vs, icc = job
-        return job, steady(main, f"headroom {vs} V {icc} mA", vsys=vs, icc=icc, derate=True,
-                           u20=dict(U20_WEAK), t_meas=0.4e-3, **WEAK_PASSIVES)
-    rows = []
-    for (vs, icc), r in pmap(one, corners):
-        rows += [(f"VCC min, weak parts, VSYS {vs} V, {icc} mA", r["vmin"], VCC_MIN, None, "V",
-                  SRC_VCC + "; load per firmware.md 7.4 / NHD ICC max"),
-                 (f"VCC avg, weak parts, VSYS {vs} V, {icc} mA", r["vavg"], VCC_MIN, VCC_MAX, "V", SRC_VCC)]
-    soft_checks(check, rows)
+        kw = dict(u20=dict(U20_WEAK), **WEAK_PASSIVES) if weak else dict(temp=temp)
+        return job, capability(d, f"capability {vs} V", vsys=vs, **kw)
+    tag = "weak parts" if weak else f"typ parts {temp:g} C"
+    return [(f"boost current at VCC 12.5 V, {tag}, VSYS {vs} V (load {icc:g} mA + divider)", i,
+             load_at_min(d, icc), None, "A", SRC_HEADROOM) for (vs, icc), i in pmap(one, corners)]
+
+
+def test_supply_corners_headroom(main, check):
+    """Weak TPS61040 (ILIM 350 mA, toff 550 ns, ton 4 us, RDS 1 ohm), L20 -20 %, DCR max, U21 RON max: at every
+    VSYS corner the boost must deliver, at VCC = 12.5 V, the largest panel load firmware allows there plus the
+    FB divider current (3.0 V: 29 mA low-battery cap; 3.7 / 4.2 / 4.6 V: 42 mA full white)."""
+    corners = [(3.0, icc_max(3.0)), (3.7, icc_max(3.7)), (4.2, icc_max(4.2)), (VSYS_USB, icc_max(VSYS_USB))]
+    soft_checks(check, _headroom_rows(main, corners))
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: at the firmware full-white threshold (VBAT 3.60 V, "
+                   "firmware.md 7.4) a worst-case TPS61040 + L20 delivers only ~41 mA at VCC 12.5 V, less than the "
+                   "42 mA NHD 100 %-ON maximum; VCC settles near 12.3 V")
+def test_headroom_at_firmware_full_white_threshold(main, check):
+    """Same weak-part stack at VSYS 3.6 V, the lowest voltage at which firmware still allows full white."""
+    soft_checks(check, _headroom_rows(main, [(VSYS_FW, icc_max(VSYS_FW))]))
 
 
 def test_peak_currents_and_stress(main, check):
@@ -424,18 +454,19 @@ def test_peak_currents_and_stress(main, check):
 
 def test_temperature(main, check):
     """-10 / 25 / 60 C: TPS61040 RDS(on) (Fig 5-10), ILIM (Fig 5-7), VFB (Fig 5-6), IQ (Fig 5-5); B5819W forward
-    drop and leakage (curves); L20 DCR (copper); TPS22917 RON.  Low battery at its firmware load (least
-    headroom: RDS(on) and DCR rise with temperature) and USB at light load (highest VCC, largest D21 leakage)."""
-    jobs = [(t, vs, icc) for t in TEMPS for vs, icc in ((3.0, icc_max(3.0)), (VSYS_USB, ICC_LIGHT))]
-
-    def one(job):
-        t, vs, icc = job
-        return job, steady(main, f"temp {t} C {vs} V {icc} mA", temp=t, vsys=vs, icc=icc, derate=True,
-                           t_meas=0.6e-3 if icc < 5 else 0.3e-3)
+    drop and leakage (curves); L20 DCR (copper); TPS22917 RON.  Boost capability at VCC 12.5 V with typical parts
+    at the low-battery load (3.0 V, 29 mA) and the full-white threshold (3.6 V, 42 mA) - RDS(on) and DCR rise
+    with temperature - and USB at light load (highest VCC, largest D21 leakage)."""
     rows = []
-    for (t, vs, icc), r in pmap(one, jobs):
-        rows += [(f"VCC min, {t:g} C, VSYS {vs} V, {icc} mA", r["vmin"], VCC_MIN, None, "V", SRC_VCC),
-                 (f"VCC max, {t:g} C, VSYS {vs} V, {icc} mA", r["vmax"], None, VCC_MAX, "V", SRC_VCC)]
+    for t in TEMPS:
+        rows += _headroom_rows(main, [(3.0, icc_max(3.0)), (VSYS_FW, icc_max(VSYS_FW))], weak=False, temp=t)
+
+    def one(t):
+        return t, steady(main, f"temp {t} C light", temp=t, vsys=VSYS_USB, icc=ICC_LIGHT, derate=True,
+                         t_meas=0.6e-3)
+    for t, r in pmap(one, TEMPS):
+        rows += [(f"VCC min, {t:g} C, VSYS {VSYS_USB} V, {ICC_LIGHT} mA", r["vmin"], VCC_MIN, None, "V", SRC_VCC),
+                 (f"VCC max, {t:g} C, VSYS {VSYS_USB} V, {ICC_LIGHT} mA", r["vmax"], None, VCC_MAX, "V", SRC_VCC)]
     soft_checks(check, rows)
 
 

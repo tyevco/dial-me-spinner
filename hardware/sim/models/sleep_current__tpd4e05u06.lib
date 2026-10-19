@@ -1,0 +1,19 @@
+* =====================================================================================================
+* sleep_current__tpd4e05u06.lib -- TPD4E05U06 4-channel ESD array, leakage-only DC model
+*
+* Part      : Texas Instruments TPD4E05U06DQAR (main board U32 on TMAG_SCL / TMAG_SDA / TMAG_INT_N)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tpd4e05u06.pdf  (SLVSBO7O)
+*
+* Modelled:
+*   ILEAK  I/O leakage 0.01 nA typ / 10 nA max at VIO = 2.5 V (§5.4 Electrical Characteristics, ILEAK), applied per
+*          used I/O as a sink to GND (tanh-shaped around 0 V; flat above 0.3 V).
+*   MAXC = 0 typical, 1 datasheet maximum.
+*
+* NOT modelled: clamping behaviour, capacitance, leakage vs temperature (Figure 5-5 not digitised).
+* =====================================================================================================
+.subckt SC_TPD4E05U06 io1 io2 io3 vss params: MAXC=0
+.param ilk = {MAXC > 0.5 ? 10n : 0.01n}
+B1 io1 vss I = 'ilk * tanh(v(io1,vss)/0.1)'
+B2 io2 vss I = 'ilk * tanh(v(io2,vss)/0.1)'
+B3 io3 vss I = 'ilk * tanh(v(io3,vss)/0.1)'
+.ends SC_TPD4E05U06

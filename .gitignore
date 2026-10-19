@@ -14,3 +14,6 @@ hardware/build/
 *.rules
 hardware/sim/results/
 .pytest_cache/
+node_modules/
+.vitepress/dist/
+.vitepress/cache/

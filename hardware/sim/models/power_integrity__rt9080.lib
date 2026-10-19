@@ -3,6 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Richtek RT9080-33GJ5, 600 mA, 2 uA Iq LDO, fixed 3.3 V, TSOT-23-5
 * Datasheet : https://www.richtek.com/assets/product_file/RT9080/DS9080-09.pdf   DS9080-09 (December 2024)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED (section 14 Electrical Characteristics, TA = 25 C):
 *   VSET     output voltage 3.3 V, accuracy +/-2 % at 1 mA (VVOUT_ACC) -> tests use 3.234 V (worst low)

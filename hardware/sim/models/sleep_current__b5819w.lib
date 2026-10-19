@@ -6,7 +6,8 @@
 *
 * Modelled:
 *   Forward  : diode, IS 25 nA, N 1.0, RS 0.1 ohm -> VF about 0.47 V at 1 A (max 0.6 V at 1 A, EC table).
-*              Only matters for completeness: D21 never conducts forward in sleep.
+*              EG 0.69 / XTI 2 (Schottky). Only for completeness: D21 never conducts forward in sleep. Its own
+*              saturation current (25 nA at 25 C, about 0.5 uA at 60 C) adds < 2.5 % to the fitted leakage.
 *   Reverse  : behavioural leakage fitted to the "Reverse Characteristics" figure (page 2, typical, pulsed),
 *              read off the 300 dpi plot:
 *                Ta = 25 C : 4.9 uA at VR = 1 V, 8.4 uA at 10 V, 12.5 uA at 20 V, 33 uA at 40 V
@@ -26,5 +27,5 @@
 .param ir1 = {4.86u * pow(11.25, (TEMP - 25)/50)}
 D1 a k DB5819W_FWD
 Blk k a I = 'ir1 * exp(0.06*(max(v(k,a),0) - 1)) * (1 - exp(-max(v(k,a),0)/0.0257))'
-.model DB5819W_FWD D(IS=25n N=1.0 RS=0.1 BV=45 IBV=1m)
+.model DB5819W_FWD D(IS=25n N=1.0 RS=0.1 EG=0.69 XTI=2 BV=45 IBV=1m)
 .ends SC_B5819W

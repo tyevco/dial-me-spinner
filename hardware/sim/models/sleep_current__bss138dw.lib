@@ -1,0 +1,21 @@
+* =====================================================================================================
+* sleep_current__bss138dw.lib -- BSS138DW dual N-MOSFET (one half per instance), DC model with off leakage
+*
+* Part      : Diodes Inc. BSS138DW-7-F (base board Q1: Q1A pulls TS/MR low, Q1B pulls BTN_N low; gates on SW_GATE)
+* Datasheet : https://www.diodes.com/assets/Datasheets/ds30203.pdf  (DS30203 Rev. 16 - 2)
+*
+* Modelled (Electrical Characteristics, TA = 25 C):
+*   VGS(th) 1.2 V typ (0.5-1.5 V) -> level-1 VTO = 1.2 V
+*   RDS(on) 1.4 ohm typ at VGS = 10 V -> KP = 1/(1.4 * (10 - 1.2)) = 0.081 A/V^2 (W = L = 1)
+*   IDSS    <= 0.5 uA at VDS = 50 V, VGS = 0 (no typical): max corner only, applied at the actual VDS through
+*           tanh (upper bound: the 50 V figure is used at 3.3 V).
+*   MAXC = 0 typical, 1 datasheet maximum.
+*
+* NOT modelled: body diode, capacitances, temperature, gate leakage IGSS (+-100 nA at 20 V; gate sits at 0 V).
+* =====================================================================================================
+.subckt SC_BSS138 d g s params: MAXC=0
+.param idss = {MAXC > 0.5 ? 0.5u : 0}
+M1 d g s s NBSS138 L=1 W=1
+Blk d s I = 'idss * tanh(v(d,s)/0.1)'
+.model NBSS138 NMOS(LEVEL=1 VTO=1.2 KP=0.081)
+.ends SC_BSS138

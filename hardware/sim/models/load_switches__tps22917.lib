@@ -10,7 +10,10 @@
 *               - PSpice VSWITCH  -> XSPICE aswitch with log=TRUE limit=TRUE (same Von/Voff/Ron/Roff;
 *                 this is exactly the translation ngspice's own PSpice-compat mode performs)
 *               - E/G "TABLE {x} ((x,y)...)" -> B-source pwl(x, ...) (same breakpoints, clamped ends)
-*               - E "VALUE {IF(c,a,b)}" -> B-source "c ? a : b"; "&" -> "&&", "|" -> "||"
+*               - E "VALUE {IF(c,a,b)}" -> B-source; every ideal logic step (gates, latch, comparators,
+*                 enables) written as 0.5*(1+tanh(x/w)) with w = 50 mV on the 0/1 V logic nodes and w = 1 mV
+*                 on the comparator inputs (same thresholds and levels; ngspice otherwise stalls with
+*                 "timestep too small" at switching events that PSpice steps over)
 *               - RVAR POLY(2) multiplier -> B-source product (identical function)
 *               - "TC=0,0" dropped (zero anyway); duplicate .MODEL PMOS01/DD and the duplicate
 *                 SRLATCHRHP_BASIC_GEN definition removed; all sub-circuit and model names prefixed
@@ -54,15 +57,14 @@ B_U2_G1         VIN GND I = pwl(V(U2_N14553232), 0,0, 1,408n, 1.8,550n, 3.6,479n
 R_U2_R3         U2_N14553152 U2_N14553136  10
 C_U2_C3         0 U2_N14553232  1n
 R_U2_R4         U2_N14553248 U2_N14553232  10
-B_U2_ABM3       U2_N14553248 0 V = V(ON_INT_PRE) > 0.5 ? V(VIN) : 0
-B_U2_ABM2       U2_N14553152 0 V = V(ON_INT_PRE) < 0.5 ? V(VIN) : 0
+B_U2_ABM3       U2_N14553248 0 V = V(VIN)*(0.5+0.5*tanh((V(ON_INT_PRE)-0.5)/0.05))
+B_U2_ABM2       U2_N14553152 0 V = V(VIN)*(0.5+0.5*tanh((0.5-V(ON_INT_PRE))/0.05))
 B_U2_G2         VIN GND I = pwl(V(U2_N14553136), 0,0, 1,2n, 1.8,2.62n, 3.6,3.53n, 5.5,9.55n)
 C_U2_C2         0 U2_N14553136  1n
 * ---------------- power stage, gate (CT) drive, QOD, reverse-current blocking (TI U1_U2 block)
 I_U1_I1         U1_N15515882 GND DC 10n
 X_U1_U2_H1      U1_U2_N16803039 U1_U2_N145001 U1_U2_I_REVERSE 0 lsw17_DRIVER_H1
 X_U1_U2_U15     U1_U2_N16806836 VOUT U1_U2_N1275293 U1_U2_VRCB lsw17_COMPHYS_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=0.5
-R_U1_U2_R1      U1_U2_N16849773 0  1G
 V_U1_U2_V5      U1_U2_N16806836 0 22m
 B_U1_U2_E2      U1_U2_N16813178 0 V = pwl(V(VIN), 0,0, 1,195, 1.25,160, 1.5,155, 2,150, 3.5,145, 5,145, 5.5,144)
 a_U1_U2_S3      %vd(U1_N03821 0) %gd(VIN CT) lsw17_S3
@@ -70,7 +72,11 @@ B_U1_U2_E8      U1_U2_N16851045 0 V = pwl(V(VIN), 1,254, 1.8,281, 3.6,333, 5.5,3
 X_U1_U2_U14     U1_U2_CTRL U1_U2_VRCB U1_U2_REVERSE_CTRL N129530 lsw17_SRLATCHRHP_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=0.5
 D_U1_U2_D6      VOUT U1_U2_N71809 lsw17_DD
 V_U1_U2_V4      U1_U2_N1275293 0 1n
-X_U1_U2_F1      U1_U2_N16851045 U1_U2_N16849773 VOUT U1_U2_N16802853 lsw17_DRIVER_F1
+* FIXED vendor artifact: TI's F1 drew its IIN,RCB leakage (E8 table / 1 GOhm, 254-373 nA) out of VOUT at all
+* times, into a node that only connects through S11 (1 GOhm while not blocking), i.e. a permanent ~0.3 uA sink on
+* VOUT.  Table 7.5 specifies IIN,RCB only for VOUT > VIN (blocking), so the same current is now gated by the RCB
+* latch output.
+B_U1_U2_F1      VOUT U1_U2_N16802853 I = V(U1_U2_N16851045)/1G * V(U1_U2_REVERSE_CTRL)
 X_U1_U2_U20     U1_U2_PRECTRL U1_U2_CTRL lsw17_BUF_DELAY_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=0.5 DELAY=10u
 a_U1_U2_S11     %vd(U1_U2_REVERSE_CTRL 0) %gd(U1_U2_N16803039 U1_U2_N16802853) lsw17_S11
 B_U1_U2_E7      U1_U2_N15979 0 V = pwl(V(VIN), 1,197m, 1.8,381m, 3.6,534m, 5.5,641m)
@@ -96,34 +102,34 @@ V_U1_U2_V2      U1_U2_N75775 0 1n
 *    the path, so RON, RCB, QOD, IQ/ISD and the ON-pin logic remain the vendor's.  (A first version drove a
 *    PMOS gate from an error amplifier; it was numerically stiff, so the loop was removed.)
 *  - C_int = 33 pF (CT->VIN): Table 7.6 CT-open tON 120 us @3.6 V / 100 us @5 V = tON_k * C_int.
-B_SL_ICT        CT GND I = V(U1_N03821) > 0.5 ? V(VIN)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02)) : 0
+B_SL_ICT        CT GND I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * min(max(V(VIN),0),10)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02))
 C_SL_INT        CT VIN 33p
 B_SL_TONK       SL_TONK 0 V = pwl(V(VIN), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
 B_SL_SRK        SL_SRK 0 V = pwl(V(VIN), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
 B_SL_VTOT       SL_VTOT 0 V = V(SL_TONK) * V(SL_SRK)
 B_SL_SWEND      SL_SWEND 0 V = V(VIN) + 0.5
-B_SL_VRAW       SL_VRAW 0 V = (V(VIN) > 0.2 ? V(SL_VTOT)/V(VIN) : 0) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
+B_SL_VRAW       SL_VRAW 0 V = V(SL_VTOT)/min(max(V(VIN), 0.5), 10) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
 * soft start of the ramp (softplus, 50 mV knee, about 30 us at 1.9 V/ms): the real slew starts smoothly and a
 * hard corner only produces a numerical current spike in the output capacitance
-B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(V(SL_VRAW)/0.05))
+B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(min(V(SL_VRAW)/0.05, 40)))
 * pass element: forward current that makes VOUT follow Vref behind the full-on channel resistance of TI's
 * PMOS01 (1/(kp*(VIN - |vto|)), kp 9.75, vto -0.5); fully on (k_full = 1) once Vref passes VIN, where it is a
 * plain bidirectional resistor.  It sits where TI's PMOS sat (source node after S10 -> VOUT), so TI's RVAR
 * (pass resistance table), current sense H1 and the RCB switch S10 stay in series with it.
 B_SL_KF         SL_KF 0 V = min(1, max(0, (V(SL_VREF) - V(VIN))/0.05))
-B_SL_RCH        SL_RCH 0 V = 1/(9.75*max(V(VIN) - 0.5, 0.05))
-B_SL_PASS       U1_U2_N71809 VOUT I = V(U1_N03821) > 0.5 ? (V(SL_KF)*(V(U1_U2_N71809) - V(VOUT)) +
-+                 (1 - V(SL_KF))*max(0, min(V(SL_VREF), V(U1_U2_N71809)) - V(VOUT))) / V(SL_RCH) : 0
+B_SL_RCH        SL_RCH 0 V = 1/(9.75*min(max(V(VIN) - 0.5, 0.05), 10))
+B_SL_PASS       U1_U2_N71809 VOUT I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * (V(SL_KF)*(V(U1_U2_N71809) - V(VOUT)) +
++                 (1 - V(SL_KF))*max(0, min(V(SL_VREF), V(U1_U2_N71809)) - V(VOUT))) / V(SL_RCH)
 X_U1_U2_U1      QOD U1_U2_N16813094 U1_U2_N16813178 0 lsw17_RVAR params: RREF=1
 a_U1_U2_S4      %vd(U1_N03821 0) %gd(U1_U2_N16813094 GND) lsw17_S4
 a_U1_U2_S10     %vd(U1_U2_REVERSE_CTRL 0) %gd(U1_U2_N16803039 U1_U2_N71809) lsw17_S10
 X_U1_U2_U4      VIN U1_U2_N145001 U1_U2_N16813658 0 lsw17_RVAR params: RREF=1
 * ADDED isd_out: off-state leakage VIN->VOUT while the internal enable (U1_N03821) is low
-B_ADD_ISD       VIN VOUT I = V(U1_N03821) < 0.5 ? {isd_out} : 0
+B_ADD_ISD       VIN VOUT I = {isd_out}*(0.5+0.5*tanh((0.5-V(U1_N03821))/0.05))
 * ---------------- ON pin: threshold comparator, smart pull-down, enable delay (TI U1 / U1_U1 blocks)
 a_U1_S5         %vd(ON_INT_PRE GND) %gd(ON U1_N15515882) lsw17_S5
 B_U1_U1_E2      U1_U1_HYS 0 V = pwl(V(VIN), 0,0, 1,0.07, 1.8,0.07, 3.5,0.05, 5.5,0.03)
-B_U1_U1_ABM2I4  U1_U1_N14507001 U1_U1_ON_A I = V(ON_INT_PRE) > 0.5 ? 1m : 0
+B_U1_U1_ABM2I4  U1_U1_N14507001 U1_U1_ON_A I = 1m*(0.5+0.5*tanh((V(ON_INT_PRE)-0.5)/0.05))
 C_U1_U1_C1      0 U1_U1_ON_A  1n IC=0
 V_U1_U1_V5      U1_U1_N14507001 0 2
 C_U1_U1_C4      U1_U1_N15516099 0  1n
@@ -131,7 +137,7 @@ R_U1_U1_R3      U1_U1_N15516119 U1_U1_N15516099  10
 V_U1_U1_V4      U1_U1_N427908 0 1
 a_U1_U1_S2      %vd(U1_U1_N427944 0) %gd(U1_U1_N427908 U1_U1_ON_A) lsw17_S2
 D_U1_U1_D3      U1_U1_ON_A U1_U1_N14507001 lsw17_DD
-B_U1_U1_ABM5    U1_U1_N15516119 0 V = V(ON_INT_PRE) < 0.5 ? V(VIN) : 0
+B_U1_U1_ABM5    U1_U1_N15516119 0 V = V(VIN)*(0.5+0.5*tanh((0.5-V(ON_INT_PRE))/0.05))
 B_U1_U1_E1      U1_U1_THRISE 0 V = pwl(V(VIN), 0,0, 1,0.62, 1.8,0.62, 3.5,0.66, 5.5,0.71)
 X_U1_U1_U5      ON U1_U1_THRISE U1_U1_HYS ON_INT_PRE lsw17_COMPHYS_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=0.5
 X_U1_U1_U46     U1_N03821 ON_INT_PRE U1_U1_N427964 lsw17_NOR2_BASIC_GEN params: VDD=1 VSS=0 VTHRESH=500E-3
@@ -166,7 +172,7 @@ VF_U1_U2_F1     1 2 0V
 
 .subckt lsw17_SRLATCHRHP_BASIC_GEN s r q qb params: vdd=1 vss=0 vthresh=0.5
 * reset has priority
-bq 0 qint I = v(r) > {vthresh} ? -5 : (v(s) > {vthresh} ? 5 : 0)
+bq 0 qint I = -5*(0.5+0.5*tanh((v(r)-{vthresh})/0.05)) + 5*(0.5+0.5*tanh((v(s)-{vthresh})/0.05))*(1-(0.5+0.5*tanh((v(r)-{vthresh})/0.05)))
 cqint qint 0 1n
 rqint qint 0 1000meg
 d_d10 qint my5 lsw17_d_d1
@@ -176,7 +182,7 @@ v2 myvss 0 {vss}
 eq qqq 0 qint 0 1
 x3 qqq qqqd1 lsw17_BUF_BASIC_GEN params: vdd={vdd} vss={vss} vthresh={vthresh}
 rqq qqqd1 q 1
-bqb qbr 0 v = v(q) > {vthresh} ? {vss} : {vdd}
+bqb qbr 0 v = {vdd} + ({vss}-{vdd})*(0.5+0.5*tanh((v(q)-{vthresh})/0.05))
 rqb qbr qb 1
 cdummy1 q 0 1n
 cdummy2 qb 0 1n
@@ -186,36 +192,36 @@ cdummy2 qb 0 1n
 
 .subckt lsw17_COMPHYS_BASIC_GEN INP INM HYS OUT params: VDD=1 VSS=0 VTHRESH=0.5
 EIN INP1 INM1 INP INM 1
-BHYS INP1 INP2 V = V(1) > {VTHRESH} ? -V(HYS) : 0
-BOUT OUT 0 V = V(INP2) > V(INM1) ? {VDD} : {VSS}
+BHYS INP1 INP2 V = -V(HYS)*(0.5+0.5*tanh((V(1)-{VTHRESH})/0.05))
+BOUT OUT 0 V = {VSS} + ({VDD}-{VSS})*(0.5+0.5*tanh((V(INP2)-V(INM1))/1m))
 R1 OUT 1 1
 C1 1 0 5n
 RINP1 INP1 0 1K
 .ends lsw17_COMPHYS_BASIC_GEN
 
 .subckt lsw17_AND2_BASIC_GEN A B Y params: VDD=1 VSS=0 VTHRESH=0.5
-BGATE YINT 0 V = (V(A) > {VTHRESH} && V(B) > {VTHRESH}) ? {VDD} : {VSS}
+BGATE YINT 0 V = {VSS} + ({VDD}-{VSS})*(0.5+0.5*tanh((V(A)-{VTHRESH})/0.05))*(0.5+0.5*tanh((V(B)-{VTHRESH})/0.05))
 RINT YINT Y 1
 CINT Y 0 1n
 .ends lsw17_AND2_BASIC_GEN
 
 .subckt lsw17_NOR2_BASIC_GEN A B Y params: VDD=1 VSS=0 VTHRESH=0.5
-BGATE YINT 0 V = (V(A) > {VTHRESH} || V(B) > {VTHRESH}) ? {VSS} : {VDD}
+BGATE YINT 0 V = {VSS} + ({VDD}-{VSS})*(1-(0.5+0.5*tanh((V(A)-{VTHRESH})/0.05)))*(1-(0.5+0.5*tanh((V(B)-{VTHRESH})/0.05)))
 RINT YINT Y 1
 CINT Y 0 1n
 .ends lsw17_NOR2_BASIC_GEN
 
 .subckt lsw17_BUF_BASIC_GEN A Y params: VDD=1 VSS=0 VTHRESH=0.5
-BGATE YINT 0 V = V(A) > {VTHRESH} ? {VDD} : {VSS}
+BGATE YINT 0 V = {VSS} + ({VDD}-{VSS})*(0.5+0.5*tanh((V(A)-{VTHRESH})/0.05))
 RINT YINT Y 1
 CINT Y 0 1n
 .ends lsw17_BUF_BASIC_GEN
 
 .subckt lsw17_BUF_DELAY_BASIC_GEN A Y params: VDD=1 VSS=0 VTHRESH=0.5 DELAY=10n
-BGATE1 YINT1 0 V = V(A) > {VTHRESH} ? {VDD} : {VSS}
+BGATE1 YINT1 0 V = {VSS} + ({VDD}-{VSS})*(0.5+0.5*tanh((V(A)-{VTHRESH})/0.05))
 RINT YINT1 YINT2 1
 CINT YINT2 0 {DELAY*1.3}
-BGATE2 YINT3 0 V = V(YINT2) > {VTHRESH} ? {VDD} : {VSS}
+BGATE2 YINT3 0 V = {VSS} + ({VDD}-{VSS})*(0.5+0.5*tanh((V(YINT2)-{VTHRESH})/0.05))
 RINT2 YINT3 Y 1
 CINT2 Y 0 1n
 .ends lsw17_BUF_DELAY_BASIC_GEN

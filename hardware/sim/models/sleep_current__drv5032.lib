@@ -1,0 +1,22 @@
+* =====================================================================================================
+* sleep_current__drv5032.lib -- DRV5032FA omnipolar Hall switch (20 Hz), average supply current, DC model
+*
+* Part      : Texas Instruments DRV5032FADBZR (main board U42, VCC = +3V3, push-pull OUT -> HOME_N)
+* Datasheet : https://www.ti.com/lit/ds/symlink/drv5032.pdf  (SLVSDC7H, April 2017, revised December 2024)
+*
+* Modelled (Table 6.5, "DU, FA, FC, FD, AJ, ZE versions"):
+*   ICC(AVG) 1.3 uA at VCC 1.8 V, 1.6 uA at 3 V, 2.3 uA at 5 V (typ), piecewise-linear in VCC;
+*            max 3.5 uA at 3 V (over the full temperature range) -> max corner scales the curve by 3.5/1.6.
+*   Temperature: Figure 6-1 (20-Hz versions) shows 1.45-1.63 uA at 3 V over -40..85 C (within +-6 % of 25 C
+*            between -10 and 60 C), so no temperature term is modelled.
+*   OUT      push-pull, VOH = VCC - 0.1 V typ at -1 mA (100 ohm to VCC); HOME_N only drives a no-pull nRF input.
+*            The output is modelled high (no magnet); the low state draws no DC current either.
+*   MAXC = 0 typical, 1 datasheet maximum.
+*
+* NOT modelled: the 2 mA / 40 us sampling pulses (averaged), magnetic behaviour, open-drain variants.
+* =====================================================================================================
+.subckt SC_DRV5032FA vcc out vss params: MAXC=0
+.param kmax = {MAXC > 0.5 ? 3.5/1.6 : 1.0}
+Bcc vcc vss I = 'kmax * pwl(v(vcc,vss), 0,0, 1.65,1.2u, 1.8,1.3u, 3.0,1.6u, 5.0,2.3u, 5.5,2.5u)'
+Rout vcc out 100
+.ends SC_DRV5032FA

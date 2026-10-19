@@ -4,6 +4,8 @@
 * Part      : Worldsemi WS2812C-2020-V6 addressable RGB LED (48 on VLED, D101-D148)
 * Datasheet : https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf
 *             (Worldsemi WS2812C-2020-V6, Chinese edition, 9 pages; no revision letter printed)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED:
 *   ICH      5 mA constant current per channel while the channel's PWM is on (p.1 'each channel 5 mA',

@@ -3,8 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Texas Instruments BQ25180YBGR
 * Datasheet : SLUSE99C (September 2021, revised January 2023), https://www.ti.com/lit/ds/symlink/bq25180.pdf
-* Vendor model: TI publishes no SPICE/PSpice model for the BQ25180 (the product page offers none), so
-*             this is a behavioural model of what the USB input network sees at IN.
+* Vendor model: no TI SPICE/PSpice model of the BQ25180 was found, so this is a behavioural model of
+*             what the USB input network sees at IN.
 *
 * Modelled:
 *   IQ_IN    input quiescent current 0.75 mA typ / 1 mA max at VIN = 5 V (Table 7.5)   -> param iq

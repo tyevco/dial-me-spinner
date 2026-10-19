@@ -13,6 +13,18 @@ VIL across VSYS = 3.0 ... 4.59 V; the pulse widths the LED can see (worst case o
 between VIL and VIH) against the T0H / T1H / T0L / T1L windows; abs-max at DI and at the P0.06 pad; the same for
 the U43 option; tolerance extremes, temperature, load extremes; and fault injection.
 0.7 x VDD (the pre-V6 WS2812B threshold) is reported as information only: it is not the fitted part's limit.
+
+Added by the independent verification:
+  * the PS-GUARANTEED drive (NRF52840_GPIO_BOUND: I >= IOH,min x min(Vds/0.4 V, 1), the weakest concave I-V the PS
+    table allows) for both drive modes; the tanh fit above scales the TYPICAL tRF shape to the min corner, which the
+    PS does not guarantee. Standard drive fails the T1H/T0L/T1L windows there (strict xfail, DESIGN ISSUE), high drive
+    passes: P0.06 must run at H0H1;
+  * +3V3 low corner = RT9080 accuracy -2 % AND load regulation -1 % (DS9080-09 table 14), not accuracy alone;
+  * P0.06 high-Z (reset / DFU / pin not yet configured, PIN_CNF reset value): R41 must hold D101.DI (and U43.A)
+    below VIL against the +/-1 uA input leakage;
+  * a netlist-coverage guard: every part on the three data nets must be modelled by the deck (passives(nets=...)
+    silently drops a part with a pin on a net outside the set);
+  * fault tests for R41 left off and R41 wired to VLED (both invisible to the driven-data checks).
 """
 
 from __future__ import annotations
@@ -78,6 +90,9 @@ SKEW = {"typ": (1, 1), "weak": (0, 0), "slow_rise": (0, 2), "slow_fall": (2, 0),
 
 # --------------------------------------------------------------------------------------- supplies
 VDD_NOM, VDD_ACC = 3.3, 0.02          # RT9080-33, DS9080-09 VVOUT_ACC +/-2 % (ILOAD 1 mA, TA 25 C)
+VDD_LOADREG = 0.01                    # DS9080-09 VLOAD_REG max 1 % (1 mA < ILOAD < 600 mA): only lowers VOUT
+VDD_LO = VDD_NOM * (1 - VDD_ACC - VDD_LOADREG)
+VDD_HI = VDD_NOM * (1 + VDD_ACC)
 RT_RDROP = 0.53 / 0.6                 # ohm: DS9080-09 VDROP max 0.53 V at 600 mA (VOUT >= 3 V)
 I_3V3 = 0.05                          # A: +3V3 peak load, docs/architecture.md 8 rail table ("about 50 mA peak")
 SYS_REG, SYS_ACC = 4.5, 0.02          # BQ25180 SLUSE99C SYS_REG default 4.5 V, VSYS_REG_ACCURACY +/-2 %
@@ -90,8 +105,10 @@ VSYS_MAX = SYS_REG * (1 + SYS_ACC)
 
 
 def vdd_of(vsys: float, k: int) -> float:
-    """+3V3 for accuracy corner k (-1, 0, +1), limited by the LDO dropout at low VSYS."""
-    return min(VDD_NOM * (1 + k * VDD_ACC), vsys - I_3V3 * RT_RDROP)
+    """+3V3 for corner k (-1 = accuracy -2 % and load regulation -1 %, 0 = nominal, +1 = +2 %), limited by the
+    LDO dropout at low VSYS."""
+    v = {-1: VDD_LO, 0: VDD_NOM, 1: VDD_HI}[k]
+    return min(v, vsys - I_3V3 * RT_RDROP)
 
 
 # --------------------------------------------------------------------------------------- bit stream
@@ -285,6 +302,40 @@ def fmt(params):
 
 _BASE = {}
 
+DATA_NETS = ("LED_DIN_MCU", "LED_DIN_R", "LED_DIN")
+RAILS = ("VLED", "+3V3", "GND")          # ideal sources in the deck
+# the modelled IC pins on the data nets: (ref, pin) -> model
+MODELLED_PINS = {("U10", "22"): "NRF52840_GPIO_* (P0.06)", ("D101", "3"): "WS2812C_DIN", ("U43", "2"): "SN74LV1T34 A",
+                 ("U43", "4"): "SN74LV1T34 Y"}
+
+
+def data_passives(d: Design, scale=None) -> list:
+    """Every fitted R/C/L touching the data nets, including any to VLED / +3V3 (a pull-up or a wrong rail would
+    otherwise be dropped silently by passives(nets=...)); parts that sit only across the ideal rails are skipped."""
+    rail_only = [r for r in d.comps if r[0] in "RCL" and d.pins.get(r) and set(d.pins[r].values()) <= set(RAILS)]
+    return d.passives(nets=set(DATA_NETS) | set(RAILS), scale=scale, exclude=rail_only)
+
+
+def rewire(d: Design, ref: str, pin: str, net: str) -> Design:
+    """Fault injection: move one pin of a part to another net (a wrong connection)."""
+    old = d.pins[ref][pin]
+    d.nets[old] = [x for x in d.nets[old] if not (x[0] == ref and x[1] == pin)]
+    d.nets.setdefault(net, []).append((ref, pin, ""))
+    d.pins[ref][pin] = net
+    return d
+
+
+def soft(check):
+    """check() that records every row and collects the violations instead of stopping at the first one."""
+    errs = []
+
+    def _c(*a, **k):
+        try:
+            return check(*a, **k)
+        except AssertionError as e:
+            errs.append(str(e))
+    return _c, errs
+
 
 def fresh() -> Design:
     """An unmodified copy of the main-board design (parsed once)."""
@@ -294,7 +345,8 @@ def fresh() -> Design:
 
 
 def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_II, trace_scale=1.0,
-          temp=None, lv=None, scale=None, r40_at_source=False, fine=False, tedge_scale=1.0, title="LED data"):
+          temp=None, lv=None, scale=None, r40_at_source=False, fine=False, tedge_scale=1.0, title="LED data",
+          drive="fit"):
     vled = vsys
     vdd = vdd_of(vsys, vdd_k)
     L = pcb_net_lengths()
@@ -309,7 +361,15 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
     pad = "n_p006_pad"
     prm = drive_params(mode, skew, temp)
     prm["TEDGE"] *= tedge_scale
-    deck += f"XP006 {pad} ctl {vdd_n} 0 NRF52840_GPIO_OUT {fmt(prm)}"
+    if drive == "bound":
+        # PS-guaranteed: a side at the min column gets the weakest I-V the PS allows (constant IOH,min beyond a 0.4 V
+        # drop); a side at the typ/max column keeps the fitted tanh shape (the fast edge of a skew corner)
+        iu, idn = SKEW[skew]
+        prm = dict(IOH=prm["IOH"], IOL=prm["IOL"], VKU=0 if iu == 0 else prm["VK"], VKD=0 if idn == 0 else prm["VK"],
+                   TEDGE=prm["TEDGE"])
+        deck += f"XP006 {pad} ctl {vdd_n} 0 NRF52840_GPIO_BOUND {fmt(prm)}"
+    else:
+        deck += f"XP006 {pad} ctl {vdd_n} 0 NRF52840_GPIO_OUT {fmt(prm)}"
     mcu, r_node, din = d.node("LED_DIN_MCU"), d.node("LED_DIN_R"), d.node("LED_DIN")
     _, _, cp = microstrip(track_width())
     if not r40_at_source:
@@ -320,7 +380,7 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
         deck += ladder("tmcu", pad, mcu, 1e-3)
         deck += ladder("tr", r_node, f"{r_node}_far", L["LED_DIN_MCU"][0] * trace_scale)
         r_node_far = f"{r_node}_far"
-    passives = d.passives(nets={"LED_DIN_MCU", "LED_DIN_R", "LED_DIN", "GND"}, scale=scale)
+    passives = data_passives(d, scale=scale)
     if r40_at_source:
         # move every LED_DIN_R connection except R40 to the far end of the long trace
         passives = [ln if ln.startswith("RR40 ") else
@@ -339,7 +399,8 @@ def build(d: Design, *, vsys, vdd_k=-1, mode="SD", skew="typ", ci=WS_CI, ii=WS_I
     # 1 ns max step resolves the threshold crossings to ~0.1 ns (checked against 0.1 ns); fine=True for ringing
     deck.tran(*(("0.1n", f"{T_STOP:.6g}", 0, "0.25n") if fine else ("1n", f"{T_STOP:.6g}", 0, "1n")))
     deck.wave(f"v({d101})", f"v({pad})", f"v({r_node})", f"v({din})")
-    meta = dict(vsys=vsys, vled=vled, vdd=vdd, mode=mode, skew=skew, d101=d101, pad=pad, r_node=r_node)
+    meta = dict(vsys=vsys, vled=vled, vdd=vdd, mode=mode, skew=skew if drive == "fit" else f"{skew}, PS bound",
+                d101=d101, pad=pad, r_node=r_node, u43=d.fitted("U43"))
     return deck, meta
 
 
@@ -469,6 +530,22 @@ def test_netlist_topology(main):
     assert main.pin("U43", "5") == main.node("VLED") and main.pin("U43", "3") == "0"
     assert main.fitted("R43") and not main.fitted("U43") and not main.fitted("C43")
     assert "WS2812C-2020-V6" in main.mpn("D101") and "SN74LV1T34" in main.mpn("U43")
+
+
+def test_netlist_coverage(main):
+    """Every part on the data nets must be in the deck: a modelled IC pin, or a 2-pin R/C/L whose other pin is on a
+    data net or an ideal rail (data_passives). passives(nets=...) would silently drop anything else."""
+    allowed = set(DATA_NETS) | set(RAILS)
+    emitted = {ln.split()[0][1:].split("_short")[0] for ln in data_passives(main)}   # "RR40 ..." -> R40
+    for net in DATA_NETS:
+        for ref, pin, _ in main.nets[net]:
+            if (ref, pin) in MODELLED_PINS:
+                continue
+            assert ref[0] in "RCL" and ref[1:2].isdigit(), f"{ref}.{pin} on {net} has no model in the LED data deck"
+            others = set(main.pins[ref].values())
+            assert others <= allowed, f"{ref} connects {net} to {others - allowed}, which the deck does not model"
+            if main.fitted(ref):
+                assert ref in emitted, f"{ref} on {net} is fitted but missing from the deck"
 
 
 @pytest.mark.parametrize("mode", ["SD", "HD"])
@@ -693,7 +770,7 @@ def test_u43_input_conditions(check):
         deck.include(LV_LIB)
         deck += [f"VVLED {d.node('VLED')} 0 {vsys}", f"VVDD {d.node('+3V3')} 0 {vdd}", "Vc ctl 0 1", "Vc0 ctl0 0 0",
                  f"X1 {d.node('LED_DIN_MCU')} ctl {d.node('+3V3')} 0 NRF52840_GPIO_OUT {fmt(drive_params('SD', 'weak'))}"]
-        deck += d.passives(nets={"LED_DIN_MCU", "LED_DIN_R", "LED_DIN", "GND"})
+        deck += data_passives(d)
         deck += f"XU43 {d.pin('U43', '2')} {d.pin('U43', '4')} {d.node('VLED')} 0 SN74LV1T34 {fmt(lv_params(vsys))}"
         deck += f"XD {d.node('LED_DIN')} {d.node('VLED')} 0 WS2812C_DIN"
         deck.op()
@@ -711,6 +788,98 @@ def test_u43_input_conditions(check):
 
 def test_u43_option_pulse_widths(check, u43_sweep):
     check_widths(check, u43_sweep, "U43 fitted")
+
+
+# ------------------------------------------------------------------------- PS-guaranteed drive (verifier)
+BOUND_SD_REASON = (
+    "DESIGN ISSUE: with only the drive the nRF52840 PS guarantees (IOH/IOL,SD >= 1 mA at a 0.4 V drop, PS v1.1 "
+    "6.9.3.1; tRF is typical-only) standard drive (S0S1, the Zephyr/nrfx pinctrl default) cannot guarantee the "
+    "WS2812C-2020-V6 windows: T1H down to 547 ns (< 580 ns), T0L up to 1015 ns (> 1 us), T1L down to 558 ns at "
+    "VSYS 4.59 V, CI 15 pF, traces x1-x2; with U43 fitted T1H 576 ns, T1L 569 ns and U43.A dt/dv 21.3 ns/V "
+    "(> 20 ns/V, SCLS743E 6.3). High drive (H0H1) passes both paths (T1H >= 607 ns, T0L <= 955 ns, T1L >= 605 ns, "
+    "dt/dv <= 4.9 ns/V). Fix: SPEC 5.4 and the firmware pinctrl must REQUIRE nordic,drive-mode = NRF_DRIVE_H0H1 "
+    "on P0.06 (I2S0 SDOUT); today it is only an R27 mitigation.")
+
+
+def bound_jobs(mode):
+    jobs = []
+    for vsys in (SUPPLY[0][1], VSYS_MAX):
+        for ts in (1.0, 2.0):
+            for skew in ("weak", "slow_rise", "slow_fall"):
+                jobs.append((fresh(), dict(vsys=vsys, vdd_k=-1, mode=mode, skew=skew, trace_scale=ts, drive="bound")))
+            for skew, vth, lsk in (("slow_rise", "vih", "rise_late"), ("slow_rise", "vil", "rise_late"),
+                                   ("slow_fall", "vil", "fall_late"), ("slow_fall", "vih", "fall_late"),
+                                   ("weak", "vih", "rise_late"), ("weak", "vil", "fall_late")):
+                jobs.append((u43_design(), dict(vsys=vsys, vdd_k=-1, mode=mode, skew=skew, trace_scale=ts,
+                                                drive="bound", lv=lv_params(vsys, vth, lsk), title="U43")))
+    return jobs
+
+
+@pytest.mark.parametrize("mode", ["HD", pytest.param("SD", marks=pytest.mark.xfail(strict=True,
+                                                                                    reason=BOUND_SD_REASON))])
+def test_pulse_widths_ps_guaranteed_drive(check, mode):
+    """The P0.06 drive the PS GUARANTEES (min column with the weakest concave I-V, NRF52840_GPIO_BOUND), CI 15 pF,
+    traces x1 / x2, VSYS 3.0 / 4.59 V, default path and U43 option (threshold x tpd-skew corners)."""
+    rs = run_many(bound_jobs(mode))
+    c, errs = soft(check)
+    default = [r for r in rs if not r.get("u43")]
+    u43 = [r for r in rs if r.get("u43")]
+    v, r = worst([dict(x, m=x["voh_dc"] - WS_VIH_PCN * x["vled"]) for x in default], "m", min)
+    c(f"PS-guaranteed {mode}: DC high at D101.DI - 0.6 VDD ({label(r)})", v, 0.0, None, "V", SRC_PCN)
+    for tag, sel in ((f"PS-guaranteed {mode}, default path", default), (f"PS-guaranteed {mode}, U43 fitted", u43)):
+        if not all(x["widths_ok"] for x in sel):
+            errs.append(f"{tag}: bit pattern not reproduced")
+            continue
+        check_widths(c, sel, tag)
+    v, r = worst(u43, "dtdv_r", max)
+    c(f"PS-guaranteed {mode}, U43 fitted: A rise rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv")
+    v, r = worst(u43, "dtdv_f", max)
+    c(f"PS-guaranteed {mode}, U43 fitted: A fall rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv")
+    assert not errs, "\n".join(errs)
+
+
+# ------------------------------------------------------------- P0.06 high-Z: R41 holds DI low (verifier)
+SRC_R41 = "sheets/leds.py 'LED data input': 100k pull-down holds DIN low while P0.06 is high-Z (reset/DFU)"
+
+
+def hiz_levels(d: Design, vsys: float, ii: float) -> dict:
+    """DC levels with P0.06 high-Z (PIN_CNF reset value) and VLED on, D101 / U43 input leakage = ii."""
+    deck = Deck(f"P0.06 high-Z, VSYS {vsys}, II {ii}")
+    deck.include(GPIO_LIB)
+    deck.include(DIN_LIB)
+    vdd = vdd_of(vsys, -1)
+    deck += [f"VVLED {d.node('VLED')} 0 {vsys}", f"VVDD {d.node('+3V3')} 0 {vdd}",
+             f"XP006 {d.node('LED_DIN_MCU')} {d.node('+3V3')} 0 NRF52840_GPIO_HIZ"]
+    deck += data_passives(d)
+    deck += f"XD101 {d.node('LED_DIN')} {d.node('VLED')} 0 WS2812C_DIN CI={WS_CI:.6g} II={ii:.6g}"
+    if d.fitted("U43"):
+        deck.include(LV_LIB)
+        prm = dict(lv_params(vsys), II=ii)
+        deck += (f"XU43 {d.pin('U43', '2')} {d.pin('U43', '4')} {d.pin('U43', '5')} {d.pin('U43', '3')} SN74LV1T34 "
+                 f"{fmt(prm)}")
+    deck.op()
+    deck.print_op(f"v({d.node('LED_DIN')})", f"v({d.node('LED_DIN_R')})")
+    res = deck.run()
+    assert not res["_errors"], res["_errors"][:5]
+    return dict(di=res["op_0"], a=res["op_1"])
+
+
+def test_p006_hiz_din_held_low(check):
+    """P0.06 not driven (reset, DFU, I2S stopped before the pin is parked low) while VLED is on: R41 must keep
+    D101.DI below VIL against the worst-case +/-1 uA input leakage (and U43.A below the LV1T34 VIL)."""
+    rows = []
+    for vsys in (SUPPLY[0][1], VSYS_MAX):
+        for ii in (WS_II, -WS_II):
+            rows.append((vsys, ii, hiz_levels(fresh(), vsys, ii), hiz_levels(u43_design(), vsys, ii)))
+    v = max(r[2]["di"] for r in rows)
+    check("P0.06 high-Z: D101.DI max (R41 vs II +/-1 uA)", v, None, WS_VIL, "V", SRC_WS_EC + " VIL, II; " + SRC_R41)
+    v = min(r[2]["di"] for r in rows)
+    check("P0.06 high-Z: D101.DI min", v, WS_VI_MIN, None, "V", SRC_WS_AMR)
+    for vsys, ii, _, u in rows:
+        check(f"U43 fitted, P0.06 high-Z: U43.A - VIL(VCC={vsys:.2f} V), II {ii * 1e6:+.0f} uA", u["a"] - lv_vil(vsys),
+              None, 0.0, "V", SRC_LV + " 6.5 VIL, II; " + SRC_R41)
+    v = max(r[3]["di"] for r in rows)
+    check("U43 fitted, P0.06 high-Z: D101.DI (Y) max", v, None, WS_VIL, "V", SRC_WS_EC + " VIL")
 
 
 # ------------------------------------------------------------------------------------------ fault injection
@@ -756,11 +925,47 @@ def test_fault_r40_wrong_value(check):
              T0H[0], T0H[1], "s", SRC_WS_T)
 
 
+@pytest.mark.fault
+def test_fault_r41_left_off(check):
+    """R41 left off: invisible while P0.06 drives the line, but with P0.06 high-Z the DI leakage (-1 uA, out of
+    the pin) pulls D101.DI up to the clamp -> the high-Z hold-low check must fail (verifier mutation)."""
+    v = max(hiz_levels(fresh().remove("R41"), VSYS_MAX, ii)["di"] for ii in (WS_II, -WS_II))
+    detected(check, "R41 left off: P0.06 high-Z, D101.DI <= VIL", v, None, WS_VIL, "V", SRC_WS_EC + " VIL; " + SRC_R41)
+
+
+@pytest.mark.fault
+def test_fault_r41_to_vled(check):
+    """Wrong connection: R41 pin 2 on VLED instead of GND (a pull-up). passives(nets=...) without the rails would
+    drop R41 silently; data_passives keeps it and the high-Z check must fail (verifier mutation)."""
+    d = rewire(fresh(), "R41", "2", "VLED")
+    v = max(hiz_levels(d, VSYS_MAX, ii)["di"] for ii in (WS_II, -WS_II))
+    detected(check, "R41 to VLED: P0.06 high-Z, D101.DI <= VIL", v, None, WS_VIL, "V", SRC_WS_EC + " VIL; " + SRC_R41)
+
+
+@pytest.mark.fault
+def test_fault_r40_ten_times(check):
+    """R40 fitted as 2.2 k (one decade off): the R40 x C(DI + trace) edge eats the T1H window (verifier mutation)."""
+    r = simulate(fresh().override("R40", "2.2k"), vsys=VSYS_MAX, vdd_k=-1, mode="HD", skew="slow_rise")
+    detected(check, "R40 = 2.2 k: T1H shortest within window", r["w"]["T1H"][0] if r["widths_ok"] else None,
+             T1H[0], T1H[1], "s", SRC_WS_T)
+
+
+@pytest.mark.fault
+def test_fault_c43_on_led_din(check):
+    """Wrong connection with a DNP part fitted: C43 (100 nF) placed from LED_DIN to GND instead of VLED to GND
+    (verifier mutation) -> the bit pattern cannot reach D101.DI."""
+    d = rewire(fresh().fit("C43"), "C43", "1", "LED_DIN")
+    r = simulate(d, vsys=VSYS_MAX, vdd_k=-1, mode="HD", skew="strong")
+    detected(check, "C43 on LED_DIN: bit pattern reproduced at D101.DI", 1.0 if r["widths_ok"] else None, 1.0, None,
+             "", SRC_WS_T)
+
+
 # ------------------------------------------------------------------------------------------ Monte Carlo
 @pytest.mark.slow
 def test_monte_carlo(check):
     """200 draws: R40/R41 within tolerance, IOH/IOL uniform inside the PS envelope, CI 1-15 pF, II +/-1 uA,
-    trace x0.8-2, VSYS uniform 4.41-4.59 V on USB, VDD uniform +/-2 %, both drive modes."""
+    trace x0.8-2, VSYS uniform 4.41-4.59 V on USB, VDD uniform -3 % ... +2 % (RT9080 accuracy + load regulation),
+    both drive modes."""
     import random
     rng = random.Random(27)
     d0 = fresh()
@@ -773,12 +978,12 @@ def test_monte_carlo(check):
         vsys = rng.uniform(SYS_REG * (1 - SYS_ACC), VSYS_MAX)
         kw = dict(vsys=vsys, vdd_k=0, mode=mode, skew="typ", ci=rng.uniform(1e-12, WS_CI),
                   ii=rng.uniform(-WS_II, WS_II), trace_scale=rng.uniform(0.8, 2.0), scale=sc)
-        jobs.append((fresh(), kw, ioh, iol, rng.uniform(-1, 1)))
+        jobs.append((fresh(), kw, ioh, iol, rng.uniform(VDD_LO, VDD_HI)))
 
     def one(j):
         d, kw, ioh, iol, kv = j
         deck, meta = build(d, **kw)
-        vdd = VDD_NOM * (1 + kv * VDD_ACC)
+        vdd = kv
         prm = dict(IOH=ioh, IOL=iol, VK=DRIVE[kw["mode"]]["vk"],
                    TEDGE=DRIVE[kw["mode"]]["tedge"] * 0.5 * (DRIVE[kw["mode"]]["ioh"][1] / ioh +
                                                            DRIVE[kw["mode"]]["iol"][1] / iol))

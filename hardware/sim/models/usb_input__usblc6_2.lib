@@ -18,10 +18,11 @@
 *                     Rd_TRANSIL 0.5 ohm typ (DS 2.1)                               -> param rdt
 *   corner "max": rd = rdt = 0.953 ohm, so VCL(I/O->GND, 5 A) = 17.0 V in this model, the Table 2
 *                     maximum (17 V at IPP 5 A, 8/20 us); at 1 A it gives 9.2 V (<= 12 V max).
-*   typ corner check: VCL(1 A) = 8.3 V, VCL(5 A) = 12.3 V, VF(10 mA) = 0.93 V, VBR(1 mA) = 6.10 V.
+*   typ corner check: VCL(1 A) = 8.4 V, VCL(5 A) = 12.5 V, VF(10 mA) = 0.93 V, VBR(1 mA) = 6.10 V
+*                     (re-checked against Table 2 by test_usblc6_model_matches_datasheet).
 *   C(I/O-GND)       : 2.5 pF typ / 3.5 pF max at VR = 1.65 V (Table 2) via steering-diode CJO
-*   IRM              : 150 nA max at VRM = 5.25 V (Table 2) -> leakage resistance is not modelled
-*                     separately (the Transil BV knee gives < 1 nA at 5.25 V).
+*   IRM              : 150 nA max at VRM = 5.25 V (Table 2) -> no separate leakage element (the
+*                     Transil knee gives ~10 pA at 5.25 V, inside the limit).
 * NOT modelled: Transil capacitance (not specified), package/bond inductance (the tests add layout
 *   inductance explicitly), temperature dependence of VBR (DS gives only IRM vs Tj, Fig. 4),
 *   I/O-to-I/O capacitance (1.2 pF typ), snap-back (none: Transil + diodes).
@@ -35,10 +36,13 @@ Dup1  IO1 VBUS USBIN_USBLC6_DS
 Ddn1  GND IO1  USBIN_USBLC6_DS
 Dup2  IO2 VBUS USBIN_USBLC6_DS
 Ddn2  GND IO2  USBIN_USBLC6_DS
-* Transil: anode GND, cathode VBUS rail; IS tiny / N 3 so its forward path is the GND->I/O diodes'.
+* Transil (VBUS rail -> GND) as a forward diode behind a (vbr - 0.536 V) offset: V = vbr at 1 mA, rdt above it
+* (SPICE BV breakdown did not converge under the 0.8 ns IEC edge; EG = Vf(1 mA), XTI = 0: no VBR tempco).
+* Its forward direction (GND above VBUS) is not modelled: the GND->I/O diodes carry negative strikes.
 * Vtr is a 0 V probe: i(v.x<inst>.vtr) = Transil clamp current (positive when clamping).
 Vtr   VBUS trk 0
-Dtr   GND trk USBIN_USBLC6_TR
+Dtr   trk trz USBIN_USBLC6_TR
+Vtrz  trz GND {vbr-0.536}
 .model USBIN_USBLC6_DS D(IS=1e-14 N=1.3 RS={rd} CJO={cio} M=0.3 VJ=0.7)
-.model USBIN_USBLC6_TR D(IS=1e-20 N=3 RS={rdt} BV={vbr} IBV=1m NBV=1 CJO=0)
+.model USBIN_USBLC6_TR D(IS=1e-12 N=1 RS={rdt} CJO=0 EG=0.536 XTI=0)
 .ends USBIN_USBLC6_2

@@ -3,6 +3,8 @@
 * -----------------------------------------------------------------------------------------------------
 * Part      : Texas Instruments BQ25180YBGR, I2C 1-cell 1 A linear charger with power path and ship mode
 * Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf   SLUSE99C (Sept 2021, revised Jan 2023)
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED (defaults are the datasheet typicals; the tests pass min/max corner values as params):
 *   VSYSREG  4.5 V    SYS regulation target, SYS_REG = 0x40 (Table 8-3, Table 8-19); accuracy +/-2 %

@@ -13,13 +13,14 @@
 *         unconnected in the schematic, so the test ties it to a dummy node.
 *   MAXC = 0 typical, 1 datasheet maximum (ISD only).
 *
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
 * NOT modelled: the ON state (RON, IQ 0.5 uA, slew/CT), reverse-current blocking (only matters for
 *   VOUT > VIN), temperature dependence beyond the -40..85 C max (no typical curve used).
 *   The test checks that ON really sits below VIL in sleep before relying on this model.
 * =====================================================================================================
-.subckt SC_TPS22917_OFF vin on gnd vout qod params: MAXC=0
+.subckt SC_TPS22917_OFF vin on vss vout qod params: MAXC=0
 .param isd = {MAXC > 0.5 ? 100n : 10n}
-Isd vin vout DC {isd}
-Rpd on gnd 750k
-Rqod qod gnd 150
+Bsd vin vout I = 'isd * tanh(v(vin,vout)/0.05)'
+Rpd on vss 750k
+Rqod qod vss 150
 .ends SC_TPS22917_OFF

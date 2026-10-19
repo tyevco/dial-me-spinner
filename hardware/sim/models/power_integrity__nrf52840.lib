@@ -4,6 +4,8 @@
 * Part      : Nordic nRF52840 in the Raytac MDBT50Q-U1MV2 module (U10), normal-voltage mode, REG1 DC/DC on
 * Datasheet : nRF52840 Product Specification v1.1 (4413_417 v1.1, 2019-02-28)
 *             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf
+* Ports     : VSS = local ground of the board the part sits on (never 'GND': ngspice maps a node named GND
+*             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED:
 *   NRF52840_3V3LOAD: the whole +3V3 rail as one load, IBASE steady plus ITX during radio bursts.

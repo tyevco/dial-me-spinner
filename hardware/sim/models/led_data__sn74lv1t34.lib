@@ -17,6 +17,8 @@
 *                 VOL: 3.0 V: 0.15 V @ 3 mA, 0.252 V @ 5.5 mA; 4.5 V: 0.2 V @ 4 mA, 0.35 V @ 8 mA
 *                      -> worst chord pull-down resistance 50 ohm (RDN default)
 *                 Ci (A) typ 2 pF / max 10 pF (CI default 10 pF); Co typ 2.5 pF.
+*                 II (A input leakage, VI = 0 V or VCC) max +/-1 uA (parameter II, default 0 = off; the
+*                 test sets +/-1 uA where a DC level depends on it, e.g. the R41 hold-low check).
 *             6.6 Switching characteristics, tpd A->Y, CL = 15 pF, TA -65 ... 125 C max:
 *                 5.0 V 6.5 ns, 3.3 V 8 ns, 2.5 V 9.5 ns (typ 25 C: 2.7 / 4.0 / 5.8 ns).
 *
@@ -39,8 +41,10 @@
 *
 * Pins: a, y, vcc, gnd
 * =====================================================================================================
-.subckt SN74LV1T34 a y vcc gnd params: VTH=1.5 TDR=5n TDF=5n RUP=100 RDN=50 TEDGE=1n CI=10p CO=2.5p
+.subckt SN74LV1T34 a y vcc gnd params: VTH=1.5 TDR=5n TDF=5n RUP=100 RDN=50 TEDGE=1n CI=10p CO=2.5p II=0
 Ci a gnd {CI}
+* input leakage (positive = into the pin), 6.5 II
+Ileak a gnd DC {II}
 * input threshold + separate tPLH / tPHL as XSPICE digital primitives (robust event-driven delays)
 Aadc [a] [da] lv_adc
 .model lv_adc adc_bridge(in_low={VTH} in_high={VTH} rise_delay=1e-12 fall_delay=1e-12)

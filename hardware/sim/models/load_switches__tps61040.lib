@@ -19,14 +19,17 @@
 *        (Iavg = Ipk/2 * (ton + tfall)/(ton + toff_min)), otherwise CCM (Iavg = Ipk - dI/2, dI = (VOUT + 0.3 V -
 *        VIN) * toff_min / L).  0.3 V = average rectifier drop (B5819W at the start-up currents).
 *   Soft start (section 6.3.2): current limit ILIM/4 for 256 cycles, ILIM/2 for the next 256, then ILIM; the
-*        cycle count integrates 1/T of the averaged cycle above.
+*        cycle count integrates 1/T of the averaged cycle above (steps smoothed over about 4 cycles).
 *   Regulation: switching stops when VFB >= VREF (1.233 V typ, 1.208..1.258 V, Table 5.5); the averaged current
-*        fades out over a 5 mV FB band.
+*        fades out over a 50 mV FB band below VREF (a proportional stand-in for the PFM loop; keeps the averaged
+*        loop stable, costs up to ~0.5 V of VOUT accuracy at full load, irrelevant for the U21 load study).
 *   Power transfer: Pout = eta * V(SW) * Iin with eta = 0.85 (ASSUMPTION, typical of the efficiency figures for
 *        VOUT 13-18 V at tens of mA, Figures 5-1..5-4), delivered into port OUT (= +13V_OLED, D21 cathode),
 *        never more current out than in.  D21 itself (load_switches__b5819w.lib) and L20 / C38 / C30 / C31 /
 *        C39 / R26 / R27 / C40 come from the netlist, so the non-switching paths (VIN - L20 - D21 - VOUT pre-charge,
 *        D21 reverse leakage back into OLED_VIN) are physical.
+* Numerics: every node voltage used as a divisor is clamped (VIN 0.3..10 V, VD 0.02..40 V, VOUT 0.5..40 V) so
+*   Newton's first iterations cannot overflow.
 * NOT modelled: switching ripple, the FB loop dynamics and line/load regulation, IFB bias (<= 1 uA), thermal
 *   shutdown, RDS(on) loss (folded into eta), the SW leakage (<= 10 uA at 28 V) and behaviour for EN between
 *   0.4 V and 1.3 V (undefined in the datasheet).
@@ -48,10 +51,10 @@ B_NCYI  0 NCY I = V(ENI) > 0.5 ? 1e-12 * V(FSW) * V(GREG) : 0
 C_NCY   NCY 0 1n
 a_NCYR  %vd(ENI 0) %gd(NCY 0) lsw61_rst
 .model lsw61_rst aswitch(cntl_off=0.6 cntl_on=0.4 r_off=1e12 r_on=1k log=TRUE limit=TRUE)
-B_SS    SS 0 V = V(NCY) < 0.256 ? 0.25 : (V(NCY) < 0.512 ? 0.5 : 1)
+B_SS    SS 0 V = 0.25 + 0.125*(1+tanh((V(NCY)-0.256)/0.004)) + 0.25*(1+tanh((V(NCY)-0.512)/0.004))
 * ---- per-cycle averages (VI = inductor input voltage = VIN pin, VD = off-time inductor voltage)
-B_VI    VI 0 V = max(V(VIN,GND), 0.3)
-B_VD    VD 0 V = max(V(OUT,GND) + 0.3 - V(SW,GND), 0.02)
+B_VI    VI 0 V = min(max(V(VIN,GND), 0.3), 10)
+B_VD    VD 0 V = min(max(V(OUT,GND) + 0.3 - V(SW,GND), 0.02), 40)
 B_IPK0  IPK0 0 V = {ilim}*V(SS) + V(VI)/{lind}*100n
 B_TON   TON 0 V = min({tonmax}, {lind}*V(IPK0)/V(VI))
 B_IPK   IPK 0 V = V(TON) * V(VI) / {lind}
@@ -62,11 +65,11 @@ B_TCYC  TCYC 0 V = V(TFALL) <= {toffmin} ? V(TON) + {toffmin}
 +                  : V(VD)*{toffmin}/V(VI) + {toffmin}
 B_FSW   FSW 0 V = 1/V(TCYC)
 * ---- regulation (PFM stops above VREF) and the averaged input current, filtered 5 us
-B_GREG  GREG 0 V = min(1, max(0, ({vref} - V(FB,GND))/5m))
+B_GREG  GREG 0 V = min(1, max(0, ({vref} - V(FB,GND))/50m))
 B_ITGT  ITGT 0 V = V(ENI) * V(GREG) * V(IAVG)
 R_ITF   ITGT ITF 5k
 C_ITF   ITF 0 1n
 B_IIN   SW GND I = V(ITF) * min(1, max(0, V(SW,GND)/0.3))
-B_IOUT  GND OUT I = min(V(ITF) * min(1, max(0, V(SW,GND)/0.3)), {eta} * max(V(SW,GND),0) * V(ITF) * min(1, max(0, V(SW,GND)/0.3)) / max(V(OUT,GND), 0.5))
+B_IOUT  GND OUT I = min(V(ITF) * min(1, max(0, V(SW,GND)/0.3)), {eta} * min(max(V(SW,GND),0), 10) * V(ITF) * min(1, max(0, V(SW,GND)/0.3)) / min(max(V(OUT,GND), 0.5), 40))
 R_FB    FB GND 1G
 .ends LSW_TPS61040_AVG

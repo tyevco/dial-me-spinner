@@ -1,0 +1,54 @@
+* =====================================================================================================
+* sleep_current__nrf52840.lib -- nRF52840 (Raytac MDBT50Q-U1MV2) System ON idle + GPIO pin states, DC model
+*
+* Part      : Nordic nRF52840 in the Raytac MDBT50Q-U1MV2 module (main board U10), normal-voltage mode,
+*             VDD = VDDH = +3V3
+* Datasheet : nRF52840 Product Specification v1.1 (4413_417 v1.1),
+*             https://infocenter.nordicsemi.com/pdf/nRF52840_PS_v1.1.pdf
+*
+* Core current (subckt SC_NRF52840_SYSON, VDD -> GND):
+*   ION = ION_RAMON_RTC - ILFRC + ILFXO = 3.16 - 0.70 + 0.23 = 2.69 uA
+*         ION_RAMON_RTC 3.16 uA typ: System ON, full 256 kB RAM retention, wake on RTC (LFRC)  (§5.2.1.1)
+*         ILFRC 0.7 uA run current (§5.4.4.4); ILFXO 0.23 uA run current (§5.4.4.3):
+*         this board runs the RTC from the 32.768 kHz crystal Y1, so the LFRC share is swapped for the LFXO.
+*   + ISENSE = ION_RAMON_GPIOTEPORT - ION_RAMON_EVENT = 2.36 - 2.35 = 0.01 uA for the PORT/SENSE wake pins
+*   Supply slope: +8.3 %/V around 3 V (Figure 10, 25 C curve: about 1.00 uA at 3.0 V, 1.05 uA at 3.6 V).
+*   Temperature: factor read off Figure 10 (System ON, no RAM retention, typical): 0.30 at -40 C, 1.0 at 25 C,
+*         10.4 at 85 C, interpolated log-linearly; applied to the whole ION (conservative: LFXO/RTC part is
+*         less temperature dependent). -10 C -> x0.52, 60 C -> x3.92.
+*   The PS gives typical values only (no maximum), so MAXC is accepted but unused. Test conditions are 3 V,
+*   LDO regulator; this board uses REG1 DC/DC, which does not change the sleep figures materially.
+*
+* GPIO pin states (subckts below, one per pin, connected between the pin net, VDD and GND):
+*   OUT_LOW / OUT_HIGH  standard drive: VOL/VOH within 0.4 V at 0.5 mA (§6.9.3.1 VOL,SD /
+*                       VOH,SD) -> 800 ohm to the rail (worst-case output resistance; sleep loads are uA)
+*   PULLUP / PULLDOWN   RPU / RPD 13 kohm typ (11-16 kohm, §6.9.3.1)
+*   HIGHZ               input (SENSE, no pull), disconnected, or analog: no DC element. The PS gives no
+*                       input-leakage figure, so none is modelled.
+*
+* Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
+* NOT modelled: radio, CPU wake-ups and RTC interrupt service (System ON idle only), SAADC sampling every
+*   10 min (firmware §12.3), errata currents (anomaly 89 / 195), USB regulator (VBUS absent on battery),
+*   DCCH, NFC pad leakage (P0.10 floats, so no path exists).
+* =====================================================================================================
+.subckt SC_NRF52840_SYSON vdd vss params: TEMP=25 MAXC=0
+.param ion = {3.16u - 0.70u + 0.23u + (2.36u - 2.35u)}
+.param kt  = {TEMP >= 25 ? pow(10.4, (TEMP - 25)/60) : pow(0.30, (25 - TEMP)/65)}
+Bcore vdd vss I = 'ion * kt * (1 + 0.083*(v(vdd,vss) - 3.0)) * tanh(v(vdd,vss)/0.05)'
+.ends SC_NRF52840_SYSON
+
+.subckt SC_NRF_GPIO_OUT_LOW pin vdd vss
+Rdrv pin vss 800
+.ends SC_NRF_GPIO_OUT_LOW
+
+.subckt SC_NRF_GPIO_OUT_HIGH pin vdd vss
+Rdrv vdd pin 800
+.ends SC_NRF_GPIO_OUT_HIGH
+
+.subckt SC_NRF_GPIO_PULLUP pin vdd vss
+Rpu vdd pin 13k
+.ends SC_NRF_GPIO_PULLUP
+
+.subckt SC_NRF_GPIO_PULLDOWN pin vdd vss
+Rpd pin vss 13k
+.ends SC_NRF_GPIO_PULLDOWN

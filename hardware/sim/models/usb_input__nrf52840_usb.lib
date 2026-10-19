@@ -4,7 +4,7 @@
 * Part      : Nordic nRF52840 (inside Raytac MDBT50Q-U1MV2; the module brings VBUS/D+/D- straight out)
 * Datasheet : nRF52840 Product Specification v1.1 (4413_417, 2019-02-28)
 *             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf (mirror of the Nordic PDF)
-* Vendor model: none (Nordic publishes IBIS for GPIO only, no SPICE model for the USB block).
+* Vendor model: none found (no SPICE model of the nRF52840 USB pins is published).
 *
 * Modelled:
 *   VBUS load    IUSB,ACTIVE,VBUS 2.4 mA typ (PS 6.35.14.1)                        -> param ivbus
@@ -19,7 +19,8 @@
 * Ratings used by the tests (not enforced in the model, PS Table 173 Absolute maximum ratings):
 *   VBUS -0.3 .. +5.8 V; I/O pin voltage -0.3 .. VDD + 0.3 V; ESD HBM 2 kV (aQFN73, class 2);
 *   USB operating VBUS 4.35 .. 5.5 V (PS 5.3.8.5).
-* NOT modelled: the USB regulator's dynamics and any VBUS-pin internal clamp (none is specified),
+* NOT modelled: the USB regulator's dynamics, a positive-going VBUS-pin clamp (none is specified; the
+*   tests compare the VBUS node with the 5.8 V abs max instead),
 *   the PHY drivers / pull-ups (the tests look at transients with the PHY idle), temperature effects.
 * Pins: VBUS, DP, DM, GND
 * =====================================================================================================
