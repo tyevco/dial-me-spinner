@@ -749,8 +749,8 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
 
 * **Charger (base board):** TI **BQ25180** I2C linear charger with power path.
   On USB it regulates SYS to 4.4 V (SYS_REG, set by firmware); on battery
-  SYS = VBAT. Ship mode with
-  push-button wake draws 3.2 µA, and shutdown draws 15 nA. The input tolerates
+  SYS = VBAT. Ship mode with push-button wake draws 3.2 µA, and shutdown
+  draws 15 nA. The input tolerates
   25 V. A 10 kΩ B3435 NTC (RT1) sits on TS/MR, on the base-board top side at
   r 8, θ 200°. The base board is single-sided, so RT1 reads board/pack-air
   temperature, not the cell skin ([§8.5](#85-charging)).
@@ -765,7 +765,7 @@ diffuser gap that SPEC's stack allows they give a far smoother ring than 24 or
   * VDD and VDDH are both on +3V3 from an **RT9080-33** LDO
     (2 µA typical / 4 µA maximum quiescent, 600 mA, about 310 mV dropout at
     600 mA; its ground current at the ~20 µA sleep load is not specified and
-    is a bring-up measurement, hardware/sim LDO-1, LDO-6). SPEC's alternate
+    is a bring-up measurement; hardware/sim, LDO-1, LDO-6). SPEC's alternate
     is the TPS7A0233 (25 nA quiescent, 200 mA, same SOT-23-5 pin functions;
     confirm the pinout before swapping).
   * The module's internal REG1 DC/DC is enabled.
@@ -826,7 +826,7 @@ values from the verified research, with the two SPICE-driven changes
 | SYS_REG (0x0A) | 0x20 | SYS 4.4 V on USB (SYS_REG_CTRL = 001; was 0x40 = 4.5 V) for the LED data margin (hardware/sim, LED-DATA-V3, LDO-2) |
 | TS_CONTROL (0x0B) | 0x90 | TS_HOT 50 °C, TS_COLD 3 °C (WARM 45 °C, COOL 10 °C unchanged), so the 0 °C / 60 °C JEITA charge-prohibit limits still hold with the threshold, bias and NTC tolerances (hardware/sim, charger_ts-1) |
 
-* **SYS_REG MUST be 4.4 V (0x20) or 4.5 V, never higher and never
+* **SYS_REG MUST be 4.4 V (0x20) or 4.5 V (0x40), never higher and never
   pass-through, while the LEDs may run.** Above 4.5 V the LED data margin is
   gone, and in pass-through VBUS on VSYS could exceed the LEDs' 5.3 V
   absolute maximum. Firmware asserts this whenever it writes SYS_REG
