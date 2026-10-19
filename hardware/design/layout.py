@@ -354,7 +354,7 @@ def preroute_usb_c(bb, ref):
     track(off(b7, far), b7.GetPosition(), pcbnew.F_Cu, dm)
 
 
-def preroute_bga_escape(bb, ref, length=0.7, power=("VBUS", "VSYS", "VBAT", "GND")):
+def preroute_bga_escape(bb, ref, length=0.7, power=("VBUS", "VSYS", "VBAT", "GND"), via_nets=("VSYS",)):
     """Locked escape stubs for a 2-column fine-pitch BGA: each ball goes straight outward, away from
     the other column, so the autorouter starts outside the 0.4 mm-pitch array."""
     fp = bb.footprints.get(ref)
@@ -371,14 +371,24 @@ def preroute_bga_escape(bb, ref, length=0.7, power=("VBUS", "VSYS", "VBAT", "GND
             d = pcbnew.VECTOR2I(pcbgen.MM(length) * (1 if pos.x > cx else -1), 0)
         else:
             d = pcbnew.VECTOR2I(0, pcbgen.MM(length) * (1 if pos.y > cy else -1))
+        k = 1.6 if p.GetNetname() in via_nets else 1.0  # inner power ball: longer stub ending in a via
+        end = pcbnew.VECTOR2I(pos.x + int(d.x * k), pos.y + int(d.y * k))
         t = pcbnew.PCB_TRACK(bb.board)
         t.SetStart(pos)
-        t.SetEnd(pcbnew.VECTOR2I(pos.x + d.x, pos.y + d.y))
+        t.SetEnd(end)
         t.SetWidth(pcbgen.MM(0.2 if p.GetNetname() in power else 0.15))
         t.SetLayer(pcbnew.F_Cu)
         t.SetNet(p.GetNet())
         t.SetLocked(True)
         bb.board.Add(t)
+        if p.GetNetname() in via_nets:
+            v = pcbnew.PCB_VIA(bb.board)
+            v.SetPosition(end)
+            v.SetWidth(pcbgen.MM(0.5))
+            v.SetDrill(pcbgen.MM(0.25))
+            v.SetNet(p.GetNet())
+            v.SetLocked(True)
+            bb.board.Add(v)
 
 
 def base_inside(x, y, side):
