@@ -201,6 +201,41 @@ class Parts:
         self.main_vbus_nets = {self.vbus_m, self.nrf_vbus}
 
 
+def unmodelled_parts(base: Design, main: Design, p: "Parts") -> list:
+    """Parts on the nets this file simulates that the deck builder does NOT represent (verifier addition).
+
+    Net.lines() builds the network from named parts, not from passives(nets=...), so a part added to one of these
+    nets in the schematic (a ferrite in VBUS, series resistors in D+/D-, an extra TVS, a cap on CC) would otherwise
+    be silently ignored. Allowed: the parts the builder models, the Rd resistors, test points, VBUS caps, R/L in series
+    between the link VBUS and the nRF VBUS pin (main), and USBLC6 second-stage arrays on main (modelled)."""
+    out = []
+    base_nets = {p.vbus_b, p.dp_b, p.dm_b, *p.cc}
+    ok_b = {p.usbc, p.tvs, p.esd, p.chg, p.link_b, *caps_on(base, {p.vbus_b})}
+    ok_b |= {r for n in p.cc for r in base.on_net(n, "R")}
+    for net in base_nets:
+        for ref in base.on_net(net):
+            if ref not in ok_b and not ref.startswith("TP") and base.fitted(ref):
+                out.append(f"base {ref} ({base.mpn(ref) or base.comps[ref]['value']}) on {net}")
+    main_nets = {p.vbus_m, p.nrf_vbus, p.dp_m, p.dm_m, p.nrf_dp, p.nrf_dm}
+    ok_m = {p.link_m, p.mcu, *caps_on(main, p.main_vbus_nets), *main_esd2(main, p)}
+    if p.nrf_vbus != p.vbus_m:
+        ok_m |= {r for r in main.on_net(p.vbus_m) if r[0] in "RL" and set(main.pins[r].values()) <= p.main_vbus_nets}
+    for net in main_nets:
+        for ref in main.on_net(net):
+            if ref not in ok_m and not ref.startswith("TP") and main.fitted(ref):
+                out.append(f"main {ref} ({main.mpn(ref) or main.comps[ref]['value']}) on {net}")
+    if p.nrf_dp != p.dp_m or p.nrf_dm != p.dm_m:
+        out.append(f"main: series part(s) between the link and the nRF D+/D- pads ({p.dp_m}->{p.nrf_dp}, "
+                   f"{p.dm_m}->{p.nrf_dm}) are not modelled")
+    return sorted(set(out))
+
+
+def main_esd2(main: Design, p: "Parts") -> list:
+    """USBLC6-class second-stage arrays on the main board's USB nets (none in the schematic of 2026-10-19)."""
+    nets = {p.dp_m, p.dm_m, p.nrf_dp, p.nrf_dm}
+    return [r for r in main.find("USBLC6") if main.fitted(r) and set(main.pins.get(r, {}).values()) & nets]
+
+
 def caps_on(d: Design, nets) -> list:
     nets = set(nets)
     return [r for r in sorted(d.comps, key=spicelib._refkey) if r[0] == "C" and r[1:2].isdigit()
@@ -277,8 +312,14 @@ class Net:
     def esd_params(self):
         return {"typ": "rd=0.5 rdt=0.5", "max": "rd=0.953 rdt=0.953"}[self.esd]
 
+    def esd_fitted(self) -> bool:
+        return self.b.fitted(self.p.esd) and self.p.esd not in self.b._shorted
+
     def lines(self) -> list:
         b, m, p = self.b, self.m, self.p
+        missing = unmodelled_parts(b, m, p)
+        if missing:
+            raise NetlistError(f"parts on the simulated nets that this file does not model: {missing}")
         L = []
         vb = p.vbus_b
         # ---------------- base VBUS: star from the J1 pads, one branch per part (layout estimate)
@@ -286,15 +327,19 @@ class Net:
         for ref in (p.tvs, p.esd, p.chg, p.link_b):
             branch[ref] = f"vbr_{ref.lower()}"
             L += line(f"tb_{ref}", "vj1", branch[ref], dist_mm(b, vb, p.usbc, ref), "")
-        # TVS: netlist pins decide the orientation (pin 1 = cathode per the Littelfuse DS)
-        if b.fitted(p.tvs):
-            if p.tvs in b._shorted:
-                L.append(f"V{p.tvs}_short {branch[p.tvs]} 0 0")
-            else:
-                k = branch[p.tvs] if b.pins[p.tvs]["1"] == vb else node_name(b.pins[p.tvs]["1"])
-                a = branch[p.tvs] if b.pins[p.tvs]["2"] == vb else node_name(b.pins[p.tvs]["2"])
-                L.append(f"VItvs {k} {k}_i 0")
-                L.append(f"X{p.tvs} {k}_i {a} USBIN_SMF5V0A {self.tvs_params()}")
+        # TVS: netlist pins decide the orientation (pin 1 = cathode per the Littelfuse DS).  The probe VItvs sits on the
+        # VBUS side and is always present (0 A when D1 is left off), so a removed or shorted D1 is simulated, not a
+        # missing-vector error (verifier fix: before, 'D1 left off' only "failed" by crashing the DC/hot-plug decks).
+        tv = branch[p.tvs]
+        L.append(f"VItvs {tv} {tv}_i 0")
+        if not b.fitted(p.tvs):
+            L.append(f"R{p.tvs}_absent {tv}_i 0 1e12")
+        elif p.tvs in b._shorted:
+            L.append(f"V{p.tvs}_short {tv}_i 0 0")
+        else:
+            k = f"{tv}_i" if b.pins[p.tvs]["1"] == vb else node_name(b.pins[p.tvs]["1"])
+            a = f"{tv}_i" if b.pins[p.tvs]["2"] == vb else node_name(b.pins[p.tvs]["2"])
+            L.append(f"X{p.tvs} {k} {a} USBIN_SMF5V0A {self.tvs_params()}")
         # charger IN
         L.append(f"VIin {branch[p.chg]} vin 0")
         L.append(f"X{p.chg} vin 0 USBIN_BQ25180_IN iq={self.iq} iin={self.iin} resd={self.resd}")
@@ -310,8 +355,11 @@ class Net:
         L.append(f"VIesd {esd_vbus_node} vesd 0")
         sig_node = {p.dp_b: "dpesd", p.dm_b: "dmesd"}
         gnd = "0" if f["GND"] == "GND" else node_name(f["GND"])
-        L.append(f"X{p.esd} {sig_node.get(f['I/O1'], node_name(f['I/O1']))} {gnd} "
-                 f"{sig_node.get(f['I/O2'], node_name(f['I/O2']))} vesd USBIN_USBLC6_2 {self.esd_params()}")
+        if self.esd_fitted():           # verifier fix: Design.remove(U2) used to be ignored (U2 was always in the deck)
+            L.append(f"X{p.esd} {sig_node.get(f['I/O1'], node_name(f['I/O1']))} {gnd} "
+                     f"{sig_node.get(f['I/O2'], node_name(f['I/O2']))} vesd USBIN_USBLC6_2 {self.esd_params()}")
+        else:
+            L.append(f"R{p.esd}_absent vesd 0 1e12")
         # D+/D-: J1 -> U2 -> link connector
         for sig, net in (("dp", p.dp_b), ("dm", p.dm_b)):
             L += line(f"t{sig}1", f"{sig}j1", f"{sig}esd", dist_mm(b, net, p.usbc, p.esd), "")
@@ -349,6 +397,15 @@ class Net:
         L.append("VInrf_vb vnrf vnrf_i 0")
         L.append(f"X{p.mcu} vnrf_i dpnrf_i dmnrf_i 0 USBIN_NRF52840_USB ivbus={self.ivbus} vusb={self.vusb} "
                  f"resd={self.resd}")
+        # second-stage USBLC6 on main (the USB-2 fix), if the schematic has one: placed at the nRF pads (no trace
+        # inductance between it and the pads, as in the what-if tests), its VBUS pin on whichever VBUS net it uses
+        nd = {p.nrf_dp: "dpnrf", p.nrf_dm: "dmnrf", p.dp_m: "dpnrf", p.dm_m: "dmnrf", p.nrf_vbus: "vnrf",
+              p.vbus_m: "vmain", "GND": "0"}
+        for ref in main_esd2(m, p):
+            fm = m.funcs[ref]
+            L.append(f"X{ref}m {nd.get(fm['I/O1'], node_name(fm['I/O1']))} {nd.get(fm['GND'], node_name(fm['GND']))} "
+                     f"{nd.get(fm['I/O2'], node_name(fm['I/O2']))} {nd.get(fm['VBUS'], node_name(fm['VBUS']))} "
+                     f"USBIN_USBLC6_2 {self.esd_params()}")
         return L
 
     def deck(self, title: str) -> Deck:
@@ -401,10 +458,9 @@ def hotplug_deck(net: Net, vsrc: float, cable: str, c_bulk: float, stop: float =
     dk.options.append("option method=gear")
     dk.tran("5n", f"{stop}", 0, "10n")
     p = net.p
-    tvs_fitted = net.b.fitted(p.tvs) and p.tvs not in net.b._shorted
     for name, expr in (("vin", "v(vin)"), ("vesd", "v(vesd)"), ("vtvs", f"v(vbr_{p.tvs.lower()})"),
-                       ("vnrf", "v(vnrf)"), ("itvs", "i(vitvs)" if tvs_fitted else None),
-                       ("itr", f"i(v.x{p.esd.lower()}.vtr)")):
+                       ("vnrf", "v(vnrf)"), ("itvs", "i(vitvs)"),
+                       ("itr", f"i(v.x{p.esd.lower()}.vtr)" if net.esd_fitted() else None)):
         if expr:
             dk.meas(f"tran {name}_max MAX {expr}")
     dk.meas(f"tran vnrf_end FIND v(vnrf) AT={stop * 0.99:.4g}")
@@ -423,7 +479,7 @@ def esd_deck(net: Net, node: str, kv: float, stop: float = 2e-6) -> Deck:
                        ("inrfdp", "i(vinrf_dp)"), ("inrfdm", "i(vinrf_dm)"), ("inrfvb", "i(vinrf_vb)"),
                        ("ibq", f"i(v.x{p.chg.lower()}.vesd)"), ("itvs", "i(vitvs)"),
                        ("itr", f"i(v.x{p.esd.lower()}.vtr)"), ("ig", "i(vg_i)")):
-        if name == "itvs" and not (net.b.fitted(p.tvs) and p.tvs not in net.b._shorted):
+        if name == "itr" and not net.esd_fitted():
             continue
         dk.meas(f"tran {name}_max MAX {expr}")
         dk.meas(f"tran {name}_min MIN {expr}")
@@ -684,9 +740,56 @@ def test_tvs_not_in_breakdown_at_usb_max(base, main, check):
     check("D1 current at VBUS 5.5 V (VBR min, IR max corner)", abs(op["itvs"]), None, TVS_IT[0], "A", TVS_IT[1])
 
 
+# ============================================================================================ data lines, DC (verifier)
+USB2_VOH = (2.8, "USB 2.0 Spec Rev 2.0 Table 7-7 VOH 2.8 V min (15 kOhm to GND)")
+USB2_VOL = (0.3, "USB 2.0 Spec Rev 2.0 Table 7-7 VOL 0.3 V max (1.5 kOhm to 3.6 V)")
+USB2_ZDRV_MAX = 44.0       # USB 2.0 Table 7-7 ZDRV 28-44 Ohm (FS driver output resistance): weakest driver
+NRF_VUSB33_MIN = 3.0       # nRF52840 PS v1.1 5.3.8.6 VUSB33 3.0 V min (FS driver supply)
+
+
+def data_line_dc(base: Design, main: Design, vbus: float, state: str) -> dict:
+    """The nRF FS driver (VUSB33 min through ZDRV max) drives J (D+ high, D- low) or K into the USB 2.0 Table 7-7
+    test loads at J1 (15 k to GND on the high line, 1.5 k to 3.6 V on the low line), with U2, the harness and the
+    nRF pads in between and VBUS at `vbus`. Returns the line voltages at J1 and at the nRF pads."""
+    net = Net(base, main, vusb=NRF_VUSB33_MIN)
+    dk = net.deck(f"data lines {state} at VBUS {vbus} V")
+    hi, lo = ("dp", "dm") if state == "J" else ("dm", "dp")
+    dk += [f"Vsrc srcv 0 {vbus}", f"Rcab srcv vj1 {CABLES['2m_1uH_100m'][2]}",
+           f"Vdrv_hi drvh 0 {NRF_VUSB33_MIN}", f"Rdrv_hi drvh {hi}nrf_i {USB2_ZDRV_MAX}",
+           f"Rdrv_lo {lo}nrf_i 0 {USB2_ZDRV_MAX}",
+           f"Rload_hi {hi}j1 0 15k", "Vload lv 0 3.6", f"Rload_lo {lo}j1 lv 1.5k"]
+    dk.op()
+    dk.print_op(f"v({hi}j1)", f"v({lo}j1)", f"v({hi}nrf_i)", f"v({lo}nrf_i)")
+    r = run(dk)
+    return dict(hi_j1=r["op_0"], lo_j1=r["op_1"], hi_nrf=r["op_2"], lo_nrf=r["op_3"])
+
+
+@pytest.mark.parametrize("vbus", [NRF_VBUS_OP[0][0], 5.5])
+@pytest.mark.parametrize("state", ["J", "K"])
+def test_data_line_dc_levels(base, main, check, vbus, state):
+    """With U2 on the lines (its VBUS pin on VBUS, GND on GND), the weakest FS driver still meets VOH / VOL at J1 and at
+    the pads: U2 must not load D+/D- (catches U2 power-pin wiring errors that no transient check sees)."""
+    v = data_line_dc(base, main, vbus, state)
+    tag = f"{state} state, VBUS {vbus} V"
+    check(f"high line at J1 ({tag})", v["hi_j1"], USB2_VOH[0], None, "V", USB2_VOH[1])
+    check(f"low line at J1 ({tag})", v["lo_j1"], None, USB2_VOL[0], "V", USB2_VOL[1])
+    check(f"high line at the nRF pad ({tag})", v["hi_nrf"], USB2_VOH[0], None, "V", USB2_VOH[1])
+    check(f"low line at the nRF pad ({tag})", v["lo_nrf"], None, USB2_VOL[0], "V", USB2_VOL[1])
+
+
+def test_netlist_coverage(base, main, parts, check):
+    """Every fitted part on the nets this file simulates is represented in the decks (a part added in the schematic
+    must not be silently dropped; Net.lines raises NetlistError for the same condition)."""
+    missing = unmodelled_parts(base, main, parts)
+    check(f"parts on the simulated nets that the decks do not model {missing}", len(missing), None, 0, "",
+          "test integrity: base VBUS/D+/D-/CC and main VBUS/D+/D- nets fully modelled")
+
+
 # ============================================================================================ hot plug
 def hotplug(base, main, vsrc, cable, c_bulk, **kw) -> dict:
-    key = ("hp", vsrc, cable, c_bulk, tuple(sorted((k, str(v)) for k, v in kw.items())), design_key(base))
+    # both boards in the key (verifier fix: a main-board fault such as C12 changed must not reuse a cached run)
+    key = ("hp", vsrc, cable, c_bulk, tuple(sorted((k, str(v)) for k, v in kw.items())), design_key(base),
+           design_key(main))
     return cached(key, lambda: run(hotplug_deck(Net(base, main, **kw), vsrc, cable, c_bulk)))
 
 
@@ -704,7 +807,7 @@ def test_hotplug_grid(base, main, check, vsrc, cable, c_bulk):
           None, "V", TVS_VBR[1])
     check(f"IN peak ({tag})", r["vin_max"], None, BQ_IN_ABS_MAX[0], "V", BQ_IN_ABS_MAX[1])
     check(f"D1 peak current ({tag})", r["itvs_max"], None, TVS_IPP[0], "A", TVS_IPP[1])
-    check(f"U2 VBUS clamp peak current ({tag})", r["itr_max"], None, LC6_IPP[0], "A", LC6_IPP[1])
+    check(f"U2 VBUS clamp peak current ({tag})", r.get("itr_max", 0.0), None, LC6_IPP[0], "A", LC6_IPP[1])
     check(f"(info) U2 VBUS pin peak ({tag})", r["vesd_max"], None, None, "V",
           "USBLC6-2 DS 11265 Rev5 (no VBUS abs max)")
     check(f"(info) IN peak vs VIN_OVP min ({tag}): charger input FET trips", r["vin_max"], None, None, "V",
@@ -740,7 +843,7 @@ def test_hotplug_corners(base, main, check, temp, tvs):
             tag = f"{temp} C, TVS {tvs}, " + ", ".join(f"{k} x{x:.2f}" for k, x in scale.items())
             check(f"IN peak ({tag})", r["vin_max"], None, BQ_IN_ABS_MAX[0], "V", BQ_IN_ABS_MAX[1])
             check(f"D1 peak current ({tag})", r["itvs_max"], None, TVS_IPP[0], "A", TVS_IPP[1])
-            check(f"U2 VBUS clamp peak current ({tag})", r["itr_max"], None, LC6_IPP[0], "A", LC6_IPP[1])
+            check(f"U2 VBUS clamp peak current ({tag})", r.get("itr_max", 0.0), None, LC6_IPP[0], "A", LC6_IPP[1])
             check(f"(info) nRF VBUS peak ({tag})", r["vnrf_max"], None, None, "V", NRF_VBUS_ABS[1])
 
 
@@ -774,7 +877,7 @@ def test_hotplug_fix_preview_nrf_series_r(base, main, check, temp, tvs, r_series
 
 # ============================================================================================ ESD
 def esd(base, main, node, kv, **kw) -> dict:
-    key = ("esd", node, kv, tuple(sorted((k, str(v)) for k, v in kw.items())), design_key(base))
+    key = ("esd", node, kv, tuple(sorted((k, str(v)) for k, v in kw.items())), design_key(base), design_key(main))
     return cached(key, lambda: run(esd_deck(Net(base, main, **kw), node, kv)))
 
 
@@ -791,7 +894,8 @@ def test_esd_vbus(base, main, check, kv, harness):
     check(f"(info) gun peak current ({tag})", max(r["ig_max"], -r["ig_min"]), None, None, "A", IEC_SRC)
     check(f"(info) D1 peak current ({tag})", max(r["itvs_max"], -r["itvs_min"]), None, None, "A",
           "SMF5.0A DS: IEC 61000-4-2 30 kV contact rating")
-    check(f"(info) U2 VBUS clamp peak current ({tag})", max(r["itr_max"], -r["itr_min"]), None, None, "A",
+    check(f"(info) U2 VBUS clamp peak current ({tag})", max(r.get("itr_max", 0.0), -r.get("itr_min", 0.0)), None,
+          None, "A",
           "USBLC6-2 DS 11265 Rev5 Table 1: IEC 61000-4-2 15 kV contact")
     check(f"IN max ({tag})", r["vin_max"], None, BQ_IN_ABS_MAX[0], "V", BQ_IN_ABS_MAX[1])
     check(f"IN clamp current ({tag})", max(r["ibq_max"], -r["ibq_min"]), None, hbm_amps(BQ_ESD_HBM[0]), "A",
@@ -844,6 +948,8 @@ def test_esd_data_lines_sensitivity(base, main, check):
     """Record (no limit) how the nRF D+ pad current depends on what is not known exactly: harness length,
     USBLC6 clamp corner (typical / datasheet max) and the nRF's on-chip clamp resistance (1 / 3 / 10 Ohm),
     without and with the proposed second-stage USBLC6 at U10."""
+    if main_esd2(main, Parts(base, main)):
+        pytest.skip("the schematic already has a second-stage array (modelled by Net.lines)")
     for kv, h, esdc, resd in SENS:
         for second in (False, True):
             net = Net(base, main, harness_mm=h, tvs="clampmax", esd=esdc, resd=resd)
@@ -862,6 +968,8 @@ def test_esd_fix_preview_second_stage(base, main, check, sig, kv, harness):
     """WHAT-IF (not in the schematic yet): a second USBLC6-2SC6 next to U10 on the main board (I/O on USB_DP/USB_DM,
     VBUS pin on VBUS). The link inductance then decouples the two stages. Typical clamp corners for both arrays
     (the datasheet-max combination is recorded by test_esd_data_lines_sensitivity)."""
+    if main_esd2(main, Parts(base, main)):
+        pytest.skip("the schematic already has a second-stage array: test_esd_data_lines_nrf_pad_current checks it")
     net = Net(base, main, harness_mm=harness, tvs="clampmax", esd="typ")
     dk = esd_deck(net, f"{sig}j1", kv)
     dk += [f"Xesd2 dpnrf 0 dmnrf vnrf USBIN_USBLC6_2 {net.esd_params()}"]

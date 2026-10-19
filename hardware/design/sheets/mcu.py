@@ -83,6 +83,9 @@ SYMBOLS = [
 ]
 
 
+NFC_FP = "NFC_Coil_Pads_1x02_P2.0mm"
+
+
 def footprints(fpgen, lib_dir):
     # SII SC-20S recommended soldering pattern (standard spec, C97603): two 0.7 x 1.4 mm pads, 0.8 mm gap
     # (centres at +/-0.75 mm). KiCad's generic 2012 crystal footprint uses smaller
@@ -98,6 +101,16 @@ def footprints(fpgen, lib_dir):
     silk = fpgen.pcbnew.F_SilkS
     fp.line(silk, -0.25, -0.85, 0.25, -0.85)
     fp.line(silk, -0.25, 0.85, 0.25, 0.85)
+    fp.save(lib_dir)
+
+    # NFC coil solder pads: the coil flex lives in the top cover and its tail is soldered here. Flat pads, because a
+    # side-entry header (2.95 mm) does not fit under the display glass (2.3 mm above the board top).
+    fp = fpgen.Footprint(NFC_FP, "NFC coil flex-tail solder pads, 2 pads 1.2 x 2.0 mm at 2.0 mm pitch, no paste",
+                         "NFC antenna coil pads")
+    fp.smd("1", -1.0, 0, 1.2, 2.0, paste=False)
+    fp.smd("2", 1.0, 0, 1.2, 2.0, paste=False)
+    fp.courtyard_rect(-1.85, -1.25, 1.85, 1.25)
+    fp.fab_rect(-1.6, -1.0, 1.6, 1.0)
     fp.save(lib_dir)
 
     # u.FL-only copy of the Raytac footprint: the stock one carries the all-layer keep-out for the
@@ -123,10 +136,10 @@ def build(d):
     d.group("nRF52840 module MDBT50Q-U1MV2",
             "Normal-voltage mode: VDD + VDDH on +3V3, DCCH n/c,\n"
             "REG1 DC/DC on (its inductor is inside the module).\n"
-            "u.FL on module -> Molex 146153-0050 flex antenna.\n"
+            "u.FL on module -> Molex 146153-0100 flex antenna.\n"
             "Pin map = nets.MCU_PINS (SPEC §4).\n"
-            "UICR: P0.18 = nRESET; NFC pins as GPIO.\n"
-            "P0.10/NFC2 floats (never tie it).\n"
+            "UICR: P0.18 = nRESET; NFCPINS stays in NFC mode\n"
+            "(P0.09/P0.10 = NFC1/NFC2 antenna).\n"
             "Symbol: stock MDBT50Q-U1MV2 pins, regrouped by port.")
     d.add("U10", "dial_spinner:" + MCU_SYM, "MDBT50Q-U1MV2", MCU_FP,
           pins=dict(MCU_PINS),
@@ -183,6 +196,19 @@ def build(d):
           in_bom=False)
     d.add("R11", "Device:R", "10k", R0402, pins={"1": "+3V3", "2": "NRESET"}, dnp=True,
           fields={"MPN": "0402WGF1002TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25744"})
+
+    d.group("NFC tag antenna (nRF52840 NFCT, NFC-A Type 2/4)",
+            "Coil between NFC1 and NFC2: its flex tail solders to pads J11 (coil in the top cover).\n"
+            "Tune: Ctune = 2/((2*pi*13.56 MHz)^2 * L_coil) - Cp - Cint (Cint ~ 4 pF, PS 6.13);\n"
+            "180 pF C0G each suits L ~ 1.4-1.5 uH; retune on prototype.\n"
+            "Route NFC1/NFC2 as a pair, away from the TMAG and the LED data line.")
+    d.add("C16", "Device:C", "180p C0G", C0402, pins={"1": "NFC1", "2": "GND"},
+          fields={"MPN": "0402CG181J500NT", "Manufacturer": "FH (Guangdong Fenghua)", "LCSC": "C78636"})
+    d.add("C17", "Device:C", "180p C0G", C0402, pins={"1": "NFC2", "2": "GND"},
+          fields={"MPN": "0402CG181J500NT", "Manufacturer": "FH (Guangdong Fenghua)", "LCSC": "C78636"})
+    d.add("J11", "Connector_Generic:Conn_01x02", "NFC_COIL", "dial_spinner:" + NFC_FP,
+          pins={"1": "NFC1", "2": "NFC2"}, in_bom=False,
+          description="Solder pads for the NFC coil flex tail (no part fitted)")
 
     d.group("Spare GPIO test pads", "Value = module GPIO\n(P0.03/P0.04 = AIN1/AIN2)")
     spares = {"TP_SPARE1": "P0.03", "TP_SPARE2": "P0.04", "TP_SPARE3": "P1.11", "TP_SPARE4": "P1.13"}

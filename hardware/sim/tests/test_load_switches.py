@@ -20,6 +20,8 @@ limits, the clamp diodes and the D21 leakage), component tolerances (extremes / 
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import spicelib
@@ -222,6 +224,11 @@ def run(deck, *, need=()):
     for _ in range(benign):
         if "**** ERROR ****" in errors:
             errors.remove("**** ERROR ****")
+    # ngspice's operating-point homotopy reports intermediate failures ("Dynamic/True gmin stepping failed",
+    # "singular matrix") before a later method succeeds; accept them only if that success is in the log.
+    # "source stepping failed" (the last resort) is never accepted.
+    if any("stepping completed" in ln for ln in lines) and not any("source stepping failed" in ln for ln in lines):
+        errors = [e for e in errors if not re.search(r"gmin stepping failed|singular matrix", e)]
     if errors:
         raise SimulationError(errors[:5])
     missing = [n for n in need if n not in res]
@@ -318,11 +325,20 @@ def u2_turn_on(main, base, corner, temp=25, t_on=0.5e-3, stop=8e-3):
     d.meas(f"tran vledend FIND v(n_vled) AT={stop}")
     d.wave("v(n_vled)")
     r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "vledend"))
+    sane_vsys(r["vsys0"], corner)
     t, v = r["waves"]["time"], r["waves"]["v(n_vled)"]
     r["t10"] = first_cross(t, v, 0.1 * r["vsys0"], after=t_on)
     r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
     r["t_on"] = t_on
     return r
+
+
+def sane_vsys(v, corner):
+    """Guard against a converged-but-wrong operating point: VSYS before the event must be where the source puts it."""
+    c = CORNERS[corner]
+    lo, hi = ((min(4.5, c["vbus"]) - 0.2, min(4.5, c["vbus"]) + 0.1) if c["usb"] else (c["vbat"] - 0.2, c["vbat"]))
+    if not lo <= v <= hi:
+        raise SimulationError(f"VSYS operating point {v} V outside {lo}..{hi} V for {corner}")
 
 
 def check_u2_turn_on(check, main, r, tag, usb, vbat):
@@ -416,19 +432,33 @@ def test_u2_qod_discharge(main, base, check, corner):
           f"{DS_SW} 9.3.3 Eq. 4 tFALL = 2.2 (R4 + QOD 150 Ohm) CL (+-15 % model correlation)")
 
 
+SAMSUNG_TOL = {"J": 0.05, "K": 0.10, "M": 0.20}   # Samsung CL-series MPN, 9th character = capacitance tolerance
+
+
+def mpn_tol(main, ref):
+    """Tolerance encoded in the part's own MPN field (Samsung CL MLCCs, e.g. CL21A226MAQNNNE -> 'M' = +-20 %),
+    else the netlist value-string tolerance (spicelib default)."""
+    mpn = main.mpn(ref)
+    if mpn.startswith("CL") and len(mpn) > 8 and mpn[8] in SAMSUNG_TOL:
+        return SAMSUNG_TOL[mpn[8]]
+    return main.tol(ref)
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: with C8/C9 at +10 % "
-                   "(netlist tolerance; the CL21A226MAQNNNE is really +-20 %) the QOD discharge through R4 + 150 R "
-                   "takes just over 30 ms to 10 % (fix: R4 68 R, or a 35 ms firmware wait)")
+                   reason="DESIGN ISSUE: the firmware's 30 ms VLED-off allowance has no margin: with C8/C9 at the "
+                   "+20 % of their MPN (CL21A226MAQNNNE) the QOD discharge through R4 + 150 R takes ~33 ms to 10 % "
+                   "(30.0 ms already at +10 %) (fix: R4 68 R, or a 35 ms firmware wait)")
 def test_u2_qod_discharge_tolerance_extremes(main, base, check):
-    """C8, C9, R4 at their tolerance corners (the 48 x 100 nF at nominal): slowest VLED discharge."""
+    """C8, C9, R4 at their tolerance corners (MPN tolerance; the 48 x 100 nF at nominal): slowest VLED discharge."""
+    refs = ["C8", "C9", "R4"]
     worst = 0.0
-    for sc in main.extremes(["C8", "C9", "R4"]):
-        scaled(main, sc)
-        worst = max(worst, u2_turn_off(main, base, "bat4.2", stop=40e-3, ideal_vsys=4.2)["t_off10"])
+    for sc in main.extremes(refs):
+        # extremes() uses the value-string tolerance; stretch each corner to the MPN tolerance
+        scaled(main, {r: 1 + (k - 1) * mpn_tol(main, r) / main.tol(r) for r, k in sc.items()})
+        worst = max(worst, u2_turn_off(main, base, "bat4.2", stop=45e-3, ideal_vsys=4.2)["t_off10"])
         main.reset()
-    check("VLED to 10 % worst C8/C9/R4 corner", worst, None, FW_LED_OFF, "s",
-          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'")
+    check("VLED to 10 % worst C8/C9/R4 corner (MPN tolerances)", worst, None, FW_LED_OFF, "s",
+          "docs/architecture.md 7: 'allow >= 30 ms for the QOD discharge'; C8/C9 CL21A226MAQNNNE +-20 %")
 
 
 @pytest.mark.slow
@@ -562,7 +592,7 @@ def test_phantom_vled_and_din_current(main, base, check, corner, temp):
 @pytest.mark.xfail(strict=True, raises=AssertionError,
                    reason="DESIGN ISSUE: with P0.06 high and VLED off, R40 = 220 R lets ~5 mA into D101's DIN clamp, "
                    "which then sits more than 0.7 V above VLED (WS2812C abs max VI <= VDD + 0.7 V); only firmware "
-                   "prevents it (fit U43 SN74LV1T34 / raise R40, see design_findings)")
+                   "prevents it (fit the DNP U43 SN74LV1T34 + C43 and remove R43, see design_findings)")
 @pytest.mark.parametrize("corner,temp", [("bat4.2", 25), ("bat3.0", -10)])
 def test_phantom_din_abs_max(main, base, check, corner, temp):
     r = phantom_op(main, base, corner, temp)
@@ -610,6 +640,7 @@ def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3):
     d.meas(f"tran vinend FIND v({main.node('OLED_VIN')}) AT={stop}")
     d.wave(f"v({main.node('OLED_VIN')})", "v(n_iu21)", "v(n_u21_vin)")
     r = run(d, need=("vsys0", "vsysmin", "iinrush", "ibat", "v13end", "vinend"))
+    sane_vsys(r["vsys0"], corner)
     w = r["waves"]
     t, v = w["time"], w[f"v({main.node('OLED_VIN')})"]
     r["t90"] = first_cross(t, v, 0.9 * r["vsys0"], after=t_on)
@@ -782,3 +813,12 @@ def test_u21_off_whatif_qod_tied_to_vout(main, base, check):
               f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN)")
         check(f"WHAT-IF QOD tied: FB - OLED_VIN {temp}C", r["op_1"] - r["op_0"], None, BST_FB_OVER_VIN, "V",
               f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
+
+
+def test_phantom_clamp_sensitivity(main, base, check):
+    """Record how the DIN-over-VDD result depends on the (unspecified) WS2812C clamp I-V: strong / nominal / weak."""
+    for tag, esd in (("strong clamp IS 1e-13 RS 0", {"is": 1e-13, "rs": 0.0}), ("nominal IS 1e-14 RS 10", None),
+                     ("weak clamp IS 1e-15 RS 20", {"is": 1e-15, "rs": 20.0})):
+        r = phantom_op(main, base, "bat4.2", 25, esd=esd)
+        check(f"DIN - VDD, P0.06 high, VLED off, {tag} (record)", r["vi_over_vdd"], None, None, "V",
+              f"informational bracket for the xfail above; {DS_WS} gives no clamp I-V")

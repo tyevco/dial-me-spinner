@@ -29,7 +29,10 @@
 * Supply currents are scaled by tanh(V/50 mV) so that they vanish on an unpowered rail (ship mode).
 * NOT modelled: radio, CPU wake-ups and RTC interrupt service (System ON idle only), SAADC sampling every
 *   10 min (firmware §12.3), errata currents (anomaly 89 / 195), USB regulator (VBUS absent on battery),
-*   DCCH, NFC pad leakage (P0.10 floats, so no path exists).
+*   DCCH. NFCT: since the 2026-10-19 netlist P0.09/P0.10 carry an NFC antenna (NFC1/NFC2, coil on J11, C16/C17
+*   to GND; nets.py: UICR NFCPINS left in NFC mode). With NFCT disabled there is no DC path; if firmware arms
+*   NFCT field SENSE in sleep add Isense 100 nA typ (PS v1.1 §5.2.1.4) -- firmware.md does not define it yet.
+*   INFC_LEAK (1 / 10 uA, §6.9.3.1) applies only in GPIO mode with the pads at different levels. [verifier]
 * =====================================================================================================
 .subckt SC_NRF52840_SYSON vdd vss params: TEMP=25 MAXC=0
 .param ion = {3.16u - 0.70u + 0.23u + (2.36u - 2.35u)}

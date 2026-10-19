@@ -9,8 +9,9 @@
 *   VDD static current  <= 1 uA per pixel ("静态功耗低于1μA", features, p.1; LED table "静态电流 ≦1μA" @5 V, p.3)
 *                         -> 1 uA at VDD >= 3.3 V, scaled linearly below (CMOS bias, assumption for VDD < 3.3 V).
 *   LED channel current  5 mA per channel ("每个通道工作电流5mA", p.1; IV test condition 5 mA, p.3), 3 channels,
-*                         as a constant-current load "duty" (0..1 of full white) with a soft compliance
-*                         below 2.0 V headroom-free VDD (assumption, only used for DC load-extreme runs).
+*                         as a constant-current load "duty" (0..1 of full white); it fades linearly to zero
+*                         between VDD = 2 V and 1 V (ASSUMPTION, only so a DC operating point exists from 0 V;
+*                         the DC load-extreme runs sit at VDD >= 3.4 V where the full current flows).
 *   DI input            : CI <= 15 pF (switching table "输入电容 CI 15 pF max", p.3) -> 15 pF to VSS;
 *                         II <= +-1 uA at VI = VDD/VSS (p.3) -> not modelled (negligible vs 100 kOhm R41);
 *                         clamp diodes DI->VDD and VSS->DI, implied by the absolute maximum VI = -0.3 V .. VDD + 0.7 V

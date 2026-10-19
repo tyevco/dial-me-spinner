@@ -311,6 +311,148 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Connector_Generic:Conn_01x02"
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "J"
+				(at 0 2.54 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Conn_01x02"
+				(at 0 -5.08 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "connector"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_fp_filters" "Connector*:*_1x??_*"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "Conn_01x02_1_1"
+				(rectangle
+					(start -1.27 1.27)
+					(end 1.27 -3.81)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(rectangle
+					(start -1.27 0.127)
+					(end 0 -0.127)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -2.413)
+					(end 0 -2.667)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 3.81)
+					(name "Pin_1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -2.54 0)
+					(length 3.81)
+					(name "Pin_2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Device:C"
 			(pin_numbers
 				(hide yes)
@@ -2440,7 +2582,7 @@
 		)
 		(uuid "89948e40-3bfe-56de-a30a-c90ec5dc3e9b")
 	)
-	(text "Normal-voltage mode: VDD + VDDH on +3V3, DCCH n/c,\nREG1 DC/DC on (its inductor is inside the module).\nu.FL on module -> Molex 146153-0050 flex antenna.\nPin map = nets.MCU_PINS (SPEC §4).\nUICR: P0.18 = nRESET; NFC pins as GPIO.\nP0.10/NFC2 floats (never tie it).\nSymbol: stock MDBT50Q-U1MV2 pins, regrouped by port."
+	(text "Normal-voltage mode: VDD + VDDH on +3V3, DCCH n/c,\nREG1 DC/DC on (its inductor is inside the module).\nu.FL on module -> Molex 146153-0100 flex antenna.\nPin map = nets.MCU_PINS (SPEC §4).\nUICR: P0.18 = nRESET; NFCPINS stays in NFC mode\n(P0.09/P0.10 = NFC1/NFC2 antenna).\nSymbol: stock MDBT50Q-U1MV2 pins, regrouped by port."
 		(exclude_from_sim no)
 		(at 15.24 24.13 0)
 		(effects
@@ -2644,9 +2786,45 @@
 		)
 		(uuid "25b45875-3ddd-5d51-b150-781bf7e0aa6a")
 	)
-	(text "Spare GPIO test pads"
+	(text "NFC tag antenna (nRF52840 NFCT, NFC-A Type 2/4)"
 		(exclude_from_sim no)
 		(at 87.63 162.56 0)
+		(effects
+			(font
+				(size 2 2)
+				(bold yes)
+			)
+			(justify left top)
+		)
+		(uuid "c5a64b27-cec7-570d-9e6c-40a8fff8cf2f")
+	)
+	(text "Coil between NFC1 and NFC2: its flex tail solders to pads J11 (coil in the top cover).\nTune: Ctune = 2/((2*pi*13.56 MHz)^2 * L_coil) - Cp - Cint (Cint ~ 4 pF, PS 6.13);\n180 pF C0G each suits L ~ 1.4-1.5 uH; retune on prototype.\nRoute NFC1/NFC2 as a pair, away from the TMAG and the LED data line."
+		(exclude_from_sim no)
+		(at 87.63 166.37 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(italic yes)
+			)
+			(justify left top)
+		)
+		(uuid "8dd95369-a1d2-5244-abe7-f6aa511fe2ad")
+	)
+	(rectangle
+		(start 85.09 160.02)
+		(end 176.53 193.04)
+		(stroke
+			(width 0.1)
+			(type dash)
+		)
+		(fill
+			(type none)
+		)
+		(uuid "eb51364f-b437-5f9b-bef0-f92e1575989f")
+	)
+	(text "Spare GPIO test pads"
+		(exclude_from_sim no)
+		(at 184.15 162.56 0)
 		(effects
 			(font
 				(size 2 2)
@@ -2658,7 +2836,7 @@
 	)
 	(text "Value = module GPIO\n(P0.03/P0.04 = AIN1/AIN2)"
 		(exclude_from_sim no)
-		(at 87.63 166.37 0)
+		(at 184.15 166.37 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2669,8 +2847,8 @@
 		(uuid "3dc33758-d298-5d91-9402-60dafca7c26d")
 	)
 	(rectangle
-		(start 85.09 160.02)
-		(end 125.73 201.93)
+		(start 181.61 160.02)
+		(end 220.98 201.93)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -3353,9 +3531,35 @@
 			)
 		)
 	)
-	(no_connect
-		(at 33.02 92.71)
-		(uuid "67f14f35-a1d3-533e-9d31-e0a476aaef43")
+	(wire
+		(pts (xy 33.02 92.71) (xy 30.48 92.71))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a7f7308c-0217-5bc6-973c-8f3904d62b2e")
+	)
+	(global_label "CHG_INT_N"
+		(shape bidirectional)
+		(at 30.48 92.71 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "90c452da-86f6-5abb-bc6d-e94a602d9dac")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 30.48 92.71 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
 	)
 	(wire
 		(pts (xy 33.02 95.25) (xy 30.48 95.25))
@@ -3845,31 +4049,33 @@
 		)
 		(uuid "a6a2a26d-5fdc-5d9a-ba56-d828357c4903")
 	)
-	(global_label "CHG_INT_N"
-		(shape bidirectional)
+	(label "NFC1"
 		(at 60.96 77.47 0)
-		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify left bottom)
 		)
 		(uuid "5d6c1570-3405-5844-8fbc-0b2b2355cb74")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 60.96 77.47 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
 	)
-	(no_connect
-		(at 58.42 80.01)
-		(uuid "68cb4524-da2a-5cb5-aa1f-da9b92fcf9e1")
+	(wire
+		(pts (xy 58.42 80.01) (xy 60.96 80.01))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "533ade7d-6e8f-5ab6-b37b-0c9b04e1e320")
+	)
+	(label "NFC2"
+		(at 60.96 80.01 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "1c894fa7-d7d2-5587-9625-ef727a8ccad5")
 	)
 	(wire
 		(pts (xy 58.42 82.55) (xy 60.96 82.55))
@@ -6949,34 +7155,32 @@
 		(uuid "18920f5a-85fe-50b7-920e-ec8d5e19a8be")
 	)
 	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 88.9 180.34 0)
+		(lib_id "Device:C")
+		(at 101.6 185.42 90)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "69a11128-8242-5db1-99b2-167fa24a3890")
-		(property "Reference" "TP10"
-			(at 90.17 179.07 0)
+		(uuid "91e35fa7-eab4-562b-8cfd-cb319f58a887")
+		(property "Reference" "C16"
+			(at 101.6 181.788 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
 			)
 		)
-		(property "Value" "P0.03"
-			(at 90.17 181.61 0)
+		(property "Value" "180p C0G"
+			(at 101.6 189.052 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
 			)
 		)
-		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 88.9 180.34 0)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 101.6 185.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6985,7 +7189,484 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 88.9 180.34 0)
+			(at 101.6 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 101.6 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0402CG181J500NT"
+			(at 101.6 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "FH (Guangdong Fenghua)"
+			(at 101.6 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C78636"
+			(at 101.6 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "0d31b4ab-92e2-5c1c-83b2-8b04b812b12c")
+		)
+		(pin "2"
+			(uuid "fb818fc5-0445-595d-a85c-cf317daa8da4")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/6fff20c3-e674-59c7-af56-aa9123ab713e"
+					(reference "C16")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 97.79 185.42) (xy 95.25 185.42))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fbf4aaa0-5b28-58b6-a665-90658db275b7")
+	)
+	(label "NFC1"
+		(at 95.25 185.42 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "98eea324-48bb-540d-824b-3945627db6b8")
+	)
+	(wire
+		(pts (xy 105.41 185.42) (xy 107.95 185.42))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a965ed27-b76a-5353-9dd2-53a7044f5ad8")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 107.95 185.42 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "15d7902a-3c95-5b44-b9ff-b1a74715f290")
+		(property "Reference" "#PWR03021"
+			(at 107.95 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 111.25 185.42 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 107.95 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 107.95 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 107.95 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "74fd7810-1f3a-5ab0-947f-cd23c64c13e5")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/6fff20c3-e674-59c7-af56-aa9123ab713e"
+					(reference "#PWR03021")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 132.08 185.42 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "b0752ce2-dbf6-59dd-8bad-940ae6d7d90f")
+		(property "Reference" "C17"
+			(at 132.08 181.788 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "180p C0G"
+			(at 132.08 189.052 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0402CG181J500NT"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "FH (Guangdong Fenghua)"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" "C78636"
+			(at 132.08 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "94c7e42f-6e9e-5e82-a05f-4dc0ecc4418f")
+		)
+		(pin "2"
+			(uuid "538de004-b6ec-587d-b90e-251c472096f4")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/6fff20c3-e674-59c7-af56-aa9123ab713e"
+					(reference "C17")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 128.27 185.42) (xy 125.73 185.42))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "08d5fdf0-09fd-5061-81ff-f1f70ad495da")
+	)
+	(label "NFC2"
+		(at 125.73 185.42 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "3795a2f6-bc57-5b9b-a470-7c24f44693ec")
+	)
+	(wire
+		(pts (xy 135.89 185.42) (xy 138.43 185.42))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0e28c617-473f-5d7d-8ef2-b6838bf06971")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 138.43 185.42 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "50d78b70-4cc6-5d0d-b9de-7be202946878")
+		(property "Reference" "#PWR03022"
+			(at 138.43 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 141.73 185.42 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 138.43 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 138.43 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 138.43 185.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "1ef41002-0524-5f20-89b7-6aa85948928e")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/6fff20c3-e674-59c7-af56-aa9123ab713e"
+					(reference "#PWR03022")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 165.1 182.88 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "ed1c2d46-64e7-51fd-8d11-a0b76a6c643b")
+		(property "Reference" "J11"
+			(at 165.1 180.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "NFC_COIL"
+			(at 165.1 188.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "dial_spinner:NFC_Coil_Pads_1x02_P2.0mm"
+			(at 165.1 182.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 165.1 182.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Solder pads for the NFC coil flex tail (no part fitted)"
+			(at 165.1 182.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8af8c76d-04ae-52d9-a797-459ff268f3a9")
+		)
+		(pin "2"
+			(uuid "a097a152-720e-562c-bfbf-6c64df189f7e")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/6fff20c3-e674-59c7-af56-aa9123ab713e"
+					(reference "J11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 160.02 182.88) (xy 157.48 182.88))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f9ffcbbf-b565-52a0-89a7-a168ecc2a80d")
+	)
+	(label "NFC1"
+		(at 157.48 182.88 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "4968397b-e804-5c59-b755-92002fc9db29")
+	)
+	(wire
+		(pts (xy 160.02 185.42) (xy 157.48 185.42))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "64a47089-9b02-5b4a-a94f-c8bf6ac1ecbb")
+	)
+	(label "NFC2"
+		(at 157.48 185.42 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "1a7aef9e-049a-5031-a141-caa491bc0eeb")
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 185.42 180.34 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "69a11128-8242-5db1-99b2-167fa24a3890")
+		(property "Reference" "TP10"
+			(at 186.69 179.07 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "P0.03"
+			(at 186.69 181.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
+			(at 185.42 180.34 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 185.42 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6994,7 +7675,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 88.9 180.34 0)
+			(at 185.42 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7015,7 +7696,7 @@
 		)
 	)
 	(wire
-		(pts (xy 88.9 180.34) (xy 88.9 182.88))
+		(pts (xy 185.42 180.34) (xy 185.42 182.88))
 		(stroke
 			(width 0)
 			(type default)
@@ -7023,7 +7704,7 @@
 		(uuid "c81f6c69-0ec6-508f-9126-39d5a5a4ef28")
 	)
 	(label "TP_SPARE1"
-		(at 88.9 182.88 270)
+		(at 185.42 182.88 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7034,7 +7715,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 96.52 180.34 0)
+		(at 193.04 180.34 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -7042,7 +7723,7 @@
 		(dnp no)
 		(uuid "9ae026b1-1af8-584a-86e3-3312762c984b")
 		(property "Reference" "TP11"
-			(at 97.79 179.07 0)
+			(at 194.31 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7051,7 +7732,7 @@
 			)
 		)
 		(property "Value" "P0.04"
-			(at 97.79 181.61 0)
+			(at 194.31 181.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7060,7 +7741,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 96.52 180.34 0)
+			(at 193.04 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7069,7 +7750,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 96.52 180.34 0)
+			(at 193.04 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7078,7 +7759,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 96.52 180.34 0)
+			(at 193.04 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7099,7 +7780,7 @@
 		)
 	)
 	(wire
-		(pts (xy 96.52 180.34) (xy 96.52 182.88))
+		(pts (xy 193.04 180.34) (xy 193.04 182.88))
 		(stroke
 			(width 0)
 			(type default)
@@ -7107,7 +7788,7 @@
 		(uuid "3d7dc759-7596-586e-b809-f8ab099c84cc")
 	)
 	(label "TP_SPARE2"
-		(at 96.52 182.88 270)
+		(at 193.04 182.88 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7118,7 +7799,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 104.14 180.34 0)
+		(at 200.66 180.34 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -7126,7 +7807,7 @@
 		(dnp no)
 		(uuid "edd9dcb1-fc7a-5785-880c-ff13494ec3ea")
 		(property "Reference" "TP12"
-			(at 105.41 179.07 0)
+			(at 201.93 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7135,7 +7816,7 @@
 			)
 		)
 		(property "Value" "P1.11"
-			(at 105.41 181.61 0)
+			(at 201.93 181.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7144,7 +7825,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 104.14 180.34 0)
+			(at 200.66 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7153,7 +7834,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 104.14 180.34 0)
+			(at 200.66 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7162,7 +7843,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 104.14 180.34 0)
+			(at 200.66 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7183,7 +7864,7 @@
 		)
 	)
 	(wire
-		(pts (xy 104.14 180.34) (xy 104.14 182.88))
+		(pts (xy 200.66 180.34) (xy 200.66 182.88))
 		(stroke
 			(width 0)
 			(type default)
@@ -7191,7 +7872,7 @@
 		(uuid "0367b04f-55b8-52e3-8544-005cd7dcaf0c")
 	)
 	(label "TP_SPARE3"
-		(at 104.14 182.88 270)
+		(at 200.66 182.88 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7202,7 +7883,7 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 114.3 180.34 0)
+		(at 210.82 180.34 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom no)
@@ -7210,7 +7891,7 @@
 		(dnp no)
 		(uuid "e4dce026-1219-5e6b-95d1-73f9876524a0")
 		(property "Reference" "TP13"
-			(at 115.57 179.07 0)
+			(at 212.09 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7219,7 +7900,7 @@
 			)
 		)
 		(property "Value" "P1.13"
-			(at 115.57 181.61 0)
+			(at 212.09 181.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7228,7 +7909,7 @@
 			)
 		)
 		(property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm"
-			(at 114.3 180.34 0)
+			(at 210.82 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7237,7 +7918,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 114.3 180.34 0)
+			(at 210.82 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7246,7 +7927,7 @@
 			)
 		)
 		(property "Description" "test point"
-			(at 114.3 180.34 0)
+			(at 210.82 180.34 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7267,7 +7948,7 @@
 		)
 	)
 	(wire
-		(pts (xy 114.3 180.34) (xy 114.3 182.88))
+		(pts (xy 210.82 180.34) (xy 210.82 182.88))
 		(stroke
 			(width 0)
 			(type default)
@@ -7275,7 +7956,7 @@
 		(uuid "7fa591fb-fe7a-5f34-9b2b-309204f88b9f")
 	)
 	(label "TP_SPARE4"
-		(at 114.3 182.88 270)
+		(at 210.82 182.88 270)
 		(effects
 			(font
 				(size 1.27 1.27)

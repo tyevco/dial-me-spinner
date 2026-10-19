@@ -684,7 +684,7 @@ def tran_tag(temp, c):
 
 SETTLE_SRC = (f"{BQ}: no TS deglitch specified. Limit = Table 7.6 tTS_DUTY_ON 4 ms (TS/MR evaluation window) and "
               "firmware.md gpio-keys debounce 5 ms (TS status blanking after release). For information, Table 7.6 "
-              "tSLEEP_DGL (a VIN deglitch, not a TS one) is 64 µs")
+              f"tSLEEP_DGL (a VIN deglitch, not a TS one) is {T_DGL * 1e6:g} µs")
 
 
 def check_bands(temp, rows, check, label):
@@ -852,5 +852,6 @@ def test_fault_rt1_wrong_beta_is_detected(base, main, check):
                             levels={f"COLD00_{lv}": THR["COLD00"][i] for i, lv in enumerate(("min", "typ", "max"))},
                             title="JEITA mapping, RT1 B3950")
     t_typ, spread = mapping(rows, cells, "COLD00")
+    off = math.inf if t_typ is None else abs(t_typ - THR["COLD00"][3]) - spread   # no crossing: mapping fails too
     check("faulted (RT1 B3950): COLD trip offset from 'Approx. 0 °C' beyond the IC spread",
-          abs(t_typ - THR["COLD00"][3]) - spread, 0.0, None, "°C", f"{BQ} Table 7.5 VT1_Entry (mapping check must fail)")
+          off, 0.0, None, "°C", f"{BQ} Table 7.5 VT1_Entry (mapping check must fail)")

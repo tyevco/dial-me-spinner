@@ -2,9 +2,9 @@
 * sleep_current__tps61040.lib -- TPS61040 boost converter, DC input-current model for the sleep state
 *
 * Part      : Texas Instruments TPS61040DBVR (main board U20, 13 V OLED panel boost; EN tied to VIN)
-* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf  (SLVS413L)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf  (SLVS413L, October 2002, revised August 2026)
 *
-* Modelled (Section 7.5 Electrical Characteristics):
+* Modelled (Section 5.5 Electrical Characteristics; VIN = 2.4 V, EN = VIN, typ at 25 C):
 *   ISD    shutdown current 0.1 uA typ / 1 uA max (EN = GND), drawn while VIN < VUVLO or EN < VIH
 *   IQ     operating quiescent current 28 uA typ / 50 uA max (IOUT = 0, not switching, VFB = 1.3 V), drawn
 *          once VIN > VUVLO and EN > VIH. Blended with tanh (20 mV) so .op converges.
@@ -14,6 +14,10 @@
 *          actual SW voltage (28 Mohm / 2.8 Mohm). Linear scaling is an assumption (spec is at 28 V only).
 *   RFB    FB input bias: 1 uA max at VFB = 1.3 V (1.3 Mohm equivalent, max corner only); typ not given -> off
 *   MAXC = 0 typical, 1 datasheet maximum.
+*   Abs max (Section 5.1): EN, FB <= VIN + 0.3 V. UVLO (Section 6.3.4) only states that the main switch is off
+*   below VUVLO; the bias current there with EN high is not specified -- ISD is used (whatever it is, all
+*   current fed into the floating OLED_VIN must leave through this part, so the sleep total does not depend on it).
+*   [verifier: section numbers corrected from 7.5 to 5.5 for revision L; values re-checked, unchanged]
 *
 * Why this model exists: in sleep the input switch U21 is off and OLED_VIN floats. Any current that reaches
 * OLED_VIN (U21 off-state leakage, reverse leakage of the rectifier D21 from +13V_OLED) can only leave

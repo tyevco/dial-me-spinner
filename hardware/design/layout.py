@@ -176,6 +176,8 @@ def main_fixed(comps):
         9.5, 270.0, 0.0, "F")
     put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 12.0, 150.0, 0.0, "F")
     put(lambda c: "PKMCS" in mpn(c), 22.0, 22.0, 22.0, "B")
+    # NFC coil tail pads on the top, right above the module's NFC1/NFC2 pins (the coil sits in the top cover)
+    put(lambda c: c["value"] == "NFC_COIL", 21.5, 222.0, 222.0 - 90.0, "F")
     put(lambda c: "SM04B" in mpn(c) or "BM04B" in mpn(c), 25.5, 132.0, 132.0 - 90.0, "B")
     return P
 

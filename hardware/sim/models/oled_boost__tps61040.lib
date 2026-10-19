@@ -48,9 +48,9 @@
 .subckt TPS61040_OB EN FB SW VIN GND params: ILIM=0.4 TOFF=400n TONMAX=6u VREF=1.233 RDS=0.6
 + TDLY=100n IQ=28u IFB=0 UVLO=1.5 VENH=1.3 GLEAK=36n
 * ---- enable: EN high and VIN above UVLO (vendor: E_ABM57)
-Ben enr 0 V = (V(EN,GND) > {VENH} && V(VIN,GND) > {UVLO}) ? 1 : 0
-Ren enr en 1k
-Cen en 0 1p
+Bena enar 0 V = (V(EN,GND) > {VENH} && V(VIN,GND) > {UVLO}) ? 1 : 0
+Rena enar ena 1k
+Cena ena 0 1p
 * ---- error comparator: 1 while FB is below the trip point (vendor: E_ABM2, no hysteresis)
 Bcmp cmp 0 V = (V(FB,GND) < {VREF}) ? 1 : 0
 * ---- power switch: RDS(on) when the latch is set, leakage when off; integrated body diode
@@ -72,18 +72,18 @@ Bton 0 non I = V(q) > 0.5 ? 1p/{TONMAX}*min(max((1.5-V(non))/0.05, 0), 1) : -V(n
 Cnon non 0 1p
 Rnon non 0 1G
 * ---- reset-dominant RS latch (vendor: srlatchrhp_basic_gen); bistable when neither input is active
-Brst rst 0 V = (V(en) < 0.5 || V(ild) > 0.5 || V(non) > 1) ? 1 : 0
+Brst rst 0 V = (V(ena) < 0.5 || V(ild) > 0.5 || V(non) > 1) ? 1 : 0
 Bset set 0 V = (V(cmp) > 0.5 && V(nt) > 1) ? 1 : 0
 Bq 0 q I = V(rst) > 0.5 ? -V(q)*1m : ((V(set) > 0.5 || V(q) > 0.5) ? (1-V(q))*1m : -V(q)*1m)
 Cq q 0 1p
 Rq q 0 1G
 * ---- soft start (6.3.2): count switch turn-off events (+1 V each, injected during the first quarter
 *      of the min off time), ILIM/4 below 256, ILIM/2 below 512, then ILIM; cleared while disabled
-Bcnt 0 cnt I = V(en) < 0.5 ? -V(cnt)*1m : ((V(q) < 0.5 && V(nt) < 0.25 && V(cnt) < 513) ? 1p/(0.25*{TOFF}) : 0)
+Bcnt 0 cnt I = V(ena) < 0.5 ? -V(cnt)*1m : ((V(q) < 0.5 && V(nt) < 0.25 && V(cnt) < 513) ? 1p/(0.25*{TOFF}) : 0)
 Ccnt cnt 0 1p
 Rcnt cnt 0 1T
 Blim lim 0 V = V(cnt) < 256.5 ? {ILIM}/4 : (V(cnt) < 512.5 ? {ILIM}/2 : {ILIM})
 * ---- quiescent current and FB bias current
-Biq VIN GND I = V(en) * {IQ}
+Biq VIN GND I = V(ena) * {IQ}
 Bfb FB GND I = {IFB}
 .ends TPS61040_OB

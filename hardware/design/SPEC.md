@@ -116,7 +116,8 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 | P0.08, P1.09 | I2C_SCL, I2C_SDA | system TWIM1 (IMU 0x19, BQ25180 0x6A via link), 4.7 kΩ pull-ups |
 | P1.12 | IMU_INT1 | LIS2DW12 INT1 (push-pull) |
 | P0.30 | IMU_INT2 | LIS2DW12 INT2 |
-| P0.09 | CHG_INT_N | NFC1 used as GPIO; 10 kΩ pull-up to +3V3 |
+| P0.09 / P0.10 | NFC1 / NFC2 | NFCT tag antenna (UICR NFCPINS stays in NFC mode); 180 pF C0G tuning cap to GND on each (C16/C17); coil tail pads J11 on the main-board top |
+| P1.03 | CHG_INT_N | BQ25180 /INT (open drain, 128 µs pulses); 10 kΩ pull-up to +3V3 |
 | P1.10 | BTN_N | 100 kΩ pull-up to +3V3 |
 | P0.02 | VSYS_SENSE | AIN0 |
 | P0.26, P0.05 | MOT_A_IN1, MOT_A_IN2 | DRV8837 #1 (coil A) |
@@ -125,7 +126,7 @@ P0.10, P0.28–P0.31, P1.01–P1.07, P1.10–P1.15.
 | P1.14 | HOME_N | DRV5032FA output (push-pull, low = magnet present) |
 | P0.12, P1.08 | BUZZ_A, BUZZ_B | piezo, complementary PWM, 100 Ω series each |
 | P0.03, P0.04, P1.11, P1.13 | TP_SPARE1..4 | test pads |
-| P0.10, P0.28, P0.29, P0.31, P1.03, P1.05, P1.06, P1.07 | — | no-connect |
+| P0.28, P0.29, P0.31, P1.05, P1.06, P1.07 | — | no-connect |
 
 ## 5. Main-board sheets
 
