@@ -1,0 +1,59 @@
+* =====================================================================================================
+* oled_boost__tps22917.lib  --  TI TPS22917 load switch (U21, VSYS -> OLED_VIN), behavioural model
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments TPS22917DBVR (SOT-23-6), 1-5.5 V, 2 A, 80 mOhm, CT slew control
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps22917.pdf  (SLVSDW8B, Sep 2017, revised Dec 2021)
+* Vendor    : none used (written for this circuit from the datasheet tables below).
+*
+* Modelled:
+*   ON threshold   VTH 0.65 V (between VIL max 0.35 V and VIH min 1.0 V, Table 7.3); ON smart pull-down
+*                  RPD 750 kOhm while ON <= VIL (Table 7.5 "RPD").
+*   CT slew        9.3.2: "A capacitor to VIN on the CT pin sets the slew rate of VOUT".  The model sinks
+*                  I_CT(VIN) from the CT pin, so (VIN - V(CT)) ramps at I_CT / (C_CT + CINT) with the REAL
+*                  external CT capacitor of the netlist (C37) plus CINT.
+*                  I_CT(VIN) = SRON x 1 pF from Table 7.6 "SRON" (CT >= 100 pF):
+*                     1.8 V: 1100, 3.6 V: 1900, 5.0 V: 2300 (mV/us)*pF  ->  1.1 / 1.9 / 2.3 uA,
+*                     linear between the points (clamped outside 1.8-5.0 V).
+*                  CINT 43 pF = I_CT / SRON(CT open) at 3.6 V (Table 7.6: 44 mV/us; 72 mV/us at 5 V
+*                     gives 32 pF, 14 mV/us at 1.8 V gives 79 pF; the 3.6 V value is used throughout).
+*                  Turn-on delay: VOUT starts when (VIN - V(CT)) exceeds VDEL = I_CT x tON_k - 0.9 VIN, so
+*                     that VOUT reaches 90 % of VIN at tON = tON_k x CT (Table 7.6 "tON", CT >= 100 pF:
+*                     3.6 / 3.8 / 4.0 us/pF at 1.8 / 3.6 / 5.0 V; equation 2).
+*                  Resulting 10-90 % rise at 3.6 V / 1 nF: 1.5 ms (Table 7.6 tR: 1.6 us/pF -> 1.6 ms).
+*   Pass element   VOUT follows min(ramp target, VIN) through RON (default 0.09 ohm = Table 7.5 RON typ
+*                  at VIN 3.6 V, 25 C; max 0.14 ohm at -40..85 C, the test passes the corner).
+*                  Current flows only VIN -> VOUT: reverse current blocking (9.4) is treated as ideal.
+*   Turn off       ramp node is reset with tau ~1 us when ON goes low (Table 7.6 tOFF 10 us typ).
+*   QOD            150 ohm to GND while disabled (Table 7.5 "QOD"); the netlist leaves QOD open here.
+*   Supply current IQ,VIN 0.5 uA enabled, ISD,VIN 10 nA disabled (Table 7.5 typ).
+*
+* NOT modelled: RCB trip current / 10 us activation time (reverse current is simply blocked), RON
+*   variation with VIN (the test passes RON for the VIN/temperature corner), thermal limits, ON-pin
+*   hysteresis, the slight VIN dependence of CINT, the CT pin's own clamp (the internal ramp node may
+*   exceed the 7 V CT rating of Table 7.3 in this model; it is a timing state, not a pin voltage claim).
+*
+* Pins: VIN GND ON CT QOD VOUT   (datasheet pin order 1..6)
+* =====================================================================================================
+.subckt TPS22917_OB VIN GND ON CT QOD VOUT params: RON=0.09 VTH=0.65 CINT=43p RPD=750k RQOD=150
++ IQON=0.5u ISD=10n
+* ---- enable
+Ben enr 0 V = V(ON,GND) > {VTH} ? 1 : 0
+Ren enr en 1k
+Cen en 0 1n
+* ---- ON pin smart pull-down while low
+Bpd ON GND I = V(en) < 0.5 ? V(ON,GND)/{RPD} : 0
+* ---- VIN-dependent slew current and delay voltage (Table 7.6)
+Bvin vinc 0 V = min(max(V(VIN,GND), 1.8), 5.0)
+Bict ict 0 V = V(vinc) < 3.6 ? 1.1u + (V(vinc)-1.8)*(0.8u/1.8) : 1.9u + (V(vinc)-3.6)*(0.4u/1.4)
+Btk tonk 0 V = V(vinc) < 3.6 ? 3.6e6 + (V(vinc)-1.8)*(0.2e6/1.8) : 3.8e6 + (V(vinc)-3.6)*(0.2e6/1.4)
+Bdel vdel 0 V = V(ict)*V(tonk) - 0.9*V(vinc)
+* ---- CT ramp: sink I_CT from CT (external C37 returns to VIN), stop when fully on; reset when off
+Cint CT VIN {CINT}
+Bct CT GND I = V(en) > 0.5 ? (V(VIN,CT) < V(vdel) + V(VIN,GND) + 0.5 ? V(ict) : 0) : -V(VIN,CT)*1m
+* ---- pass element: forward only, follows the ramp target, RON when fully on
+Bout VIN VOUT I = V(en) > 0.5 ? max(min(max(V(VIN,CT) - V(vdel), 0), V(VIN,GND)) - V(VOUT,GND), 0)/{RON} : 0
+* ---- QOD (open on this board) and supply current
+Bqod QOD GND I = V(en) < 0.5 ? V(QOD,GND)/{RQOD} : 0
+Rqod QOD GND 1G
+Biq VIN GND I = V(en) > 0.5 ? {IQON} : {ISD}
+.ends TPS22917_OB

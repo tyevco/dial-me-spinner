@@ -1,0 +1,33 @@
+* =====================================================================================================
+* motor_drive__nrf52840_gpio.lib -- nRF52840 GPIO pad (standard drive) as seen by the motor-drive nets
+*
+* Part      : nRF52840 inside the Raytac MDBT50Q-U1MV2 module (main board U10)
+* Datasheet : nRF52840 Product Specification v1.6+, section 6.9.3.1 GPIO electrical specification
+*             (https://docs.nordicsemi.com/bundle/ps_nrf52840/page/gpio.html; values confirmed via
+*             Nordic DevZone thread 48727 and 111050)
+*
+* Modelled (value, datasheet reference):
+*   - Output, standard drive (S0S1): VOH,SD >= VDD - 0.4 V at 0.5 mA, VOL,SD <= 0.4 V at 0.5 mA,
+*     represented as an ideal VDD/0 source behind rout = 0.4 V / 0.5 mA = 800 Ohm (the guaranteed
+*     worst case; Nordic notes the real drop is far smaller).
+*   - Pad capacitance cpad = 3 pF (assumed, the PS table value is not verified here).
+*   - Input thresholds VIH = 0.7*VDD min, VIL = 0.3*VDD max: applied in the test code, not in SPICE.
+*   - Optional internal pull resistor rpull (13 kOhm typ in the PS; param, default open = 1 GOhm)
+*     to VDD (pullup=1) or to GND (pullup=0).
+*
+* NOT modelled: high-drive mode, slew-rate control, input leakage (sub-uA, negligible against the
+*   100 kOhm and 33 kOhm loads here), ESD diodes beyond the abs-max rails.
+* =====================================================================================================
+
+.subckt NRF_GPIO_OUT PAD VDD GND CTRL params: rout=800 cpad=3p
+* CTRL is a 0..1 V logic command
+B1 x GND V = V(VDD,GND)*min(1, max(0, V(CTRL,GND)))
+R1 x PAD {rout}
+C1 PAD GND {cpad}
+.ends NRF_GPIO_OUT
+
+.subckt NRF_GPIO_IN PAD VDD GND params: cpad=3p rpull=1G pullup=1
+C1 PAD GND {cpad}
+R1 PAD pr {rpull}
+B1 pr GND V = {pullup}*V(VDD,GND)
+.ends NRF_GPIO_IN

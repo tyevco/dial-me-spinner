@@ -31,7 +31,8 @@ class Placer:
     def __init__(self, board, inside, keepouts=None, power_nets=("GND",)):
         """inside(x, y, side) -> bool: is the point a legal place on this side.
 
-        keepouts: list of (side, predicate(x, y) -> bool) regions that must stay empty.
+        keepouts: list of (side, predicate(x, y) -> bool[, allow(fp) -> bool]) regions that must stay empty
+        (except for footprints the optional allow() exempts, e.g. low-profile parts).
         """
         self.board = board
         self.inside = inside
@@ -62,7 +63,10 @@ class Placer:
         corners = [(box[0], box[1]), (box[2], box[1]), (box[0], box[3]), (box[2], box[3])]
         if not all(self.inside(x, y, side) for x, y in corners):
             return False
-        for kside, pred in self.keepouts:
+        for k in self.keepouts:  # (side, predicate) or (side, predicate, allow(fp)) for parts exempt from it
+            kside, pred = k[0], k[1]
+            if len(k) > 2 and k[2](fp):
+                continue
             if kside in (side, "*") and any(pred(x, y) for x, y in corners + [((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)]):
                 return False
         return not any(_overlap(box, b) for _, b in self.occupied[side])

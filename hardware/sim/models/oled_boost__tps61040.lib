@@ -1,0 +1,89 @@
+* =====================================================================================================
+* oled_boost__tps61040.lib  --  TI TPS61040 PFM boost converter (U20), behavioural transient model
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments TPS61040DBVR (SOT-23-5), 400 mA switch, 28 V PFM boost
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf  (SLVS413L, Oct 2002, revised Aug 2026)
+* Vendor    : TI PSpice transient model SLVMDA8 (https://www.ti.com/lit/zip/SLVMDA8, "TPS61040_TRANS",
+*             Final 1.00, 10/08/2010, written against SLVS413E).  This file is a native-ngspice port of
+*             that model's architecture (same blocks, same time constants), because the vendor file
+*             (a) only parses with "ngbehavior=psa" (if(), VSWITCH, PSpice XOR, duplicate "PARAMS:"),
+*             which the harness cannot set, (b) runs ~12x slower and aborts with "timestep too small"
+*             after ~2.7 ms in ngspice 42, and (c) its soft-start counter mis-counts under ngspice
+*             (its 100 ns one-shot stretches to ~465 ns, so it advances ~3 counts per switching cycle).
+*   Port check (scratch run, vendor model under ngspice -D ngbehavior=psa, same L/D/C/divider):
+*     VIN 3.7 V / 20 mA : VOUT avg 13.019 vs 13.018 V, ripple 9.4 vs 9.0 mV, pulse rate 202 vs 210 kHz
+*     VIN 3.0 V / 40 mA : VOUT avg 12.977 vs 12.974 V, ripple 7.7 vs 7.2 mV, pulse rate 447 vs 461 kHz
+*     Peak switch current 0.441 vs 0.431 A: the port uses the datasheet 100 ns current-limit delay
+*     (SLVS413L 6.3.1 Eq. 1), the vendor model's RC buffer gives ~90 ns.
+*
+* Modelled (datasheet table / figure -> model parameter, default = typical):
+*   VREF   1.233 V    FB trip point, EC 5.5 "VFB" 1.208 / 1.233 / 1.258 V (1.8 V <= VIN <= 6 V).
+*                     Fig 5-6: drift over temperature is < 1.5 mV typ (passed in by the test).
+*   ILIM   0.400 A    MOSFET current limit, EC 5.5 "ILIM" 350 / 400 / 450 mA; Fig 5-7 / 5-9: < +-1 %
+*                     over -40..90 C and 1.8..6 V (test scales it).
+*   TDLY   100 ns     current-limit propagation delay, 6.3.1 Eq. 1 (Ipeak = ILIM + VIN/L x 100 ns).
+*   TOFF   400 ns     minimum off time, EC 5.5 "toff" 250 / 400 / 550 ns.
+*   TONMAX 6 us       maximum on time, EC 5.5 "ton" 4 / 6 / 7.5 us.
+*   RDS    0.6 ohm    MOSFET on-resistance, EC 5.5 "RDS(on)" 600 / 1000 mOhm (VIN 2.4 V, 200 mA);
+*                     Fig 5-10: ~480 mOhm at -40 C to ~800 mOhm at 90 C (the test scales it with TA).
+*   GLEAK  36 nS      MOSFET leakage, EC 5.5 1 uA typ at VSW = 28 V.
+*   IQ     28 uA      quiescent current, EC 5.5 "IQ" 28 / 50 uA (enabled, not switching).
+*   IFB    0          FB input bias current (+ = into the pin), EC 5.5 "IFB" max 1 uA (no typ given).
+*   UVLO   1.5 V      undervoltage lockout, EC 5.5 "VUVLO" 1.5 / 1.7 V (no hysteresis modelled).
+*   VENH   1.3 V      EN high threshold, EC 5.5 "VIH" 1.3 V min (vendor model uses the same 1.3 V).
+*   Soft start        6.3.2: ILIM/4 for 256 cycles, ILIM/2 for the next 256, then ILIM; restarts at
+*                     every enable (the vendor counter never resets).
+*   PFM control       6.4.1: switch on when FB < VREF and the min off time has elapsed; off at the
+*                     (delayed) current limit or at the max on time; reset-dominant RS latch.
+*   Body diode        SW -> GND clamp (IS 1e-12, RS 0.5 ohm), as the integrated NMOS has one.
+*
+* NOT modelled: thermal shutdown (168 C), UVLO hysteresis, EN input leakage (0.1 uA), switch-node
+*   capacitance (Coss is not specified; the rectifier junction capacitance sets the SW-node ringing),
+*   gate-drive edge rates (switch edges are ~1 ns), dependence of VFB / ILIM on VIN (< 1 %, Fig 5-9),
+*   line/load regulation terms beyond what the ideal comparator + external parts produce, the
+*   0.1 uA shutdown current (EN is tied to VIN on this board, so the part is either in UVLO or on).
+*
+* Pins: EN FB SW VIN GND   (same order as the vendor TPS61040_TRANS subcircuit)
+* =====================================================================================================
+.subckt TPS61040_OB EN FB SW VIN GND params: ILIM=0.4 TOFF=400n TONMAX=6u VREF=1.233 RDS=0.6
++ TDLY=100n IQ=28u IFB=0 UVLO=1.5 VENH=1.3 GLEAK=36n
+* ---- enable: EN high and VIN above UVLO (vendor: E_ABM57)
+Ben enr 0 V = (V(EN,GND) > {VENH} && V(VIN,GND) > {UVLO}) ? 1 : 0
+Ren enr en 1k
+Cen en 0 1p
+* ---- error comparator: 1 while FB is below the trip point (vendor: E_ABM2, no hysteresis)
+Bcmp cmp 0 V = (V(FB,GND) < {VREF}) ? 1 : 0
+* ---- power switch: RDS(on) when the latch is set, leakage when off; integrated body diode
+Bsw SW GND I = V(SW,GND) * (V(q)/{RDS} + {GLEAK})
+Dbody GND SW DBODY_OB61040
+.model DBODY_OB61040 D(IS=1e-12 N=1.2 RS=0.5)
+* ---- current-limit comparator with propagation delay (vendor: E_ABM1 + BUF_DELAY 100n)
+*      RC with tau = TDLY/ln2 so that the 0.5 threshold is crossed TDLY after the trip
+Bil ilr 0 V = (V(SW,GND) * V(q) / {RDS} > V(lim)) ? 1 : 0
+Ril ilr ild 1k
+Cil ild 0 {TDLY/0.6931/1k}
+* ---- minimum off-time timer: 1 V after TOFF with the switch off (vendor: 10 uA into 4 pF = 400 ns);
+*      the charge current fades out between 1.45 and 1.5 V so that the node has a DC solution
+Btoff 0 nt I = V(q) < 0.5 ? 1p/{TOFF}*min(max((1.5-V(nt))/0.05, 0), 1) : -V(nt)*1m
+Cnt nt 0 1p
+Rnt nt 0 1G
+* ---- maximum on-time timer: 1 V after TONMAX with the switch on (vendor: 0.6667 uA into 4 pF = 6 us)
+Bton 0 non I = V(q) > 0.5 ? 1p/{TONMAX}*min(max((1.5-V(non))/0.05, 0), 1) : -V(non)*1m
+Cnon non 0 1p
+Rnon non 0 1G
+* ---- reset-dominant RS latch (vendor: srlatchrhp_basic_gen); bistable when neither input is active
+Brst rst 0 V = (V(en) < 0.5 || V(ild) > 0.5 || V(non) > 1) ? 1 : 0
+Bset set 0 V = (V(cmp) > 0.5 && V(nt) > 1) ? 1 : 0
+Bq 0 q I = V(rst) > 0.5 ? -V(q)*1m : ((V(set) > 0.5 || V(q) > 0.5) ? (1-V(q))*1m : -V(q)*1m)
+Cq q 0 1p
+Rq q 0 1G
+* ---- soft start (6.3.2): count switch turn-off events (+1 V each, injected during the first quarter
+*      of the min off time), ILIM/4 below 256, ILIM/2 below 512, then ILIM; cleared while disabled
+Bcnt 0 cnt I = V(en) < 0.5 ? -V(cnt)*1m : ((V(q) < 0.5 && V(nt) < 0.25 && V(cnt) < 513) ? 1p/(0.25*{TOFF}) : 0)
+Ccnt cnt 0 1p
+Rcnt cnt 0 1T
+Blim lim 0 V = V(cnt) < 256.5 ? {ILIM}/4 : (V(cnt) < 512.5 ? {ILIM}/2 : {ILIM})
+* ---- quiescent current and FB bias current
+Biq VIN GND I = V(en) * {IQ}
+Bfb FB GND I = {IFB}
+.ends TPS61040_OB

@@ -1,0 +1,36 @@
+* =====================================================================================================
+* led_data__ws2812c_din.lib -- WS2812C-2020-V6 data input (DI, pin 3) as a load on the data line
+*
+* Part      : Worldsemi WS2812C-2020-V6 (D101 = first pixel), LCSC C55109522.
+* Datasheet : WS2812C-2020-V6 datasheet V1.0 (revision record "V1.0 N, 20260521"),
+*             https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf
+*             p.2 "最大额定值" (ratings): VDD +3.3 ... +5.3 V, VI -0.3 V ... VDD + 0.7 V;
+*             p.3 "电气参数" (TA = 25 C, VDD = 5 V): II <= +/-1 uA (VI = VDD/VSS), VIH >= 0.55 VDD,
+*                 VIL <= 0.7 V; "开关特性": CI <= 15 pF;
+*             p.3-4 "数据传输时间": T0H 220-380 ns, T1H 580 ns-1 us, T0L/T1L 580 ns-1 us, RES >= 280 us.
+*             Worldsemi PCN "WS2812B Series products upgrade notice" (30 Sep 2025, V6 suffix) item 6:
+*                 "The control signal level is adjusted to 0.6 VDD".
+*
+* Modelled  : input capacitance CI (parameter, default 15 pF = DS max), input leakage II as a constant
+*             current sink (parameter, default +1 uA = DS max, positive = into the pin), and ESD clamp
+*             diodes from DI to VDD and to GND.
+*             The logic thresholds are NOT a circuit element here: the test measures the DI voltage
+*             against VIH = 0.55 VDD (DS) / 0.6 VDD (PCN) and VIL = 0.7 V and derives the pulse widths the
+*             receiver can see from the threshold crossings (worst case over any receiver threshold
+*             between VIL and VIH).
+*
+* NOT modelled: the ESD diode I-V (no data in the DS: generic IS=1e-15 A, N=1, RS=10 ohm); any input
+*             hysteresis or receiver delay; temperature or VDD dependence of VIH/VIL (the DS characterises
+*             them only at VDD = 5 V, TA = 25 C); DOUT and the internal re-timing (the test checks the
+*             waveform at the first pixel's DI only, later pixels are driven by the re-shaped DOUT);
+*             the bidirectional DI/DO auto-swap logic.
+*
+* Pins: din, vdd, gnd
+* =====================================================================================================
+.subckt WS2812C_DIN din vdd gnd params: CI=15p II=1u
+Ci din gnd {CI}
+Ileak din gnd DC {II}
+Desdh din vdd D_WS_ESD
+Desdl gnd din D_WS_ESD
+.model D_WS_ESD D(IS=1e-15 N=1 RS=10)
+.ends WS2812C_DIN

@@ -1,0 +1,43 @@
+* =====================================================================================================
+* motor_drive__drv5032.lib -- TI DRV5032 ultra-low-power Hall switch, push-pull output (FA / FB variants)
+*
+* Part      : DRV5032FADBZR (main board U42, HOME_N)
+* Datasheet : https://www.ti.com/lit/ds/symlink/drv5032.pdf  SLVSDC7H (April 2017, revised December 2024)
+* No vendor SPICE model is published; this is a datasheet behavioural model.
+*
+* Modelled (value, datasheet reference):
+*   - Push-pull output (7.3.2.3): VOH >= VCC - 0.35 V at IOUT = -1 mA -> roh = 350 Ohm (max);
+*     VOL <= 0.3 V at IOUT = 1 mA -> rol = 300 Ohm (max) (Table 6.5). Typ is VCC - 0.1 / 0.1 V.
+*   - Omnipolar thresholds on |B| (FA/FB, Table 6.6): BOP 1.5 / 3 / 4.8 mT, BRP 0.5 / 1.5 / 3 mT
+*     (min / typ / max); output LOW when |B| > BOP, HIGH when |B| < BRP, else held.
+*   - Sampling (7.3.2.4, Figure 8-7): the field is sampled once per tS during tACTIVE = 40 us and
+*     the output is latched in between. tS: FA 27 / 50 / 75 ms, FB 117 / 200 / 286 ms (Table 6.5).
+*     First sample at power-up within tON = 55 typ / 100 max us (param ton = end of first sample).
+*   - Supply current: ICC(PK) = 2 typ / 2.7 max mA during tACTIVE, about 0.5 uA otherwise (so the
+*     average at tS = 50 ms is about 1.6 uA, Table 6.5).
+*   - Field input: node BMT in volts = mT (1 V = 1 mT), driven by the test.
+*
+* NOT modelled: the magnetic hysteresis spread of individual parts (use bop/brp params), temperature
+*   drift of BOP/BRP (Figures 6-4/6-5), the analog front end, output slew (CMOS, ns range).
+*   Before the first sample the latch starts LOW (a false "home" for <= tON after power-up).
+* =====================================================================================================
+
+.subckt DRV5032 VCC OUT GND BMT params: ts=50m tact=40u ton=55u bop=3 brp=1.5 roh=350 rol=300 icc_pk=2.7m
++ icc_slp=0.5u
+* sample window: first one ends at ton, then every ts
+Vsmp smp GND PULSE(0 1 {ton - tact} 100n 100n {tact - 200n} {ts})
+* comparator with hysteresis on the held state 'st' (1 = output high = no magnet)
+Bop opx GND V = 0.5*(1 + tanh((abs(V(BMT,GND)) - {bop})/0.05))
+Brp rlx GND V = 0.5*(1 - tanh((abs(V(BMT,GND)) - {brp})/0.05))
+Bnew nw GND V = (1 - V(opx))*(V(rlx) + (1 - V(rlx))*V(st))
+* track during the sample window (tau 1 us), hold otherwise
+Bst GND st I = 1n*V(smp)*(V(nw) - V(st))/1u
+Cst st GND 1n
+Rstl st GND 1T
+Bss ss GND V = 0.5*(1 + tanh((V(st) - 0.5)/0.02))
+* push-pull output stage
+Bhi VCC OUT I = V(ss)*V(VCC,OUT)/{roh}
+Blo OUT GND I = (1 - V(ss))*V(OUT,GND)/{rol}
+* supply current
+Bcc VCC GND I = {icc_slp} + {icc_pk}*V(smp)
+.ends DRV5032

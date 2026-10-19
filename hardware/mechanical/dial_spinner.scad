@@ -69,8 +69,7 @@ BAT_LEAD_Y  = -7.5;                 // lead exit on the theta-180 end face (clea
 ANT_L       = 34.9;
 ANT_W       = 9.0;
 ANT_T       = 0.25;                 // 0.15 flex + 0.1 adhesive, on the shelf top (SPEC z 5.5-6.0)
-ANT_YC_SPEC = 26.0;                 // SPEC chord: corners would be at r 35.1 (outside the cup)
-ANT_YC      = 23.5;                 // DEV: largest centre y with corners at r <= 33.0
+ANT_YC      = 23.5;                 // SPEC (was 26: corners at r 35.1); corners at r 33.0, 1.75 mm to the pack
 ANT_Z0      = 5.5;                  // shelf top
 SHELF_Y0    = ANT_YC - ANT_W / 2 - 0.2;   // 18.8 shelf inner edge
 SHELF_HX    = ANT_L / 2 + 0.8;
@@ -82,9 +81,8 @@ BB_Z1       = BB_Z0 + BB_T;         // 11.1
 BB_R        = 23.0;
 BB_TAB_HW   = 6.5;
 BB_TAB_X    = 34.6;
-BB_BOSS     = [for (h = BASE_HOLES) if (h[1] < -10) h][0];   // theta-270 M2 boss at the PCB hole (SPEC r 21; PCB now r 20)
-BB_BOSS90   = [0, 21];              // SPEC boss at theta 90: sits on the antenna -> replaced by RIB (DEV)
-RIB_Y       = [17.75, 18.75];       // DEV: support rib under the board edge, between pack and antenna
+BB_BOSS     = [for (h = BASE_HOLES) if (h[1] < -10) h][0];   // SPEC: one M2 boss at r 20, theta 270 (from the PCB hole)
+RIB_Y       = [17.75, 18.75];       // SPEC: support rib under the theta-90 board edge, between pack and antenna shelf
 RIB_HX      = 6.0;
 // press switch TS-1187A-B-A-B (5.1 x 5.1 x 1.5) at the base-board centre
 SW_S        = 5.1;
@@ -99,7 +97,7 @@ FA_HUB_R    = 6.0;
 SPOKE_A     = [60, 180, 300];
 SPOKE_HALF  = 18;                   // spokes +-18 deg -> open sectors +-42 deg around 0/120/240
 FA_RING     = [26.0, 30.0];
-USB_NOTCH_HY = 5.6;                 // DEV: notch in the outer ring for the USB-C receptacle (z up to 14.36)
+USB_NOTCH_HY = 5.6;                 // SPEC: through-notch in the outer ring for the USB-C (receptacle top z 14.36)
 GUIDE_A     = [60, 180, 300];
 GUIDE_RS    = [29.0, 30.0, 29.0];   // DEV: theta-180 guide at r 30 so its column clears the pack end
 PREGAP      = 0.15;                 // nominal; set per unit = 0.38 - measured switch travel
@@ -301,9 +299,9 @@ module base_cup()
                 translate([-SHELF_HX, SHELF_Y0, CUP_FLOOR - 0.01]) cube([2 * SHELF_HX, 20, ANT_Z0 - CUP_FLOOR + 0.01]);
                 cylinder(r = CUP_RI + 0.1, h = 20, $fn = fn_big);
             }
-            // DEV: support rib for the base board's theta-90 edge (SPEC boss would sit on the antenna)
+            // support rib for the base board's theta-90 edge (SPEC)
             translate([-RIB_HX, RIB_Y[0], CUP_FLOOR - 0.01]) cube([2 * RIB_HX, RIB_Y[1] - RIB_Y[0], BB_Z0 - CUP_FLOOR + 0.01]);
-            // SPEC M2 boss at theta 270 (heat-set insert M2 x 3)
+            // SPEC M2 boss at r 20, theta 270 (heat-set insert M2 x 3)
             translate([BB_BOSS[0], BB_BOSS[1], CUP_FLOOR - 0.01]) cylinder(d = 5.0, h = BB_Z0 - CUP_FLOOR + 0.01, $fn = fn_mid);
             // battery end stop (theta 0 end) and side ribs
             translate([BAT_HX + 0.3, -10, CUP_FLOOR - 0.01]) cube([0.8, 20, 1.5]);
@@ -358,9 +356,12 @@ module base_board() { base_board_pcb(); if (show_board_parts) { base_top_parts()
 // battery leads: pack end (theta 180) -> past the board edge -> J2 plug back face (as placed)
 J2P = [for (p = BASE_PARTS) if (p[0] == "J2_plug") p][0];
 function bp_point(p, u, v, z) = [p[2] + u * cos(p[4]) - v * sin(p[4]), p[3] + u * sin(p[4]) + v * cos(p[4]), z];
+// pack end (theta 180) -> beside the pack below the spider (z 10, under its under-bosses at 12.0) -> up over the
+// base-board edge at theta ~222 -> J2 plug back (SH 4-pin, mouth radially outward)
 LEAD_PTS = [
     [-BAT_HX, BAT_LEAD_Y, BAT_Z0 + 3.0], [-BAT_HX - 1.5, BAT_LEAD_Y, BAT_Z0 + 3.5],
-    [-BAT_HX - 1.5, BAT_LEAD_Y - 1.0, BB_Z1 + 0.5], bp_point(J2P, 0, J2P[7] - 1.0, BB_Z1 + 2.0)];
+    [-BAT_HX - 1.5, BAT_LEAD_Y - 1.0, 10.0], concat(pol(28.5, 205), [10.0]), concat(pol(24.8, 220), [10.0]),
+    bp_point(J2P, 0, J2P[7] - 1.0, BB_Z1 + 1.3)];
 module battery_leads() color(c_wire) chain(LEAD_PTS, 1.8);
 
 // guide pins (brass Ø3, pressed + bonded + cross-pinned), stop screws, springs
@@ -571,8 +572,10 @@ COAX_PTS = [
     [ANT_FEED_X, ANT_YC, ANT_Z0 + 0.65], [ANT_FEED_X + 1.0, ANT_YC - 2.0, ANT_Z0 + 1.2],
     [-14.6, 19.9, 7.5], [-14.6, 19.9, 14.2], [-12.0, 17.0, 15.0],
     concat(pol(8.0, BOT_SLOT_A - 6), [15.3]), concat(pol(3.4, BOT_SLOT_A - 10), [15.4]), [0.6, 0.3, 16.2],
-    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.3]), concat(pol(9.7, 245), [27.0]),
-    [UFLP[2] - 2.0, UFLP[3] - 1.6, 26.5]];   // ends at the u.FL plug body
+    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.3]),
+    // above the rotating hub (top 26.0) while r < 12.5, then down to z 26.0 beside the module (u.FL faces outward)
+    concat(pol(13.0, 248), [27.0]), concat(pol(14.5, 246), [26.0]), concat(pol(23.5, 242), [26.0]),
+    [UFLP[2] + 1.9, UFLP[3] - 1.9, 26.2]];   // ends at the u.FL plug body face (plug box ±1.3)
 module coax() color(c_coax) chain(COAX_PTS, 1.13);
 
 // ==================================================================

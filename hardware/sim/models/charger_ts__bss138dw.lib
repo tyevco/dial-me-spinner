@@ -1,0 +1,54 @@
+* =====================================================================================================
+* charger_ts__bss138dw.lib -- Diodes BSS138DW, ONE N-channel half (instantiate twice for Q1A / Q1B)
+* -----------------------------------------------------------------------------------------------------
+* Part:       Diodes Incorporated BSS138DW-7-F, dual N-MOSFET, SOT-363 (LCSC C154900)
+* Datasheet:  https://www.diodes.com/assets/Datasheets/ds30203.pdf  -- DS30203 Rev. 16-2, September 2021
+* Vendor model: Diodes lists BSS138DW.spice.txt, but diodes.com serves it only behind a bot challenge
+*             (HTTP 403 to scripted fetches), so this is a behavioural fit to the datasheet instead.
+*
+* Channel: EKV-style interpolation (smooth subthreshold -> strong inversion, symmetric in D/S):
+*   Id = 2 n beta(T) vt^2 [ F(vp/2vt) - F((vp - Vds)/2vt) ],  F(x) = ln(1+e^x)^2,  vp = (Vgs - VT0(T))/n
+*   -> linear region Rch = 1/(beta (Vgs - VT0)), saturation beta (Vgs - VT0)^2 / (2n).
+* Modelled parameters (defaults = typical):
+*   vth   VGS(th) at ID = 250 uA, VDS = VGS: 0.5 / 1.2 / 1.5 V (min/typ/max), EC table "ON CHARACTERISTICS".
+*         VT0 is derived from vth so that the model gives exactly 250 uA at VGS = VDS = vth, 25 C.
+*   beta, rs  fitted to RDS(ON): typ curves Fig. 5 (3.5 Ohm @ VGS 2.5 V), Fig. 7 (2.0 Ohm @ 4.5 V),
+*         Fig. 8 (1.5 Ohm @ 10 V), all 25 C -> beta = 0.31 A/V^2, rs = 1.0 Ohm (gives 1.40 Ohm @ 10 V,
+*         EC table typ 1.4 Ohm). Worst case for the EC table max 3.5 Ohm @ VGS 10 V, ID 0.22 A:
+*         vth = 1.5 V, beta = 0.124, rs = 2.5 -> 3.45 Ohm.
+*   tcv   VGS(th) tempco -3.5 mV/C (Fig. 4: 1.85 V at -55 C .. 1.12 V at 150 C).
+*   bex   beta ~ (T/298.15 K)^bex and rs ~ (T/298.15 K)^-bex, bex = -1.75: with the VGS(th) tempco this
+*         gives RDS(ON) @ VGS 4.5 V of x0.60 at -55 C, x1.19 at 60 C, x1.71 at 145 C vs Fig. 3
+*         (VGS 4.5 V, ID 75 mA): x0.66, ~x1.18, ~x1.85.
+*   cgs, cgd, cds  from Fig. 10 at VDS ~ 0 V: Ciss 45 pF, Crss 20 pF, Coss 25 pF -> 25 / 20 / 5 pF.
+*         cscale multiplies all three; the EC table maxima at VDS = 10 V (Ciss 50, Coss 25, Crss 8 pF)
+*         are up to ~1.7x the Fig. 10 curve, so cscale = 1.7 is the slow corner.
+*   idss  drain leakage, EC table IDSS 0.5 uA max (VDS = 50 V, 25 C); default 0 (no typ given).
+*         Applied as a constant bound at any VDS > ~0.1 V (conservative at 3.3 V; NOT temperature scaled).
+*   rgl   gate leakage resistor, EC table IGSS +-100 nA at VGS = +-20 V -> 200 MOhm (bound).
+*   body diode  Fig. 9 (25 C: ~1 mA at VSD 0.6 V): IS = 7e-14, N = 1.
+* NOT modelled: the subthreshold slope is not in the datasheet (n = 1.8 assumed, ~107 mV/dec at 25 C);
+*   bias dependence of the capacitances; BVDSS (50 V) breakdown; self-heating; leakage vs temperature;
+*   saturation-region accuracy (only VGS(th) and linear-region RDS(ON) are fitted, which is all this
+*   circuit uses: the FETs only ever pull 30-60 uA through a few Ohm or sit off).
+* =====================================================================================================
+.func cts_sp(x) {(x > 0) ? (x + ln(1 + exp(-x))) : ln(1 + exp(x))}
+.model CTS_DBSS138 D(IS=7e-14 N=1 RS=0.3)
+
+.subckt CTS_BSS138DW_N d g s params: vth=1.2 beta=0.31 rs=1.0 n=1.8 tcv=-3.5m bex=-1.75 cscale=1
++ idss=0 rgl=200Meg
+.param vt25 = {0.0256926}
+.param s0 = {sqrt(250e-6/(2*n*beta*vt25*vt25))}
+.param vto25 = {vth - 2*n*vt25*ln(exp(s0) - 1)}
+Bsrc s si I = V(s,si)/(rs*pow((temper+273.15)/298.15, -bex))
+Rdrn d di 1m
+Bch di si I = 2*n*beta*pow((temper+273.15)/298.15, bex)*pow(8.617333e-5*(temper+273.15), 2)
++ * ( pow(cts_sp((V(g,si) - vto25 - tcv*(temper-25))/n/(2*8.617333e-5*(temper+273.15))), 2)
++   - pow(cts_sp((((V(g,si) - vto25 - tcv*(temper-25))/n) - V(di,si))/(2*8.617333e-5*(temper+273.15))), 2) )
+Bleak di si I = idss*tanh(V(di,si)/0.1)
+Cgs g si {25p*cscale}
+Cgd g di {20p*cscale}
+Cds di si {5p*cscale}
+Rgl g si {rgl}
+Dbody si di CTS_DBSS138
+.ends CTS_BSS138DW_N

@@ -1,0 +1,34 @@
+* =====================================================================================================
+* piezo_bus__bss138dw.lib : Diodes BSS138DW dual N-MOSFET, one FET (Q1B drives BTN_N), level-1 model
+* -----------------------------------------------------------------------------------------------------
+* Part      : Diodes Inc. BSS138DW-7-F (base board Q1), SOT-363
+* Datasheet : Diodes DS30203 Rev. 16-2 (September 2021), https://www.diodes.com/assets/Datasheets/ds30203.pdf
+*             (the vendor SPICE model link on diodes.com returned 404, so this model is datasheet-built)
+* Modelled (Electrical Characteristics table, TA = 25 C, and Figures 3/4):
+*   * VTO = vth param. Table: VGS(TH) 0.5 min / 1.2 typ / 1.5 max (VDS = VGS, ID = 250 uA). Fig. 4 slope
+*     about -3.5 mV/C (1.85 V at -55 C .. 1.15 V at 150 C); the tests add (25 C - T) * 3.5 mV.
+*   * KP from RDS(ON) = 3.5 ohm max at VGS = 10 V, ID = 0.22 A: beta = 1/(rds10*(10 - vth)). Fig. 3 gives
+*     the RDS(on) temperature factor (about 0.86 at -10 C, 1.0 at 25 C, 1.17 at 60 C at VGS = 4.5 V); the
+*     tests divide beta by it. Level-1 at VGS = 3 V then gives ~20 ohm, far above Fig. 5/6 typical
+*     (~3 ohm at VGS 2.5-2.75 V): conservative.
+*   * Capacitances from the max values at VDS = 10 V: Ciss 50 pF, Coss 25 pF, Crss 8 pF
+*     -> CGD = Crss = 8 pF, CGS = Ciss - Crss = 42 pF, CDS = Coss - Crss = 17 pF (bias dependence ignored).
+*   * IDSS = 0.5 uA max (VDS = 50 V, VGS = 0, 25 C): DC current source drain -> source (param idss).
+*     No temperature curve is published; the tests double it every 10 C (ASSUMPTION, conservative at 3.3 V).
+*   * Body diode (generic IS = 1e-12).
+* NOT modelled: gate leakage IGSS (100 nA max at 20 V; negligible next to the 1 Mohm gate pull-down at
+*   a few volts), sub-threshold conduction, bias-dependent capacitances, BVDSS (50 V min, never reached).
+* =====================================================================================================
+.subckt BSS138DW_FET d g s params: vth=1.5 rds10=3.5 idss=0.5u
+.param kpr=1m
+.param beta={1/(rds10*(10-vth))}
+.param wch={beta/kpr*1u}
+MQ d g s s NBSS W={wch} L=1u
+.model NBSS NMOS level=1 vto={vth} kp={kpr} lambda=0 gamma=0
+CGD g d 8p
+CGS g s 42p
+CDS d s 17p
+IDSS d s DC {idss}
+DBODY s d DBSSB
+.model DBSSB D(IS=1e-12 N=1.0 RS=0.5)
+.ends BSS138DW_FET

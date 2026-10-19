@@ -1,0 +1,31 @@
+* =====================================================================================================
+* oled_boost__b5819w.lib  --  B5819W 40 V / 1 A Schottky rectifier (D21, boost rectifier), SOD-123
+* -----------------------------------------------------------------------------------------------------
+* Part      : Jiangsu Changjiang (CJ) B5819W, marking SL (LCSC C8598)
+* Datasheet : https://www.lcsc.com/datasheet/C8598.pdf  ("B5817W-5819W", CJ rev D, Mar 2015)
+* Vendor    : no SPICE model published by CJ; fitted here to the datasheet.
+*
+* Modelled (fit to the 25 C "Forward Characteristics" typical curve and checked against the table):
+*   Forward      IS 1.0 uA, N 1.0, RS 0.15 ohm -> 0.31 V @ 0.1 A, 0.50 V @ 1 A, 0.84 V @ 3 A
+*                (curve: ~0.31 V @ 0.1 A, ~0.47 V @ 1 A, ~0.85 V @ 3 A; table max VF 0.60 V @ 1 A and
+*                0.90 V @ 3 A).  EG 0.69 eV / XTI 2 (Schottky defaults) for the temperature shift,
+*                TNOM 25 C (the datasheet reference).
+*   Capacitance  CJO 190 pF, VJ 0.5 V, M 0.51 fitted to "Capacitance Characteristics" (~185 pF @ 0 V,
+*                ~62 pF @ 4 V, ~32 pF @ 16 V; table CD max 120 pF @ VR 4 V).
+*   Leakage      "Reverse Characteristics" typical curves: I_R ~ I1(T) x (1 + VR/12 V) with
+*                I1 = 5 uA x 2^((T-25)/14.5)  (25 C: ~10 uA @ 13 V; 75 C: ~110 uA @ 13 V), implemented as
+*                a parallel K->A current minus the junction's own IS(T); table max IR 1 mA @ 40 V.
+*   Breakdown    BV 40 V (VRRM), IBV 1 mA (table IR max at 40 V).
+*
+* NOT modelled: reverse recovery (Schottky, TT = 0), self-heating, forward surge / IFSM, the spread
+*   between typical and max VF (the fit is typical), leakage above 20 V where the curve steepens.
+*
+* Usage: XD21 <anode> <cathode> B5819W_OB params: TA=<ambient C>   (and set .temp to the same TA)
+* =====================================================================================================
+.subckt B5819W_OB A K params: TA=25
+D1 A K DB5819W_OB
+.model DB5819W_OB D(IS=1.0u N=1.0 RS=0.15 CJO=190p VJ=0.5 M=0.51 EG=0.69 XTI=2 BV=40 IBV=1m TT=0 TNOM=25)
+* reverse leakage per the typical curve, minus IS(T) that the junction already conducts in reverse
+Blk K A I = V(K,A) > 0 ? max(5u*pow(2,({TA}-25)/14.5)*(1+V(K,A)/12)
++ - 1.0u*pow(({TA}+273.15)/298.15,2)*exp(0.69/8.617e-5*(1/298.15-1/({TA}+273.15))), 0)*(1-exp(-V(K,A)/0.05)) : 0
+.ends B5819W_OB

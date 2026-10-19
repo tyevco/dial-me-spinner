@@ -1,0 +1,36 @@
+* =====================================================================================================
+* power_integrity__tps22917.lib -- TPS22917 load switch (LED rail U2, OLED boost input U21), behavioural
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments TPS22917DBVR, 1-5.5 V, 2 A, 80 mOhm ultra-low-leakage load switch
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps22917.pdf   SLVSDW8B (Sept 2017, revised Dec 2021)
+*
+* MODELLED:
+*   RON      on-resistance, passed by the test from 7.5 RON (IOUT = 200 mA):
+*              VIN 5.0 V: 80 typ / 100 max (25 C) / 120 max (-40..85 C) mOhm
+*              VIN 3.6 V: 90 typ / 110 max (25 C) / 140 max (-40..85 C) mOhm
+*              VIN 1.8 V: 120 typ / 150 max (25 C) / 175 max (-40..85 C) mOhm
+*   Turn-on slew from the CT capacitor (CT pin to VIN, pin table): the CT node is pulled down from VIN by an
+*     internal current KCT, VOUT follows VIN - V(CT). KCT = 1.9 uA at VIN 3.6 V and 2.3 uA at 5.0 V reproduce
+*     7.6 SRON = 1900 / 2300 (mV/us)*pF for CT >= 100 pF; CTPAR = 43 pF reproduces SRON = 44 mV/us with
+*     CT open at VIN 3.6 V (7.6). The external CT capacitor comes from the netlist (C7 / C37).
+*   ON threshold: between VIL 0.35 V and VIH 1.0 V (7.3) -> switch point 0.675 V
+*   Quick output discharge: 150 Ohm from QOD to GND while disabled (7.5 QOD); the external R4 comes from
+*     the netlist.
+*   Reverse-current blocking: no current from VOUT to VIN (7.5 RCB).
+* NOT MODELLED: smart pull-down on ON (750 kOhm), quiescent / shutdown current (0.5 uA / 10 nA), RCB
+*   activation delay (10 us), thermal behaviour and the temperature dependence of KCT, IMAX 2 A /
+*   IPLS 2.5 A (7.1) are not enforced (the tests measure the switch current instead).
+* =====================================================================================================
+
+.subckt TPS22917_PI VIN ON CT VOUT QOD VSS params: RON=0.09 KCT36=1.9u KCTSLOPE=0.2857u CTPAR=43p
++ RQOD=150 GM=200
+* CT timing node (VIN - V(CT) is the output ramp)
+Cpar CT VIN {CTPAR}
+Rleak CT VSS 100meg
+Bct CT VSS I = { min(1, max(0, (v(ON,VSS) - 0.675)/0.05 + 0.5)) * (KCT36 + KCTSLOPE*(v(VIN,VSS) - 3.6)) * min(1, max(0, v(CT,VSS))/0.05) }
+Bres VIN CT I = { (1 - min(1, max(0, (v(ON,VSS) - 0.675)/0.05 + 0.5))) * v(VIN,CT)/1k }
+* pass FET: follows the ramp (source-follower like, GM), never below RON, no reverse current
+Bsw VIN VOUT I = { min(1, max(0, (v(ON,VSS) - 0.675)/0.05 + 0.5)) * min(GM*max(0, v(VIN,CT) - v(VOUT,VSS)), max(0, v(VIN,VOUT))/RON) }
+* quick output discharge while disabled
+Bqod QOD VSS I = { (1 - min(1, max(0, (v(ON,VSS) - 0.675)/0.05 + 0.5))) * v(QOD,VSS)/RQOD }
+.ends TPS22917_PI

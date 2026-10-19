@@ -1,0 +1,25 @@
+* =====================================================================================================
+* power_integrity__drv8837.lib -- DRV8837 H-bridge + stepper coil, as a VM (VSYS) load
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments DRV8837DSGR (U40 coil A, U41 coil B)
+* Datasheet : https://www.ti.com/lit/ds/symlink/drv8837.pdf   SLVSBA4F (June 2012, revised April 2021)
+*
+* MODELLED:
+*   Full-on drive (both outputs static, d = 1): VM current = VM / RCOIL, where RCOIL = coil + rDS(on)
+*     (HS + LS 280 typ / 330 max mOhm, 6.5). The coil resistance is NOT from a datasheet: the motor
+*     (VIC-TECH VSM08102 class) has no verified datasheet here; firmware.md 5.3 uses 20.3 Ohm including
+*     rDS(on) (about 20 Ohm per phase, detent research). The test passes RCOIL.
+*   PWM drive with slow decay (IN1/IN2 1,0 -> 1,1, firmware.md 5.3): the coil current ICOIL is ~constant
+*     over a 40 us PWM period (L/R >> 40 us is assumed), VM sees ICOIL while the bridge drives and 0 while it
+*     brakes. FPWM = 25 kHz (firmware), edges TEDGE = 30 ns (6.6 t11/t12 output rise/fall 30 typ /
+*     188 max ns -> the fast end is used). Both drivers share one PWM instance, so their edges are aligned
+*     (worst case for di/dt on VSYS).
+*   IDC: optional steady VM current (the PWM average) for operating-point runs.
+* NOT MODELLED: coil inductance / back-EMF (no motor datasheet), current ripple within a PWM period,
+*   dead time, overcurrent / thermal protection, VCC current (on +3V3, counted in the 3V3 load), sleep.
+* =====================================================================================================
+
+.subckt DRV8837_VM VM VSS params: RCOIL=20.3 FULLON=0 IDC=0 ICOIL=0 DUTY=0.5 FPWM=25k TEDGE=30n TD=0
+Vpwm pwm VSS PULSE(0 1 {TD} {TEDGE} {TEDGE} {max(DUTY/FPWM - TEDGE, TEDGE)} {1/FPWM})
+Bvm VM VSS I = { FULLON*v(VM,VSS)/RCOIL + (IDC + ICOIL*v(pwm,VSS))*min(1, max(0, v(VM,VSS))/1.0) }
+.ends DRV8837_VM

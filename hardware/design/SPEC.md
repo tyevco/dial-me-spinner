@@ -210,8 +210,9 @@ Boost:
 ## 6. Base board (`base` sheet)
 * J1 USB-C, R CC ×2, U USBLC6-2SC6, D SMF5.0A (VBUS→GND).
 * U BQ25180YBGR + caps (§3), RT1 NTC, I2C to the link.
-* J2 battery: JST PH 2-pin SMD S2B-PH-SM4-TB (C295747). Pin 1 = BAT+, pin 2 =
-  GND (verify the pack polarity before plugging in!).
+* J2 battery: JST SH 4-pin side-entry SM04B-SRSS-TB (C160404, same part as the motor
+  connector). Pins 1–2 = BAT+, pins 3–4 = GND (two 1 A contacts per rail). The pack is
+  re-terminated with pre-crimped 28 AWG SH leads (verify the pack polarity before plugging in!).
 * SW1 TS-1187A-B-A-B (C318884) at the board centre, top side.
 * Q1 BSS138DW (C154900) network (§3).
 * J3 link connector (§2), VSYS 10 µF near J3.
@@ -271,10 +272,18 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
 * The OLED ZIF sits on the **top** side under the glass, toward θ = 270° (the
   FPC side). The 13 V boost also sits on the top side under the glass and must
   be ≥ 10 mm from the TMAG5273.
-* MDBT50Q module on the **bottom** side, r 8–22, sector θ ≈ 180°–250°. Its u.FL
-  end faces the centre so the coax runs straight into the spindle bore.
-* The link connector J1 (side-entry JST SH) sits on the **bottom** side at r = 17.5 mm, θ = 330°, entry facing the centre.
-  The harness lies flat against the board bottom (above the rotor hub, which tops out at z ≈ 25) into the spindle bore.
+* MDBT50Q module on the **bottom** side, centred at r = 17.3, θ = 215°, long axis radial, inner end at r ≥ 8.8 (brass
+  hub) and its **u.FL end facing outward** (u.FL at r ≈ 23). A mated u.FL hangs to z ≈ 25.8, so it must not sit over the
+  rotating bearing hub (r 9.5–12.5, top z 26.0). The coax runs back under the board beside the module (z ≈ 26 beyond
+  r 12.5, ≥ 27 inside it) to the spindle's top slot at θ 270°.
+* The link connector J1 (side-entry JST SH) sits on the **bottom** side at r = 19.5 mm, θ = 330°, entry facing the centre,
+  so the mated plug's back stays outside the rotating hub. The harness lies flat against the board bottom into the
+  spindle's top slot.
+* Rotating hub zone: bottom-side parts over r 9.5–12.5 must keep their bottom at z ≥ 26.3 (hang ≤ 2.8 mm).
+* Actuator corridor: bottom-side parts in θ 30°–160°, r 8.5–27 must be ≤ 1.3 mm tall (chip passives and test pads;
+  J40, U11 and the parts already there were checked in hardware/mechanical/calcs_output.txt §11).
+* Top side: keep r ≤ 4.6 free for the spindle's M4 nut (OD 7); other top parts stay inside the LED-cap ring
+  (r ≤ 25.3) — beyond it are the light box (r 27–30) and the top-cover skirt.
 * The piezo goes on the **bottom** side (sound vents through the board).
 * The TC2030 pads go on the top side under the OLED glass, so they are
   reachable before the OLED is fitted.
@@ -284,7 +293,7 @@ band at r 32.5–35. Overall size is Ø70 × 36 mm.
   * USB-C J1 at θ = 0° on the tab;
   * USBLC6 U2 and SMF5.0A near J1;
   * link J3 (**side-entry** SH SM12B, ~3 mm tall, entry facing the centre) at r ≈ 15.5, θ = 120°. A vertical header plus plug would reach the rotor web;
-  * battery J2 (PH, top side) at r = 17, θ = 222°, mouth radially outward (body θ ≈ 206–238°, clear of the θ 180° spoke). The pack leads come up past the board edge from the pack end at θ = 180°.
+  * battery J2 (**side-entry JST SH 4-pin SM04B-SRSS-TB**, 2.95 mm tall, pins 1–2 BAT+, 3–4 GND, top side) at r = 17, θ = 222°, mouth radially outward (body θ ≈ 206–238°, clear of the θ 180° spoke). A PH header (≈ 5 mm + plug) would hit the rotor web when pressed and its plug would reach the spider ring. The pack leads (re-terminated with 28 AWG pre-crimped SH leads, two per rail) run from the pack end at θ 180° beside the pack at z ≈ 10, under the spider, and come up over the board edge at θ ≈ 222°.
 * Nothing on the base-board bottom side: the battery sits 1 mm below it. The only exception is pads/test points. RT1 (NTC) is on the top side at r 8, θ 200°, so it reads board/pack-air temperature.
 * BQ25180 at r = 19.5, θ = 255°: off the pack (|y| > 17.25) in the open θ 240° sector, with stitching vias around its GND ball D2 into both pours (it dissipates up to ≈ 0.6 W while charging). Q1 (BSS138DW, SOT-363 up to 1.1 mm) at r 9, θ ≈ 218°, outside the θ 180° spoke sector.
 * Antenna clearance: no B.Cu copper (tracks, vias, pour) for device y > 15.4 and no F.Cu pour for y > 17 (layout.py ANTENNA_KEEPOUT_*).

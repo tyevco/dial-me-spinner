@@ -1,0 +1,26 @@
+* =====================================================================================================
+* power_integrity__tps61040.lib -- TPS61040 13 V OLED boost, INPUT-current model on OLED_VIN
+* -----------------------------------------------------------------------------------------------------
+* Part      : Texas Instruments TPS61040DBVR PFM boost (U20)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps61040.pdf   SLVS413L (Oct 2002, revised Aug 2026)
+*
+* MODELLED (input side only; the 13 V output, D21 and the panel are folded into an input power PIN):
+*   Constant input power: I = PIN / VIN (the converter regulates its output, so its input current rises as
+*     VIN sags). The test computes PIN = VOUT * ICC / eta with VOUT from the netlist FB divider
+*     (VFB 1.233 V * (1 + R26/R27), 5.5 VFB) and caps it at the most the converter can draw, VIN * IPK / 2
+*     (boundary conduction of the peak-current PFM, 6.4.1).
+*   Optional DCM ripple (RIP = 1): the inductor (= input) current is a triangle 0 -> IPK -> 0, rising in
+*     TON = L*IPK/VIN and falling in TOFF = L*IPK/(VOUT + VF - VIN), repeating every TPER; KSHAPE =
+*     2*TPER/(TON+TOFF) normalises the triangle train to an average of 1. The test computes IPK = ILIM +
+*     VIN/L * 100 ns (6.3.1 eq. 1) with ILIM = 350 / 400 / 450 mA (5.5 ILIM) and L from the netlist (L20).
+*   UVLO 1.5 V typ (6.3.4): no input current below it.
+* NOT MODELLED: soft start (ILIM/4 then ILIM/2 for 256 cycles each, 6.3.2), the regulation loop (the triangle
+*   period is fixed per corner instead of following FB), efficiency curves (eta is a test parameter: 0.75,
+*   a conservative read of the typical curves Fig. 5-1..5-4), max on-time 6 us, min off-time 400 ns,
+*   switch-node ringing, the EN pin (tied to OLED_VIN on this board).
+* =====================================================================================================
+
+.subckt TPS61040_IN VIN VSS params: PIN=0.5 RIP=0 KSHAPE=1 TON=1u TOFF=0.5u TPER=2u
+Vtri tri VSS PULSE(0 1 0 {TON} {TOFF} 2n {TPER})
+Bin VIN VSS I = { PIN/max(v(VIN,VSS), 1.5) * (RIP*KSHAPE*v(tri,VSS) + (1 - RIP)) * min(1, max(0, v(VIN,VSS) - 1.5)/0.3) }
+.ends TPS61040_IN

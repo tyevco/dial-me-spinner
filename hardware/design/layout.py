@@ -158,8 +158,8 @@ def main_fixed(comps):
             P[ref] = (x, y, 0.0, "F")
     put(lambda c: "TMAG5273" in mpn(c), 29.0, 270.0, 0.0, "B")          # long axis radial (SOT-23 pins along x)
     put(lambda c: "DRV5032" in mpn(c), 21.5, 90.0, 0.0, "F")
-    put(lambda c: "MDBT50Q" in mpn(c), 14.5, 215.0, 215.0 + 90.0, "B")   # u.FL end toward the centre
-    put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", 17.5, 330.0, 0.0, "B")
+    put(lambda c: "MDBT50Q" in mpn(c), *MODULE_POS, 0.0, "B")   # oriented in main_post_fixed (u.FL end outward)
+    put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", J1_MAIN_R, 330.0, 0.0, "B")
     put(lambda c: "AFC01" in mpn(c) or "FH12" in mpn(c) or "0.5K-HX" in mpn(c) or "ZIF" in c["value"].upper(),
         9.5, 270.0, 0.0, "F")
     put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 12.0, 150.0, 0.0, "F")
@@ -175,12 +175,15 @@ def main_post_fixed(bb, comps, fixed):
             continue
         m = mpn(c)
         if "MDBT50Q" in m:
-            # u.FL / antenna end (local y ~ -6) toward the spindle so the coax drops straight down the bore
-            orient_local_toward(fp, 0.0, -6.0, CX, CY)
+            # inner end at r ≥ 8.8 (brass hub) and the u.FL end facing OUT: a u.FL plug over r 9.5-12.5 would hang
+            # into the rotating bearing hub (top z 26.0); the coax then runs back under the board to the spindle slot
+            fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(MODULE_POS[0], MODULE_POS[1]))))
+            orient_local_toward(fp, 0.0, -6.0, *pol(MODULE_POS[0] + 20.0, MODULE_POS[1]))
+            fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(MODULE_POS[0], MODULE_POS[1]))))
         elif "SM12B" in m:
             # side-entry: cable opening (local +y) faces the spindle bore
             orient_local_toward(fp, 0.0, 4.0, CX, CY)
-            tx, ty = pol(17.5, 330.0)
+            tx, ty = pol(J1_MAIN_R, 330.0)
             fp.SetPosition(pcbnew.VECTOR2I(pcbgen.MM(tx), pcbgen.MM(ty)))
         elif "TMAG5273" in m:
             # Hall element: 0.40 mm toward pin 3, 0.12 mm toward the pin 1-3 edge (TI fig. 6-2) -> on R_t = 29.0
@@ -195,6 +198,10 @@ def main_post_fixed(bb, comps, fixed):
             place_local_point(fp, lx, ly, tx, ty)
         if "WS2812" in m or (ref.startswith("C") and 101 <= refnum(ref) <= 199):
             fp.Reference().SetVisible(False)
+
+
+MODULE_POS = (17.3, 215.0)   # MDBT50Q centre (r, θ), bottom side
+J1_MAIN_R = 19.5             # link J1 radius: its mated plug's back must stay outside the rotating hub (r ≤ 12.5)
 
 
 def main_anchor_sides(comps):
@@ -223,6 +230,8 @@ def main_inside(x, y, side):
         return False
     if r < 3.2:  # centre hole
         return False
+    if side == "F" and (r < 4.6 or r > 25.3):  # M4 spindle nut (OD 7) / LED-cap ring, light box and cover skirt beyond
+        return False
     if side == "B" and r < 8.5:  # spindle flange
         return False
     return True
@@ -240,7 +249,15 @@ def main_keepouts():
         hx, hy = pol(29.0, 270.0)
         return math.hypot(x - hx, y - hy) < 4.0
 
-    return [("B", actuator), ("*", spindle_screws), ("B", tmag_zone)]
+    def corridor(x, y):  # stepper chord + inclined-slot link sweep θ 35-160 under the board (docs/mechanical.md A11)
+        r, th = radius(x, y), angle(x, y)
+        return 8.5 <= r <= 27.0 and 30.0 <= th <= 160.0
+
+    def low_profile(fp):  # ≤ 1.3 mm tall: chip passives and test pads only
+        fpid = fp.GetFPIDAsString()
+        return any(k in fpid for k in ("_0402_", "_0201_", "_0603_", "TestPoint", "Fiducial"))
+
+    return [("B", actuator), ("*", spindle_screws), ("B", tmag_zone), ("B", corridor, low_profile)]
 
 
 def build_main(bb, comps, nets):
@@ -463,7 +480,7 @@ def base_fixed(comps):
     put(lambda c: "TYPE-C" in mpn(c), CX + 31.35, CY, 90.0, "F")   # mating face (local y +3.65) at r = 35
     put(lambda c: "TS-1187" in mpn(c) or c["value"].upper().startswith("SW_PRESS"), CX, CY, 0.0, "F")
     put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", *pol(15.5, 120.0), 0.0, "F")
-    put(lambda c: "PH-SM4" in mpn(c) or "S2B-PH" in mpn(c), *pol(J2_POS[0], J2_POS[1]), 0.0, "F")
+    put(lambda c: c["value"] == "BATT", *pol(J2_POS[0], J2_POS[1]), 0.0, "F")
     # NTC on the top side over the middle of the pack, away from the charger: the board is single-sided
     # (the pack sits 1 mm under it), so RT1 reads board/pack-air temperature
     put(lambda c: "NCP15" in mpn(c) or "B3435" in c["value"].upper(), *pol(8.0, 200.0), 0.0, "F")
@@ -479,14 +496,14 @@ def base_post_fixed(bb, comps, fixed):
         if "SM12B" in m:      # harness arrives from the spindle side-slot near the centre
             orient_local_toward(fp, 0.0, 4.0, CX, CY)
             fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(15.5, 120.0))))
-        elif "S2B-PH" in m:   # mouth radially outward in the open sector; the leads drop past the board edge
+        elif c["value"] == "BATT":   # mouth radially outward in the open sector; the leads drop past the board edge
             fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(*J2_POS))))
             orient_local_toward(fp, 0.0, 6.0, *pol(J2_POS[0] + 13.0, J2_POS[1]))
             fp.SetPosition(pcbnew.VECTOR2I(*(pcbgen.MM(v) for v in pol(*J2_POS))))
             m2 = local_map(fp)
             # polarity marks behind the pin tails (local -y), where they stay visible with the plug fitted
-            for lx, label in ((-1.0, "BAT+"), (1.0, "GND")):
-                x, y = m2(lx, -5.6)
+            for lx, label in ((-1.0, "BAT+"), (1.0, "GND")):  # SH 4-pin: pins 1-2 BAT+, 3-4 GND
+                x, y = m2(lx, -4.9)
                 ux, uy = m2(0.0, 1.0)
                 ox, oy = m2(0.0, 0.0)
                 ang = math.degrees(math.atan2(-(uy - oy), ux - ox))  # text runs along the pin direction

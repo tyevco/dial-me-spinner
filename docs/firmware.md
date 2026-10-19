@@ -1533,7 +1533,8 @@ re-home, lost-step recovery, FAULT retry):
   ≤ 0.01 mN·m at s = 40, so the slow tail is not felt. If HOME is not asserted
   there, run the full homing procedure. This park stall plus HOME confirmation
   is the **primary** lost-step check (and it matches architecture.md §6.2:
-  "the DRV5032 must confirm HOME on every return to free mode").
+  "HOME must read asserted after every park stall, including the one that
+  ends every return to free mode").
 
 Firmware rules that follow:
 
@@ -1732,7 +1733,8 @@ scale_codes(frame, s);                   /* current is linear in code, so this i
   3. `regulator_disable(vled)`. Wait at least 30 ms before turning on again
      or treating VLED as off: QOD discharges about 49 µF (C8, C9,
      C101–C148) through R4 = 100 Ω plus the switch's internal 150 Ω, a fall
-     time of about 27 ms (architecture.md §7).
+     time of about 27 ms (tFALL = 2.2 × 250 Ω × 49 µF, TPS22917 SLVSDW8B
+     §9.3.3; architecture.md §7).
 * **On:** `regulator_enable(vled)` (LED_PWR_EN high), wait at least 5 ms (U2's
   tON is about 4 ms with C7 = 1 nF from CT to VIN; check the ramp at test 12),
   and only then hand P0.06 back to the I2S: PSEL.SDOUT stays assigned, so the
@@ -1813,8 +1815,8 @@ with the verifier's corrections.
 | 19 | BEh | 05h | VCOMH = 0.82 × VCC |
 | 20 | A6h | | Normal display |
 | 21 | 15h / 75h / 5Ch | 00h 7Fh / 00h 7Fh / 32 KB of 00h | **Clear GDDRAM before VCC on** |
-| 22 | (hardware) | | OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN with a ramp of about 4 ms (C37 = 1 nF from CT to VIN), and the TPS61040 then ramps to 13.0 V |
-| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 5 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's ramp; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, never below 5 ms. |
+| 22 | (hardware) | | OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN, reaching 90 % after a turn-on time tON of about 4 ms (C37 = 1 nF from CT to VIN; 3.8–4 µs/pF, SLVSDW8B §7.6), and the TPS61040 then ramps to 13.0 V |
+| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 5 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's tON; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, never below 5 ms. |
 | 24 | AFh | | Display on; SEG/COM turn on about 200 ms later (tAF) |
 
 | Transition | Sequence | Notes |
@@ -2718,7 +2720,8 @@ the history is traceable.
    * The TPS22917 datasheet says to connect CT to **VIN**. The `main_power`
      sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 100 Ω
      to VLED and R3 = 100 kΩ as the ON pull-down, and SPEC §5.1 says the
-     same (≈ 4 ms rise).
+     same. SPEC's "≈ 4 ms rise" is the turn-on time (tON = 3.8 µs/pF at
+     3.6 V); the 10–90 % rise is about 1.6 ms (SLVSDW8B §7.6).
    * SPEC now states that the TPS22918 (CT to GND) is *not* a drop-in, and
      §4 labels P1.04 "TPS22917 ON".
    * The OLED boost-input switch U21 is wired the same way (C37 = 1 nF CT to

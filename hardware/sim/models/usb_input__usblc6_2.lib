@@ -1,0 +1,44 @@
+* =====================================================================================================
+* usb_input__usblc6_2.lib  -  USBLC6-2SC6 rail-to-rail ESD array (SOT-23-6), base board U2
+* -----------------------------------------------------------------------------------------------------
+* Part      : STMicroelectronics USBLC6-2SC6 (LCSC C7519)
+* Datasheet : ST "USBLC6-2 Very low capacitance ESD protection", Doc ID 11265 Rev 5, October 2011
+*             https://www.st.com/resource/en/datasheet/usblc6-2.pdf  (copy used: LCSC mirror of Rev 5)
+* Vendor model: ST lists a SPICE model (zip v1.0, 15 Nov 2019) on the product page, but it is behind
+*             a name/e-mail download form, so it could not be fetched for this suite. This is a
+*             datasheet model built from ST's own equivalent circuit (DS section 2.1).
+*
+* Topology (DS Fig. 1 + section 2.1): each I/O has a steering diode to the internal VBUS rail (pin 5)
+* and one from GND; a Transil clamps the rail to GND.  VCL+ = VBR + Rd_T*Ip + VT + Rd*Ip,
+* VCL- = -(VT + Rd*Ip).
+* Modelled:
+*   steering diodes : VT = 1.1 V, Rd = 0.5 ohm typ (DS 2.1 calculation example)   -> param rd
+*                     VF <= 1.1 V at IF = 10 mA (Table 2): IS 1e-14, N 1.3 gives 0.93 V
+*   Transil (VBUS-GND): VBR 6 V min at IR = 1 mA (Table 2), 6.1 V typ (DS 2.1)     -> param vbr
+*                     Rd_TRANSIL 0.5 ohm typ (DS 2.1)                               -> param rdt
+*   corner "max": rd = rdt = 0.965 ohm, so VCL(I/O->GND, 5 A) = 17.0 V in this model, the Table 2
+*                     maximum (17 V at IPP 5 A, 8/20 us); at 1 A it gives 9.2 V (<= 12 V max).
+*   typ corner check: VCL(1 A) = 8.3 V, VCL(5 A) = 12.3 V, VF(10 mA) = 0.93 V, VBR(1 mA) = 6.10 V.
+*   C(I/O-GND)       : 2.5 pF typ / 3.5 pF max at VR = 1.65 V (Table 2) via steering-diode CJO
+*   IRM              : 150 nA max at VRM = 5.25 V (Table 2) -> leakage resistance is not modelled
+*                     separately (the Transil BV knee gives < 1 nA at 5.25 V).
+* NOT modelled: Transil capacitance (not specified), package/bond inductance (the tests add layout
+*   inductance explicitly), temperature dependence of VBR (DS gives only IRM vs Tj, Fig. 4),
+*   I/O-to-I/O capacitance (1.2 pF typ), snap-back (none: Transil + diodes).
+* Ratings (checked in tests, not in the model): VPP IEC 61000-4-2 15 kV contact (Table 1, Rev 5);
+*   VCL test currents 1 A / 5 A (8/20 us) are the highest characterised pulse currents.
+*
+* Pins: IO1 (1/6), GND (2), IO2 (3/4), VBUS (5)
+* =====================================================================================================
+.subckt USBIN_USBLC6_2 IO1 GND IO2 VBUS params: rd=0.5 rdt=0.5 vbr=6.1 cio=1.9p
+Dup1  IO1 VBUS USBIN_USBLC6_DS
+Ddn1  GND IO1  USBIN_USBLC6_DS
+Dup2  IO2 VBUS USBIN_USBLC6_DS
+Ddn2  GND IO2  USBIN_USBLC6_DS
+* Transil: anode GND, cathode VBUS rail; IS tiny / N 3 so its forward path is the GND->I/O diodes'.
+* Vtr is a 0 V probe: i(v.x<inst>.vtr) = Transil clamp current (positive when clamping).
+Vtr   VBUS trk 0
+Dtr   GND trk USBIN_USBLC6_TR
+.model USBIN_USBLC6_DS D(IS=1e-14 N=1.3 RS={rd} CJO={cio} M=0.3 VJ=0.7)
+.model USBIN_USBLC6_TR D(IS=1e-20 N=3 RS={rdt} BV={vbr} IBV=1m NBV=0.5 CJO=0)
+.ends USBIN_USBLC6_2

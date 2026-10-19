@@ -5,7 +5,8 @@ This document takes the boards from bare PCBA to an accepted unit. Steps are num
 ones passed. Record every measured number in a per-unit log (the checklist in B-14 is the summary).
 
 * **Architecture of record:** `hardware/design/SPEC.md`. Pin map and net names: `hardware/design/nets.py`.
-  BQ25180 firmware register values: `docs/power.md` if present, otherwise the verified values in B-9.4.
+  BQ25180 firmware register values: [`firmware.md`](firmware.md) §13.1 (SPEC §3 points to a `docs/power.md`,
+  which does not exist); B-9.4 repeats the verified values.
 * **[TVP]** means *to verify on prototype*: the value comes from a model, a datasheet typical or an unverified
   claim. Tighten those limits after the first good unit.
 * "[x research]" and "[x verifier]" refer to the subsystem research files. Where the two differ, the verifier's
@@ -92,7 +93,7 @@ Inspect under 10–20× magnification, with the JLC X-ray images ([assembly §3.
 | main | DNP parts absent (R11, U43, C43); R43 (0 Ω, LED_DIN_R → LED_DIN) fitted (assembly §3.5) | OK |
 | main | Nothing ferrous added near the track: no shield cans, no stray screws or washers (B-9.6) | OK |
 | both | Side-entry JST SH link connectors `SM12B-SRSS-TB` (main J1 on the bottom, r 17.5, θ 330°; base J3 on the top, r ≈ 15.5, θ 120°): seated flat, entry facing the board centre, pin 1 as expected (assembly §6) | OK |
-| base | USB-C shell legs soldered through; switch SW1 centred and square | OK |
+| base | USB-C shell legs soldered through; SMF5.0A D1 cathode band toward VBUS (assembly §3.4); switch SW1 centred and square | OK |
 | both | Flux residue, solder balls, especially around the 0.5 mm ZIF and the DSBGA | Clean |
 
 ---
@@ -111,8 +112,8 @@ from the first good board and compare later boards against them (±20 %).
 | VSYS (TP1, bottom side) | > 100 kΩ, settling into MΩ | < 1 kΩ | 2.2 M + 1 M divider, LDO, VIN of both load switches (U2, U21), DRV VM |
 | +3V3 (TP2) | > 10 kΩ after charging (record) | < 1 kΩ | Supply pins of nRF, flash, TMAG, IMU, OLED logic, DRV VCC, DRV5032 |
 | VLED (TP3) | > 10 kΩ | < 1 kΩ | 48 LEDs, 48× 100 nF, 2× 22 µF |
-| +13V_OLED (boost output cap) | **520–580 kΩ** (499 k + 52.3 k FB divider), panel not fitted | outside range | Confirms the divider |
-| OLED_VIN (boost input cap C38) | **≈ 0.55–0.9 MΩ**: about the +13V_OLED reading plus a diode drop (record) | < 10 kΩ | Behind the load switch U21 (TPS22917, off), but OLED_VIN reaches GND through L20 → D21 (forward-biased from OLED_VIN toward +13V_OLED) → the 499 k + 52.3 k divider. The exact value depends on the meter's test current and the B5819W drop. U21's always-on reverse-current blocking ([TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf)) leaves no parallel path back into VSYS |
+| +13V_OLED (boost output cap C39) | **520–580 kΩ** (499 k + 52.3 k FB divider), panel not fitted | outside range | Confirms the divider |
+| OLED_VIN (boost input cap C38) | **≈ 0.55–0.9 MΩ**: about the +13V_OLED reading plus a diode drop (record) | < 10 kΩ | Behind the load switch U21 (TPS22917, off), but OLED_VIN reaches GND through L20 → D21 (forward-biased from OLED_VIN toward +13V_OLED) → the 499 k + 52.3 k divider. The exact value depends on the meter's test current and the B5819W drop. U21's always-on reverse-current blocking (reverse leakage ≤ 1 µA, [TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf)) leaves no diode path back into VSYS |
 | VBUS (J1 pin 5 / nRF VBUS cap) | > 100 kΩ | < 10 kΩ | |
 | VSYS↔+3V3, VSYS↔VLED, VSYS↔OLED_VIN | > 10 kΩ | < 100 Ω | A short here means a damaged LDO (U1) or load switch (U2 for VLED, U21 for OLED_VIN) |
 
@@ -173,7 +174,7 @@ Apply 5.00 V, 100 mA limit.
 
 | Measure | Expected |
 |---|---|
-| VSYS TP | ≈ VBAT (within 50 mV; BATFET 55 mΩ) |
+| VSYS (TP3) | ≈ VBAT (within 50 mV; BATFET 55 mΩ) |
 | Current | Below the bench meter's resolution (BQ IQ ≈ 3–4 µA; measured properly in B-10) |
 
 If VSYS stays at 0 V, the BQ25180 is in ship mode. Plug USB or hold the press switch for about 2 s. Start this
@@ -544,12 +545,12 @@ assert LED_PWR_EN and scope VLED and VSYS together.
 | Inrush | ≤ ~100 mA |
 | VSYS dip during enable | ≤ 100 mV |
 | VLED steady | VSYS − I × RON (RON = 90 mΩ typ, 110 mΩ max at 3.6 V and 25 °C; 80 mΩ is the 5 V figure) |
-| VLED fall after LED_PWR_EN low | Discharged through QOD and R4 (100 Ω) in about 10–20 ms ([power verifier]) |
+| VLED fall (90–10 %) after LED_PWR_EN low | ≈ 27 ms, ≤ 30 ms: QOD (150 Ω internal) plus R4 (100 Ω) into ≈ 49 µF, tFALL = 2.2 × 250 Ω × 49 µF (SLVSDW8B §9.3.3); DC-bias derating of C8/C9 makes it faster. Firmware waits ≥ 30 ms ([`firmware.md`](firmware.md) §6.4, test 12) |
 
 Timing and RON are from [TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf) §7.5–7.6. The
 `main_power` sheet has C7 (1 nF/50 V) from CT to **VSYS**, the switch's VIN (assembly §2.4 item 3, done). If VLED
 rises in tens of µs and VSYS dips hard, C7 is missing, open or the wrong value; check it before running any LED
-test. (Only the TPS22918 alternate takes CT to GND.)
+test. (The TPS22918 takes CT to GND, which is why SPEC §5.1 rules it out as a drop-in.)
 
 **B-9.8b Data timing.** Use Zephyr `worldsemi,ws2812-i2s` on i2s0 with `clock-source = "PCLK32M_HFXO"`,
 `chain-length = <48>`, GRB, `lrck-period = <10>` (3.2 MHz), `nibble-zero = <0x8>`, `nibble-one = <0xC>` and
@@ -616,7 +617,7 @@ timing is clean, fit the level-shifter option: remove R43, fit U43 (SN74LV1T34DB
 |---|---|
 | OLED_VCC_EN (P1.02) low | OLED_VIN < 50 mV, +13V_OLED ≈ 0 V |
 | OLED_VCC_EN high: OLED_VIN | ≈ VSYS once U21 is on |
-| OLED_VCC_EN high: OLED_VIN and VSYS on the scope | OLED_VIN rise ≈ 1.5–2.5 ms (U21 has C37 = 1 nF from CT to VIN, like U2 in B-9.8a); VSYS dip ≤ 100 mV. The `display` sheet estimates ≈ 10 mA inrush **[TVP]** |
+| OLED_VCC_EN high: OLED_VIN and VSYS on the scope | OLED_VIN rise ≈ 1.5–2.5 ms (U21 has C37 = 1 nF from CT to VIN, like U2 in B-9.8a); VSYS dip ≤ 100 mV. Inrush through U21 ≈ 30 mA (*estimate*: 1.9 V/ms into ≈ 16 µF on OLED_VIN and, through L20/D21, on +13V_OLED; architecture.md §7) **[TVP]** |
 | OLED_VCC_EN high: +13V_OLED | **12.7–13.3 V** (1.233 V × (1 + 499/52.3) = 13.00 V) |
 | Input current, no load | < 2 mA (TPS61040 IQ 28 µA + 24 µA divider + switching) |
 | SW node on the scope | Clean PFM bursts; tune CFF C40 22–100 pF (SPEC 33 pF) if it is erratic or audible |
@@ -729,8 +730,9 @@ reading on every unit for rev B (sensor further from the magnet, or a DRV5032 va
    before the stop, so it does **not** mark the stop. Run in, then finish at **80 PPS and 50 % current** into the
    park stop with 20 steps of overdrive. Park is force-free, so stalling there is safe. HOME must read asserted
    after the stall; back off 4 steps.
-2. Define position 0 = park. Step 375 to CLICK and back. On the way back, HOME must assert inside the edge window
-   around the learned assert step (firmware.md §5.4 rule 2; 32 steps wide at 80 PPS). Otherwise re-home; after
+2. Define s = 0 at the park stop (after the back-off the carriage sits at s = 4, x_park). Step out to CLICK
+   (s = 375) and back. On the way back, HOME must assert inside the edge window around the learned assert step
+   (firmware.md §5.4 rule 2; 32 steps wide at 80 PPS, 60 at 446 PPS). Otherwise re-home; after
    3 failures go to FAULT and stay in FREE ([detent research]).
 3. Speed profile: ≤ 300–500 PPS through the magnetically loaded 0–4 mm zone, ≤ 800–1000 PPS beyond. Expect
    ≈ 0.6–0.9 s per full stroke ([detent verifier]).
@@ -782,7 +784,7 @@ The targets are derived from datasheet typicals ([TVP]). Tighten them after the 
 | Contributor | State | Typ µA | Source |
 |---|---|---|---|
 | BQ25180 | Battery mode, push-button enabled | 4 (5 max) | [BQ25180](https://www.ti.com/lit/ds/symlink/bq25180.pdf) |
-| BQ25180 TS bias into the NTC | 60 µA pulsed 4 ms per 200 ms | ≈ 1.2 (may already be in IQ) **[TVP]** | [power research] |
+| BQ25180 TS bias into the NTC | 38 µA (ITS_BIAS) pulsed about 4 ms per 200 ms | ≈ 0.8 (may already be in IQ) **[TVP]** | [BQ25180](https://www.ti.com/lit/ds/symlink/bq25180.pdf) §7.5; pulse timing [power research] |
 | RT9080 LDO | Always on | ≈ 2 | [DS9080](https://www.richtek.com/assets/product_file/RT9080/DS9080-07.pdf) |
 | VSYS divider 2.2 M + 1 M | Always on | 1.16 at 3.7 V | SPEC §3 |
 | nRF52840 | System OFF / System ON idle (Zephyr, RTC) | 0.4 / ≈ 3 | [nRF52840 PS](https://docs.nordicsemi.com/r/bundle/ps_nrf52840/page/_tmp/nrf52840/autodita/current/parameters.i_sleep.html), [mcu verifier] |
@@ -804,7 +806,7 @@ The targets are derived from datasheet typicals ([TVP]). Tighten them after the 
 | ≈ +70 µA | TMAG_INT_N latched low through its 47 kΩ pull-up | Read CONV_STATUS to clear it |
 | +10–50 µA | QSPI flash not in deep power-down | Send B9h; enable the driver's power management |
 | +60–170 µA | LIS2DW12 SA0 grounded (address 0x18) | Assembly/schematic fault |
-| ≈ +33 µA (+4 µA on base) | BTN_N held low: switch pre-gap is 0 | Mechanical, assembly §11.3 step 6 |
+| ≈ +33 µA (+4 µA on base) | BTN_N held low: switch pre-gap is 0 | Mechanical, assembly §11.3 steps 1 and 7 |
 | ≈ +5 mA | OLED VCC left on (black screen) | `AE` + VCC_EN low |
 | mA level | VLED left on, logging backend active, CPU not sleeping | Check LED_PWR_EN, disable UART/RTT |
 | Constant ≈ 1.6–3.5 µA | DRV5032 (always on by design) | Not a fault |
@@ -844,7 +846,7 @@ Record the frequency of minimum |S11| and |S11| at 2400, 2440 and 2480 MHz for e
 | a | Stage B4 | Antenna alone, pigtail mated, taped to foam ≥ 30 mm from anything | Baseline ([Molex 146153](https://www.molex.com/ja-jp/products/part-detail/1461530100)) |
 | b | Stage B4 | Bonded on its shelf, cup only | Plastic loading |
 | c | Stage B6 | Base complete: battery, base board (harness optional) | Nearby conductors |
-| d | **Stage R** | **Full device**: pigtail fitted at D2 in place of the module mate, main board seated with all screws, rotor and base complete, top (OLED, light box, diffuser, cover) not yet fitted, on a wooden desk. Pigtail out through the main-board Ø5 hole (or round the board edge), ferrite outside | **Acceptance** |
+| d | **Stage R** | **Full device**: pigtail fitted at D2 in place of the module mate, main board seated with all screws, rotor and base complete, top (OLED, light box, diffuser, cover) not yet fitted, on a wooden desk. Pigtail taped along the board underside at θ ≈ 200° and out round the board edge (assembly §11.4 D2; the Ø5 hole carries the spindle's M4 spigot), ferrite outside | **Acceptance** |
 | e | Stage R | As d, on a metal plate (laptop lid or steel desk), and with a hand gripping the dial | Sensitivity. The antenna lies ≈ 6 mm above the desk (SPEC §8, assembly §7.1) |
 
 The module's u.FL is on the main board's bottom side inside the bowl (SPEC §8), so d and e cannot be done by
@@ -1039,7 +1041,7 @@ count.
 | 32 | B-9.6c | Track signal | 24 periods; Bz 12–25 mT; per-pole ±15 % | |
 | 33 | B-9.6d | W&S wake on a small rotation | INT latches; re-arm verified | |
 | 34 | B-9.7 | Piezo at 4 kHz | Clear tone, ≈ 72–79 dB(A) at 10 cm | |
-| 35 | B-9.8a | VLED rise time; tON; VSYS dip (C7 1 nF, CT to VSYS) | ≈ 1.5–2.5 ms; ≈ 3.8 ms recorded; ≤ 100 mV | |
+| 35 | B-9.8a | VLED rise time; tON; VSYS dip; fall (C7 1 nF, CT to VSYS) | ≈ 1.5–2.5 ms; ≈ 3.8 ms recorded; ≤ 100 mV; ≤ 30 ms | |
 | 36 | B-9.8b | LED bit timing | Within the V6 windows | |
 | 37 | B-9.8c/d | Walk test, D101 at θ = 0° CCW to D148; 49th word at TP40 | All 48 correct | |
 | 38 | B-9.8e | Ring white at 10 % | ≈ 72 mA above baseline (±25 %) | |

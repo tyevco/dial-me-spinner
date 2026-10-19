@@ -1,0 +1,58 @@
+* =====================================================================================================
+* led_data__sn74lv1t34.lib -- SN74LV1T34 single buffer with reduced (TTL-like) input thresholds
+*                             (DNP LED-data level shifter U43, VCC = VLED, A = LED_DIN_R, Y = LED_DIN)
+*
+* Part      : Texas Instruments SN74LV1T34DBVR (SOT-23-5: 1 NC, 2 A, 3 GND, 4 Y, 5 VCC), LCSC C100024.
+* Datasheet : SN74LV1T34, SCLS743E (December 2013, revised February 2024),
+*             https://www.ti.com/lit/ds/symlink/sn74lv1t34.pdf
+*             6.1 Absolute maximum ratings: VCC/VI -0.5 ... 7.0 V, VO -0.5 ... VCC + 0.5 V, IO +/-25 mA.
+*             6.3 Recommended operating conditions: VCC 1.6-5.5 V, VI 0-5.5 V, IOH -7 mA (3.3 V) / -8 mA
+*                 (5.0 V), dt/dv <= 20 ns/V (VCC 3.3 V and 5.0 V).
+*             6.5 Electrical characteristics (TA = -40 ... 125 C column used for worst case):
+*                 VIH min: 1.39 V (VCC 3.0-3.3 V), 1.48 V (3.6 V), 2.03 V (4.5-5.0 V), 2.11 V (5.5 V)
+*                 VIL max: 0.65 V (VCC 3.0-3.6 V), 0.8 V (4.5-5.5 V)
+*                 VOH: VCC 3.0 V: 2.7 V @ -3 mA, 2.49 V @ -5.5 mA; 3.3 V: 2.8 V @ -5.5 mA;
+*                      4.5 V: 4.1 V @ -4 mA, 3.95 V @ -8 mA; 5.0 V: 4.5 V @ -8 mA
+*                      -> worst chord pull-up resistance (VCC - VOH)/|IOH| = 100 ohm (RUP default)
+*                 VOL: 3.0 V: 0.15 V @ 3 mA, 0.252 V @ 5.5 mA; 4.5 V: 0.2 V @ 4 mA, 0.35 V @ 8 mA
+*                      -> worst chord pull-down resistance 50 ohm (RDN default)
+*                 Ci (A) typ 2 pF / max 10 pF (CI default 10 pF); Co typ 2.5 pF.
+*             6.6 Switching characteristics, tpd A->Y, CL = 15 pF, TA -65 ... 125 C max:
+*                 5.0 V 6.5 ns, 3.3 V 8 ns, 2.5 V 9.5 ns (typ 25 C: 2.7 / 4.0 / 5.8 ns).
+*
+* Modelled  : input capacitance; a switching threshold VTH (parameter, set by the test anywhere between
+*             the VIL max and VIH min of the actual VCC to bracket the real threshold); separate internal
+*             delays for the rising (TDR) and the falling (TDF) output edge (ideal delay lines), so a
+*             tPLH/tPHL skew corner can be applied; a rail-to-rail CMOS output stage made of chord
+*             resistances RUP/RDN switched by a first-order pre-driver with 10-90 % edge TEDGE, plus Co.
+*             The test sets TDR/TDF = tpd(VCC) - (output RC + TEDGE/2 contribution) so the model tpd into
+*             15 pF equals the 6.6 maximum, and re-checks that against the table. Delays below 50 ps are
+*             clamped to 50 ps (ngspice transmission-line breakpoint robustness).
+*             TEDGE (output pre-driver 10-90 %) is NOT in the DS: 1 ns is an assumption; it is absorbed by
+*             the tpd calibration and only shapes the edge.
+*
+* NOT modelled: the input structure's extra supply current when VI < VCC (6.5 delta-ICC); Ioff/power-down
+*             behaviour; output current limiting beyond the chord resistance; ESD clamps on A
+*             (A tolerates 7 V abs max independent of VCC); the tpd minimum (not given in the DS: the skew
+*             corner uses 0 ... tpd max); any metastability or input hysteresis (none specified).
+*
+* Pins: a, y, vcc, gnd
+* =====================================================================================================
+.subckt SN74LV1T34 a y vcc gnd params: VTH=1.5 TDR=5n TDF=5n RUP=100 RDN=50 TEDGE=1n CI=10p CO=2.5p
+.param SEL={TDR>=TDF ? 1 : 0}
+Ci a gnd {CI}
+* input comparator (logic 0/1 V on node lin)
+Bin lin gnd V = 0.5*(1+tanh((v(a,gnd)-VTH)/0.01))
+* separate rise / fall delays: AND of the two delayed copies shortens a high pulse by TDR-TDF, OR stretches it
+Tdr lin gnd dr gnd Z0=1k TD={max(TDR,50p)}
+Rdr dr gnd 1k
+Tdf lin gnd df gnd Z0=1k TD={max(TDF,50p)}
+Rdf df gnd 1k
+Bsel x gnd V = SEL*min(v(dr,gnd),v(df,gnd)) + (1-SEL)*max(v(dr,gnd),v(df,gnd))
+* pre-driver and output stage
+Rpre x s 1k
+Cpre s gnd {TEDGE/2.1972/1k}
+Bup vcc y I = max(min(v(s,gnd),1),0)*v(vcc,y)/RUP
+Bdn y gnd I = max(min(1-v(s,gnd),1),0)*v(y,gnd)/RDN
+Co y gnd {CO}
+.ends SN74LV1T34

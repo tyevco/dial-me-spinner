@@ -1,0 +1,108 @@
+* =====================================================================================================
+* piezo_bus__link_harness.lib : 12-way JST SH link harness, signal wires 9..12 (I2C_SCL, I2C_SDA,
+*                               CHG_INT_N, BTN_N), lumped 4-section RLC model with neighbour coupling
+* -----------------------------------------------------------------------------------------------------
+* Parts     : JST SH SM12B-SRSS-TB on both boards (main J1, base J3) + pre-crimped SH leads, 50-80 mm
+*             (docs/architecture.md section 4.2), routed through the spindle bore.
+* Datasheet : JST SH catalogue (eSH), https://www.jst-mfg.com/product/pdf/eng/eSH.pdf : 1.0 A (AWG 28),
+*             50 V, contact resistance 20 mohm max initial / 40 mohm max after environmental tests,
+*             wire AWG 32..28. SPEC section 2: 28 AWG for the power pins 1-4 and 8.
+* Modelled (no cable datasheet exists for this custom harness; these are ENGINEERING ESTIMATES, chosen
+* on the conservative side, and the tests sweep them):
+*   * length len (default 0.10 m = the 80 mm upper estimate of architecture.md section 4.2 + 25 %).
+*   * conductor resistance rw = 0.538 ohm/m (32 AWG, the thinnest SH lead) + rc = 40 mohm contact at each end
+*     (JST SH max after environmental tests).
+*   * inductance lw = 0.8 uH/m (loose bundle, return wire within a few mm).
+*   * capacitance to the rest of the bundle / GND wires cg = 60 pF/m, and to each neighbouring signal wire
+*     cm = 45 pF/m. Two touching PVC-insulated wires (conductor d = 0.32 mm, centre spacing D = 0.62 mm,
+*     eps_r,eff ~ 2): C = pi*eps0*eps_r/acosh(D/d) = 43 pF/m. Neighbours follow the connector order
+*     9-10-11-12 (a bundle can put any two wires side by side; the tests use the worst pair SCL/SDA).
+*   * connector pin capacitance ccon = 0.5 pF to GND at each end (estimate).
+* NOT modelled: skin effect, radiation, coupling to the USB pair / VSYS wires and the antenna coax,
+*   the ground-return resistance (the tests add it as a DC offset between the board grounds).
+* =====================================================================================================
+.subckt LINK_SIG4 a9 a10 a11 a12 b9 b10 b11 b12 gref params: len=0.10 rw=0.538 lw=0.8u cg=60p cm=45p rc=0.04 ccon=0.5p
+.param rs={rw*len/4}
+.param ls={lw*len/4}
+.param cgs={cg*len/4}
+.param cms={cm*len/4}
+* ---- connector contacts + pin capacitance, main side
+RCA9 a9 w9_0 {rc}
+RCA10 a10 w10_0 {rc}
+RCA11 a11 w11_0 {rc}
+RCA12 a12 w12_0 {rc}
+CCA9 a9 gref {ccon}
+CCA10 a10 gref {ccon}
+CCA11 a11 gref {ccon}
+CCA12 a12 gref {ccon}
+* ---- 4 sections per wire: R-L then shunt C to the bundle and to the neighbours
+R9_1 w9_0 x9_1 {rs}
+L9_1 x9_1 w9_1 {ls}
+R10_1 w10_0 x10_1 {rs}
+L10_1 x10_1 w10_1 {ls}
+R11_1 w11_0 x11_1 {rs}
+L11_1 x11_1 w11_1 {ls}
+R12_1 w12_0 x12_1 {rs}
+L12_1 x12_1 w12_1 {ls}
+C9_1 w9_1 gref {cgs}
+C10_1 w10_1 gref {cgs}
+C11_1 w11_1 gref {cgs}
+C12_1 w12_1 gref {cgs}
+CM9_10_1 w9_1 w10_1 {cms}
+CM10_11_1 w10_1 w11_1 {cms}
+CM11_12_1 w11_1 w12_1 {cms}
+R9_2 w9_1 x9_2 {rs}
+L9_2 x9_2 w9_2 {ls}
+R10_2 w10_1 x10_2 {rs}
+L10_2 x10_2 w10_2 {ls}
+R11_2 w11_1 x11_2 {rs}
+L11_2 x11_2 w11_2 {ls}
+R12_2 w12_1 x12_2 {rs}
+L12_2 x12_2 w12_2 {ls}
+C9_2 w9_2 gref {cgs}
+C10_2 w10_2 gref {cgs}
+C11_2 w11_2 gref {cgs}
+C12_2 w12_2 gref {cgs}
+CM9_10_2 w9_2 w10_2 {cms}
+CM10_11_2 w10_2 w11_2 {cms}
+CM11_12_2 w11_2 w12_2 {cms}
+R9_3 w9_2 x9_3 {rs}
+L9_3 x9_3 w9_3 {ls}
+R10_3 w10_2 x10_3 {rs}
+L10_3 x10_3 w10_3 {ls}
+R11_3 w11_2 x11_3 {rs}
+L11_3 x11_3 w11_3 {ls}
+R12_3 w12_2 x12_3 {rs}
+L12_3 x12_3 w12_3 {ls}
+C9_3 w9_3 gref {cgs}
+C10_3 w10_3 gref {cgs}
+C11_3 w11_3 gref {cgs}
+C12_3 w12_3 gref {cgs}
+CM9_10_3 w9_3 w10_3 {cms}
+CM10_11_3 w10_3 w11_3 {cms}
+CM11_12_3 w11_3 w12_3 {cms}
+R9_4 w9_3 x9_4 {rs}
+L9_4 x9_4 w9_4 {ls}
+R10_4 w10_3 x10_4 {rs}
+L10_4 x10_4 w10_4 {ls}
+R11_4 w11_3 x11_4 {rs}
+L11_4 x11_4 w11_4 {ls}
+R12_4 w12_3 x12_4 {rs}
+L12_4 x12_4 w12_4 {ls}
+C9_4 w9_4 gref {cgs}
+C10_4 w10_4 gref {cgs}
+C11_4 w11_4 gref {cgs}
+C12_4 w12_4 gref {cgs}
+CM9_10_4 w9_4 w10_4 {cms}
+CM10_11_4 w10_4 w11_4 {cms}
+CM11_12_4 w11_4 w12_4 {cms}
+* ---- connector contacts + pin capacitance, base side
+RCB9 w9_4 b9 {rc}
+RCB10 w10_4 b10 {rc}
+RCB11 w11_4 b11 {rc}
+RCB12 w12_4 b12 {rc}
+CCB9 b9 gref {ccon}
+CCB10 b10 gref {ccon}
+CCB11 b11 gref {ccon}
+CCB12 b12 gref {ccon}
+.ends LINK_SIG4

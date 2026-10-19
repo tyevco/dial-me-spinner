@@ -135,10 +135,12 @@ def build(d):
             "(>= 10 mm), no copper shared with U1. Bottom side has no parts,\n"
             "so RT1 reads board temperature, not the cell. GND Kelvin to D2.\n"
             "No cap on TS/MR (TS bias is pulsed 4 ms / 196 ms).")
-    d.add("J2", "Connector_Generic_MountingPin:Conn_01x02_MountingPin", "BATT",
-          "Connector_JST:JST_PH_S2B-PH-SM4-TB_1x02-1MP_P2.00mm_Horizontal",
-          pins={"1": "VBAT", "2": "GND", "MP": "GND"},
-          fields={"MPN": "S2B-PH-SM4-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C295747"})
+    # Side-entry JST SH, 2.95 mm tall: a PH (4.8 mm + plug) hits the rotor web when the dial is pressed and its plug
+    # runs into the spider ring. Two contacts per rail (SH: 1 A per contact) carry the ≤ 1.5 A pack current.
+    d.add("J2", "Connector_Generic_MountingPin:Conn_01x04_MountingPin", "BATT",
+          "Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal",
+          pins={"1": "VBAT", "2": "VBAT", "3": "GND", "4": "GND", "MP": "GND"},
+          fields={"MPN": "SM04B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160404"})
     d.add("RT1", "Device:Thermistor_NTC", "10k B3435", R0402, pins={"1": "CHG_TSMR", "2": "GND"},
           datasheet="https://www.murata.com/en-us/products/productdetail?partno=NCP15XH103F03RC",
           fields={"MPN": "NCP15XH103F03RC", "Manufacturer": "Murata", "LCSC": "C77131"})

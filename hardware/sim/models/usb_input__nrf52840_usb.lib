@@ -1,0 +1,41 @@
+* =====================================================================================================
+* usb_input__nrf52840_usb.lib  -  nRF52840 USB pins (VBUS, D+, D-) as seen from the link, main U10
+* -----------------------------------------------------------------------------------------------------
+* Part      : Nordic nRF52840 (inside Raytac MDBT50Q-U1MV2; the module brings VBUS/D+/D- straight out)
+* Datasheet : nRF52840 Product Specification v1.1 (4413_417, 2019-02-28)
+*             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf (mirror of the Nordic PDF)
+* Vendor model: none (Nordic publishes IBIS for GPIO only, no SPICE model for the USB block).
+*
+* Modelled:
+*   VBUS load    IUSB,ACTIVE,VBUS 2.4 mA typ (PS 6.35.14.1)                        -> param ivbus
+*                drawn above VBUS,DETECT (4.0 V typ, PS 5.3.8.7)
+*   D+/D- pads   CPAD 3 pF (PS 6.9.3.1 GPIO electrical specification; USB pads assumed alike)
+*   VUSB33 rail  the D+/D- PHY supply, 3.3 V typ (PS 5.3.8.6 VUSB33 3.0..3.6 V) -> param vusb
+*                (0 V when VBUS is absent), decoupled by CDECUSB 4.7 uF typ (PS 5.3.8.6)
+*   pad ESD clamps: ASSUMED generic diodes to VUSB33 and from GND (IS 1e-15, N 1, RS 1 ohm). Nordic
+*                does not specify the internal ESD structure; a low RS and a stiff rail make the
+*                clamp take MORE current than a real (resistive / snap-back) clamp would, so the
+*                current-based ESD checks are conservative.
+* Ratings used by the tests (not enforced in the model, PS Table 173 Absolute maximum ratings):
+*   VBUS -0.3 .. +5.8 V; I/O pin voltage -0.3 .. VDD + 0.3 V; ESD HBM 2 kV (aQFN73, class 2);
+*   USB operating VBUS 4.35 .. 5.5 V (PS 5.3.8.5).
+* NOT modelled: the USB regulator's dynamics and any VBUS-pin internal clamp (none is specified),
+*   the PHY drivers / pull-ups (the tests look at transients with the PHY idle), temperature effects.
+* Pins: VBUS, DP, DM, GND
+* =====================================================================================================
+.subckt USBIN_NRF52840_USB VBUS DP DM GND params: ivbus=2.4m vusb=3.3 cpad=3p
+Bvbus VBUS GND I=ivbus*0.5*(1+tanh((v(VBUS,GND)-4.0)/0.05))
+Rvbus VBUS GND 10Meg
+* VUSB33 rail (internal regulator output + CDECUSB)
+Vusb  vreg GND {vusb}
+Rusb  vreg vusb33 0.1
+Cdec  vusb33 GND 4.7u
+* pad capacitance and assumed ESD clamp diodes
+Cdp   DP GND {cpad}
+Cdm   DM GND {cpad}
+Dpu   DP vusb33 USBIN_NRF_ESD
+Dpd   GND DP    USBIN_NRF_ESD
+Dmu   DM vusb33 USBIN_NRF_ESD
+Dmd   GND DM    USBIN_NRF_ESD
+.model USBIN_NRF_ESD D(IS=1e-15 N=1 RS=1 CJO=0)
+.ends USBIN_NRF52840_USB
