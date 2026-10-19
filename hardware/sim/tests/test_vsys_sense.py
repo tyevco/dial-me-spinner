@@ -727,46 +727,84 @@ def test_ship_threshold_after_aging(check):
 
 def test_calibrated_accuracy_after_aging_with_fw_rule(check):
     """Guard for VSENSE-4/5: same aged corners as test_calibrated_accuracy_after_aging (25 °C, R1/R2 ±0.5 % drift, C5 IR
-    to 250 MΩ) at the new 3.53 V SHIP threshold, both calibration references, against firmware.md §12.4's ±46 mV."""
+    to 250 MΩ) at the 3.54 V SHIP reading, both calibration references, against the drift firmware.md §12.4 documents
+    for an aged unit at 25 °C (CAL_DRIFT_AGED)."""
     for name, vc in CAL_REFS.items():
-        worst = max(abs(e) for e in _aged_errors(vc)[V_SHIP])
-        check(f"calibrated |error| at 3.53 V, 25 °C, aged R1/R2 and C5, calibration reference {name}", worst, None,
-              CAL_DRIFT, "V", f"firmware.md §12.4 'drifts by up to ±46 mV ... with ageing' (VSENSE-4); "
-              f"{SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+        _drift_checks(check, _aged_errors(vc)[V_SHIP], CAL_DRIFT_AGED,
+                      f"25 °C, aged R1/R2 and C5, calibration reference {name}",
+                      f"firmware.md §12.4 aged unit at 25 °C: reading up to {CAL_DRIFT_AGED[0] * 1e3:.0f} mV high / "
+                      f"{CAL_DRIFT_AGED[1] * 1e3:.0f} mV low (VSENSE-4); {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
 
 
 def test_ship_threshold_after_aging_with_fw_rule(check):
-    """Guard for VSENSE-4/5: true VBAT at a 3.53 V reading (firmware.md §12.4 SHIP) at 25 °C on an aged board, same
+    """Guard for VSENSE-4/5: true VBAT at a 3.54 V reading (firmware.md §12.4 SHIP) at 25 °C on an aged board, same
     corners as test_ship_threshold_after_aging, both calibration references."""
     for name, vc in CAL_REFS.items():
         over_read = max(_aged_errors(vc)[V_SHIP])
-        check(f"true VBAT at a 3.53 V reading, 25 °C, aged R1/R2 and C5, calibration reference {name}",
+        check(f"true VBAT at a {V_SHIP:.2f} V reading, 25 °C, aged R1/R2 and C5, calibration reference {name}",
               V_SHIP - over_read, VBATPOR_MAX, None, "V",
               f"BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
 
 
-@pytest.mark.parametrize("temp", [
-    pytest.param(t, marks=pytest.mark.xfail(strict=True, reason=(
-        "DESIGN ISSUE (firmware rule insufficient): the 3.53 V SHIP threshold (VSENSE-1/4) allows about 70 mV of "
-        "over-read, but an aged board (R1/R2 ±0.5 %, C5 IR 250 MΩ) at −10 °C or 60 °C over-reads by 71.1 mV "
-        "(DMM-at-TP1 calibration) / 72.3 mV (board under 5 mA): the true VBAT at a 3.53 V reading is 3.4589 / "
-        "3.4577 V < VBATPOR max 3.46 V. firmware.md §12.4 treats temperature and ageing as separate ±46 mV cases; the "
-        "combined error is about +72 / −78 mV, so SHIP would need >= 3.5323 V, i.e. 3.533 V in whole mV (3.5311 V with "
-        "the DMM reference alone; 3.54 V leaves a true 3.4676 V, 7.6 mV "
-        "above VBATPOR max)")))
-    for t in (-10.0, 60.0)])
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
+def test_calibrated_accuracy_aged_over_temperature_with_fw_rule(temp, check):
+    """Guard for VSENSE-1/4/5: the corners of test_ship_threshold_aged_over_temperature_with_fw_rule (aged board read
+    at −10 / 60 °C) at the 3.54 V SHIP reading, both calibration references, against the drift firmware.md §12.4
+    documents for an aged unit away from 25 °C (CAL_DRIFT_AGED_T)."""
+    for name, vc in CAL_REFS.items():
+        _drift_checks(check, _aged_errors(vc, temp)[V_SHIP], CAL_DRIFT_AGED_T,
+                      f"{temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+                      f"firmware.md §12.4 aged unit at −10 / 60 °C: reading up to {CAL_DRIFT_AGED_T[0] * 1e3:.0f} mV "
+                      f"high / {CAL_DRIFT_AGED_T[1] * 1e3:.0f} mV low (VSENSE-1/4); {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
 def test_ship_threshold_aged_over_temperature_with_fw_rule(temp, check):
     """Worst corner of the VSENSE-1/4/5 rule (verifier extension of the two guards above): an aged board (the corners
     of test_ship_threshold_after_aging) read at −10 / 60 °C (TCR and CEG corners of test_ship_threshold_above_vbatpor),
     calibrated fresh at 25 °C with either reference. firmware.md §12.4 says the reading drifts 'over −10…60 °C and
-    with ageing'; nothing keeps a unit from being both."""
+    with ageing'; nothing keeps a unit from being both. (Strict xfail until the SHIP rule moved from a 3.53 V reading
+    to VBAT_est = reading − 75 mV < 3.465 V: the true VBAT at a 3.53 V reading was 3.4589 / 3.4577 V.)"""
     for name, vc in CAL_REFS.items():
         errs = _aged_errors(vc, temp)[V_SHIP]
-        check(f"calibrated |error| at 3.53 V, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+        check(f"calibrated |error| at {V_SHIP:.2f} V, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
               max(abs(e) for e in errs), None, None, "V", f"info: {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
-        check(f"true VBAT at a 3.53 V reading, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+        check(f"true VBAT at a {V_SHIP:.2f} V reading, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
               V_SHIP - max(errs), VBATPOR_MAX, None, "V",
               f"BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+def _worst_over_read(v):
+    """Worst calibrated over-read (V) at a true VSYS v over every corner of this file: fresh unit at −10 / 15 / 25 / 35 /
+    60 °C (_calibrated_errors), aged unit at −10 / 25 / 60 °C (_aged_errors), both calibration references. Returns
+    (over-read, corner)."""
+    worst = (-math.inf, "")
+    for name, vc in CAL_REFS.items():
+        sets = [(f"fresh unit, {t:g} °C", _calibrated_errors(t, vc)) for t in (-10.0, 15.0, 25.0, 35.0, 60.0)]
+        sets += [(f"aged unit, {t:g} °C", _aged_errors(vc, t)) for t in (-10.0, 25.0, 60.0)]
+        for corner, errs in sets:
+            o = max(errs[v])
+            if o > worst[0]:
+                worst = (o, f"{corner}, calibration reference {name}")
+    return worst
+
+
+@pytest.mark.parametrize("cid,v_est,src", [
+    pytest.param(*c[:3], marks=[pytest.mark.xfail(strict=True, reason=c[3])] if c[3] else [], id=c[0])
+    for c in READ_THRESHOLDS])
+def test_read_margin_covers_over_read_with_fw_rule(cid, v_est, src, check):
+    """Guard for the VSENSE-1/4/5 reading margin (firmware.md §12.4: every threshold that protects a datasheet limit
+    compares the true value with VBAT_est = calibrated reading − 75 mV). For a threshold X this holds exactly when no
+    unit reads more than 75 mV high at a true X: the reading is monotonic in VSYS, so a reading >= X + 75 mV then means
+    a true value >= X. Worst over-read at the true threshold value over every fresh and aged corner of this file, both
+    calibration references (_worst_over_read)."""
+    over, corner = _worst_over_read(v_est)
+    check(f"info: corner of the worst over-read at a true {v_est:.3f} V", over, None, None, "V", f"info: {corner}")
+    check(f"info: true value at a {v_est + VREAD_MARGIN:.3f} V reading is at least VBAT_est {v_est:.3f} V plus",
+          VREAD_MARGIN - over, None, None, "V", "info: VREAD_MARGIN minus the worst over-read")
+    check(f"worst calibrated over-read at a true {v_est:.3f} V ({cid}) vs VREAD_MARGIN", over, None, VREAD_MARGIN, "V",
+          f"firmware rule firmware.md §12.4 (VSENSE-1/4/5): VBAT_est = reading − 75 mV must not exceed the true value; "
+          f"threshold: {src}")
 
 
 def test_pin_leakage_sensitivity(main, check):
@@ -777,8 +815,8 @@ def test_pin_leakage_sensitivity(main, check):
     check("info: VSYS reading shift per nA of AIN0 leakage", per_na, None, None, "V",
           f"informational: {PS} has no AIN leakage spec")
     check("info: AIN0 leakage that alone uses the ±10 mV budget", CAL_ACC_OLD / per_na * 1e-9, None, None, "A",
-          "informational (firmware.md §12.4 about ±10 mV at 25 ± 10 °C, fresh unit); measure at 60 °C on the first "
-          "boards")
+          "informational (the pre-VSENSE-1 firmware.md §12.4 ±10 mV, which still holds at 25 °C on a fresh unit); "
+          "measure at 60 °C on the first boards")
 
 
 # ================================================================ settling after power-up
