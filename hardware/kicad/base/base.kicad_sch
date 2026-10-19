@@ -7535,7 +7535,7 @@
 				)
 			)
 		)
-		(property "Value" "1M"
+		(property "Value" "100k"
 			(at 154.94 124.536 90)
 			(effects
 				(font
@@ -7570,7 +7570,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "0402WGF1004TCE"
+		(property "MPN" "0402WGF1003TCE"
 			(at 154.94 121.92 0)
 			(effects
 				(font
@@ -7588,7 +7588,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C26083"
+		(property "LCSC" "C25741"
 			(at 154.94 121.92 0)
 			(effects
 				(font
@@ -8894,7 +8894,7 @@
 				)
 			)
 		)
-		(property "Value" "10u"
+		(property "Value" "10u/25V"
 			(at 271.78 128.092 90)
 			(effects
 				(font
@@ -8929,7 +8929,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10A106KP8NNNC"
+		(property "MPN" "CL10A106MA8NRNC"
 			(at 271.78 124.46 0)
 			(effects
 				(font
@@ -8947,7 +8947,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C19702"
+		(property "LCSC" "C96446"
 			(at 271.78 124.46 0)
 			(effects
 				(font

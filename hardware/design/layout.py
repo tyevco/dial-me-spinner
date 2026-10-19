@@ -581,14 +581,21 @@ def build_base(bb, comps, nets):
     # 2.4 GHz antenna under the θ 90 edge (inner edge at y = ANT_Y_INNER, z ≈ 6): bottom copper (z 9.5) stays
     # ≥ 5 mm away; top copper (z 11.1) is ≥ 5 mm above it anyway, so only the top pour is held back
     seg = lambda y0: [(px, py) for px, py in bb.circle_pts(CX, CY, BASE_R + 1.0, 96) if py < CY - y0] or []  # noqa: E731
-    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu], dict(tracks=False, vias=False, pads=False)),
-                           (ANT_Y_INNER - ANT_B_TRACK_CLEAR, [pcbnew.B_Cu], dict(pours=False)),
+    # 4-layer base: In1 = GND plane (as on the main board), In2 = signals/power. The planes and pours keep the same
+    # clearance from the antenna as B.Cu; In2 tracks the same as B.Cu tracks
+    inner = [pcbnew.In1_Cu, pcbnew.In2_Cu]
+    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu] + inner, dict(tracks=False, vias=False, pads=False)),
+                           (ANT_Y_INNER - ANT_B_TRACK_CLEAR, [pcbnew.B_Cu, pcbnew.In2_Cu], dict(pours=False)),
                            (ANT_Y_INNER - ANT_F_POUR_CLEAR, [pcbnew.F_Cu], dict(tracks=False, vias=False, pads=False))):
         half = math.sqrt((BASE_R + 1.0) ** 2 - y0 ** 2)
         pts = [(CX - half, CY - y0)] + sorted(seg(y0), key=lambda q: -math.atan2(CY - q[1], q[0] - CX)) + \
               [(CX + half, CY - y0)]
         kind = "TRACKS" if kw.get("pours") is False else "POUR"
-        bb.keepout(layers, pts, name=f"ANTENNA_KEEPOUT_{'B' if layers == [pcbnew.B_Cu] else 'F'}_{kind}", **kw)
+        side = "F" if layers == [pcbnew.F_Cu] else "INNER_B"
+        bb.keepout(layers, pts, name=f"ANTENNA_KEEPOUT_{side}_{kind}", **kw)
+    # GND plane on In1 (layer type "power", so Freerouting drops GND to it through vias instead of routing it)
+    bb.zone("GND", [pcbnew.In1_Cu], [(CX + 34.4, CY - 6.3), (CX + 34.4, CY + 6.3)] +
+            bb.circle_pts(CX, CY, BASE_R - 0.3, 96, 20, 340), priority=0, name="GND_PLANE")
     bb.text(pcbnew.F_SilkS, "dial-me-spinner base rA", CX - 2.0, CY + 15.5, 0.8)
 
 
@@ -607,7 +614,7 @@ BOARDS = {
                  pin_anchors={"R40": ("U10", "LED_DIN_MCU")},
                  fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
                             ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
-    "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
+    "base": dict(layers=4, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
                  keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.3,
                  post_fixed=base_post_fixed, post_place=base_post_place,
                  fiducials=[("F", 19.5, 45), ("F", 19.5, 170), ("F", 19.5, 300)]),
@@ -838,7 +845,9 @@ def set_layer_types(path, layers):
         return
     with open(path, encoding="utf-8") as f:
         s = f.read()
-    s = re.sub(r'\(1 "In1\.Cu" signal\)', '(1 "In1.Cu" power)', s)
+    s, n = re.subn(r'\((\d+) "In1\.Cu" signal\)', r'(\1 "In1.Cu" power)', s)  # KiCad 9 numbers In1 as layer 4
+    if not n:
+        raise RuntimeError("In1.Cu layer entry not found: the GND plane would be routed as a signal layer")
     with open(path, "w", encoding="utf-8") as f:
         f.write(s)
 

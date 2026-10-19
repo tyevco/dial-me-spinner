@@ -14,7 +14,7 @@ against it).  Limits:
   * L20 Isat 0.72 A (rated, 30 % L drop) ... Sunlord SWPA series datasheet rev 2019/04/01, SWPA3015S100MT row
   * D21 IFRM 1.5 A, VRRM 40 V ... CJ B5817W-5819W rev D (Mar 2015) Maximum Ratings
   * TPS22917 IPLS 2.5 A, VIN <= 5.5 V, ISD,VIN <= 100 nA ... SLVSDW8B Tables 7.1 / 7.3 / 7.5
-  * VCC up before AFh: firmware waits 200 ms after OLED_VCC_EN (firmware.md step 23 / NHD init sequence); the
+  * VCC up before AFh: firmware waits 200 ms after OLED_VCC_EN (firmware.md 7.2 step 23 / NHD init sequence); the
     same step allows shortening it but "never below 5 ms" (checked: xfail)
   * VCC must float when off: no path VSYS -> VCC ... SSD1351 Rev 1.3 8.9 note (2); TPS61040 SLVS413L 6.3.3
   * Headroom: at VCC = 12.5 V the boost must deliver the panel ICC firmware allows at that VSYS + the divider
@@ -74,9 +74,9 @@ SRC_IPLS = "TPS22917 SLVSDW8B Table 7.1: IPLS 2.5 A (< 300 us, 2 % duty), IMAX 2
 U21_ISD_MAX = 100e-9
 SRC_ISD = "TPS22917 SLVSDW8B Table 7.5: ISD,VIN 100 nA max (-40..85 C)"
 T_AF = 0.200
-SRC_TAF = "SPEC.md 5.3 / NHD init sequence: AFh >= 200 ms after OLED_VCC_EN, VCC must be in range by then"
+SRC_TAF = "firmware.md 7.2 step 23 (vendor sequence): AFh 200 ms after OLED_VCC_EN, VCC must be in range by then"
 T_AF_MIN = 5e-3
-SRC_TAF_MIN = "firmware.md 7.x step 23: the VCC-to-AFh wait may be shortened after measurement, 'never below 5 ms'"
+SRC_TAF_MIN = "firmware.md 7.2 step 23: the VCC-to-AFh wait may be shortened after measurement, 'never below 5 ms'"
 SRC_FLOAT = ("SSD1351 Rev 1.3 8.9 note (2) VCC floats when off / note (1) held near VCI by ESD path; "
              "TPS61040 SLVS413L 6.3.3 (disabled boost passes VIN to VOUT)")
 
@@ -284,7 +284,8 @@ def run(deck, tstop, uic=True, tmax=None, may_miss=()):
     extra = " ".join(x for x in (tmax or "", "uic" if uic else "") if x)
     deck.tran(STEP, f"{tstop:.6g}", 0, extra)
     res = deck.run(timeout=900)
-    assert not res["_errors"], "\n".join(res["_errors"][:10]) + "\n" + res["_log"][-3000:]
+    errors = [e for e in res["_errors"] if not any(f"meas tran {m} " in e.lower() for m in may_miss)]
+    assert not errors, "\n".join(errors[:10]) + "\n" + res["_log"][-3000:]
     missing = [m for m in res.get("_missing", []) if m not in may_miss]
     assert not missing, f"missing measures {missing}\n" + res["_log"][-3000:]
     for m in may_miss:
@@ -576,7 +577,7 @@ def test_startup_inrush_and_overshoot(main, check):
     soft_checks(check, rows)
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware.md step 23): the documented floor for the "
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (firmware.md 7.2 step 23): the documented floor for the "
                    "VCC-to-AFh wait, 'never below 5 ms', is shorter than the worst-case VCC rise (~6.3 ms at VSYS "
                    "3.0 V with a weak TPS61040, L20 -20 %, C37 +10 %); 4.9 ms even with typical parts")
 def test_startup_time_vs_firmware_floor(main, check):
@@ -801,12 +802,12 @@ def test_fault_ct_shorted_detected(main, check):
 
 
 @pytest.mark.fault
-def test_fault_l20_bridged_detected(main, check):
-    """L20 bridged (pads shorted): SW sits on OLED_VIN, the boost cannot store energy and VCC only reaches about
-    VSYS - D21 drop after OLED_VCC_EN."""
-    main.short("L20")
-    r = startup(main, "fault L20 short", vsys=VSYS_USB, derate=False, tstop=6e-3)
-    check("FAULT L20 bridged: VCC after start-up must stay below the panel minimum (detected)", r["vend"], None,
+def test_fault_r26_bridged_detected(main, check):
+    """R26 bridged (solder bridge / 0-ohm fitted): FB sits on VCC, the boost targets VREF = 1.23 V, so after
+    OLED_VCC_EN VCC only follows VSYS through L20 / D21 and never reaches the panel window."""
+    main.short("R26")
+    r = startup(main, "fault R26 short", vsys=VSYS_USB, derate=False, tstop=6e-3)
+    check("FAULT R26 bridged: VCC after start-up must stay below the panel minimum (detected)", r["vend"], None,
           VCC_MIN, "V", SRC_VCC)
 
 

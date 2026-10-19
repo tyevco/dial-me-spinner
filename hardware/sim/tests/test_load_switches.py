@@ -16,6 +16,9 @@ Angles covered: datasheet correlation of the switch model, supply corners (VBAT 
 through the BQ25180 power path), temperature (-10/25/60 C on the battery impedance, the TPS22917 RON / leakage
 limits, the clamp diodes and the D21 leakage), component tolerances (extremes / Monte Carlo), load extremes
 (full-white ring, firmware LED caps), MCU reset, back-powering of both rails, and fault injection.
+Added by the independent verifier: MLCC DC-bias / TCC (Samsung curves) on the VLED discharge worst case, the
+BQ25180 BUVLO at the 3.48 V firmware floor (incl. an OLED turn-on during a motor move), the OLED turn-on on USB with a
+dead battery at the 100 mA input limit, and fault tests for CT bridged / a decade off and R25 left off.
 """
 
 from __future__ import annotations
@@ -786,7 +789,7 @@ def test_phantom_normal_off_state(main, base, check):
 U21_CASES = [(c, 25) for c in ("bat3.0", "bat3.7", "bat4.2", "usb4.5", "usb5.5")] + [("bat3.0", -10)]
 
 
-def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0, ilim=0.475):
+def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0, ilim=0.475, step="2u"):
     d = Deck(f"U21 turn-on {corner} {temp}C")
     d += f".temp {temp}"
     vsys_network(d, main, base, corner, temp, i_extra=i_extra, ilim=ilim)
@@ -795,7 +798,7 @@ def u21_turn_on(main, base, corner, temp=25, t_on=0.2e-3, stop=7e-3, i_extra=0.0
     oled_input(d, main)
     d += [f"VCTL n_ctl 0 PWL(0 0 {t_on} 0 {t_on + 1e-7} 1)", "VOE n_oe 0 1"]
     gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
-    d.tran("2u", f"{stop}")
+    d.tran(step, f"{stop}")
     d.meas(f"tran vsys0 FIND v(n_vsys) AT={t_on * 0.9}")
     d.meas(f"tran vsysmin MIN v(n_vsys) FROM={t_on} TO={stop}")
     d.meas(f"tran iinrush MAX v(n_iu21) FROM={t_on} TO={stop}")
@@ -849,6 +852,48 @@ def test_u21_turn_on_with_boost_start(main, base, check, corner, temp):
               "docs/firmware.md POFWARN 2.9 V + nRF52840 PS VPOFTOL 5 % (firmware envelope VBAT >= 3.48 V)")
     check(f"OLED_VIN within TPS61040 VIN range after the ramp {tag}", r["vinend"], 1.8, 6.0, "V",
           f"{DS_BST} Table 5.3 VIN 1.8..6 V")
+
+
+NRF_VBOR_ON_MIN = 1.57   # V, nRF52840 PS v1.1 5.3 VBOR,ON (System ON brown-out reset) 1.57 / 1.60 / 1.63 V
+BQ_ILIM_100 = 0.100      # A, BQ25180 SLUSE99C Table 8-17 ILIM code 001 = "100 mA (max.)"; TMR_ILIM 0xC9
+BQ_ILIM_500_MIN = 0.450  # A, ILIM code 101 (TMR_ILIM 0xCD) 450 / 475 / 498 mA min/typ/max (docs/firmware.md 12.x)
+
+
+def u21_on_usb_dead_battery(main, base, ilim, stop=12e-3):
+    """OLED_VCC_EN rises on USB (5.0 V) with the cell below BUVLO: the BQ25180 cannot supplement SYS (SLUSE99C 8.3.3,
+    'battery voltage has to be higher than VBUVLO'), so SYS is fed only through the input current limit; modelled as
+    a 0 V cell (supplement path off).  This is docs/firmware.md 13.3 step 1: 'with a dead battery the system boots
+    from VBUS ... write TMR_ILIM = 0xC9 (100 mA)', with the OLED allowed on (C7 <= 04h)."""
+    CORNERS["_dead"] = dict(usb=1, vbat=0.0, vbus=5.0)
+    try:
+        return u21_turn_on(main, base, "_dead", 25, stop=stop, ilim=ilim, step="5u")
+    finally:
+        CORNERS.pop("_dead")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="DESIGN ISSUE: dead battery (below BUVLO) on USB at the 100 mA input limit that firmware "
+                   "sets on VBUS detect (docs/firmware.md 13.3), with the OLED allowed on: the U21 + TPS61040 start-up "
+                   "surge (~0.4 A for ~1 ms to charge +13V_OLED) empties the ~100 uF of VSYS bulk, VSYS falls to "
+                   "~1.5 V and +3V3 below the nRF52840 brown-out level -> reboot loop (fix: firmware keeps "
+                   "OLED_VCC_EN low while TMR_ILIM is 0xC9 and VBAT < BUVLO + hysteresis)")
+def test_u21_turn_on_dead_battery_usb_100ma(main, base, check):
+    # +3V3 crosses VBOR at ~4 ms; afterwards VSYS parks at the boost UVLO (~1.46 V) while the averaged model chatters
+    # there (slow to simulate, and the real nRF has reset by then), so the window ends at 5 ms
+    r = u21_on_usb_dead_battery(main, base, BQ_ILIM_100, stop=5e-3)
+    v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
+    check("VSYS min, OLED on, dead battery, USB ILIM 100 mA (record)", r["vsysmin"], None, None, "V",
+          f"{DS_BQ} Table 8-17 ILIM 100 mA (max.), 8.3.3 no supplement below VBUVLO")
+    check("+3V3 min, OLED on, dead battery, USB ILIM 100 mA", v3, NRF_VBOR_ON_MIN, None, "V",
+          "nRF52840 PS v1.1 5.3 VBOR,ON min 1.57 V; docs/firmware.md 13.3 (OLED allowed at C7 <= 04h)")
+
+
+def test_u21_turn_on_dead_battery_usb_500ma(main, base, check):
+    """Same, once firmware has raised the limit to the 500 mA code (450 mA min): the surge is carried."""
+    r = u21_on_usb_dead_battery(main, base, BQ_ILIM_500_MIN)
+    v3 = min(3.3, r["vsysmin"] - I_3V3 * LDO_RDO)
+    check("+3V3 min, OLED on, dead battery, USB ILIM 500 mA code (450 mA min)", v3, W25_VCC_MIN, None, "V",
+          "W25Q128JV VCC min 2.7 V; BQ25180 ILIM 450 mA min; RT9080 DS9080-09 dropout")
 
 
 I_MOTOR = 0.42   # A, VM during a detent move, docs/architecture.md 7 power tree ("0.36-0.42 A for <= 0.9 s")
@@ -985,23 +1030,28 @@ def test_vled_at_firmware_led_floor(main, base, check, vbat, i_led, temp):
 
 def test_u21_off_whatif_qod_tied_to_vout(main, base, check):
     """WHAT-IF (not in the netlist): U21 pin 5 (QOD) tied to OLED_VIN, the fix proposed for the back-power issue.
-    The internal 150 R then holds OLED_VIN near 0 V while U21 is off, and FB stays within VIN + 0.3 V."""
+    The internal 150 R then holds OLED_VIN near 0 V while U21 is off, and FB stays within VIN + 0.3 V.
+    FB then sits at VCC x R27/(R26+R27) with VCC = +3V3 minus the panel's ESD-diode drop, whose I-V no datasheet
+    gives: the generic diode and a strong (IS 1e-11) and very strong (IS 1e-9) clamp bracket it (verifier)."""
     for temp in (25, 60):
-        d = Deck(f"U21 off, QOD tied, {temp}C")
-        d += f".temp {temp}"
-        vsys_network(d, main, base, "bat3.7", temp)
-        tps22917(d, main, "U21", isd_out=SW_ISD_MAX_85C if temp > 25 else 10e-9)
-        oled_input(d, main, panel_esd=True)
-        d += f"RWHATIF_QOD {main.pin('U21', 'QOD')} {main.node('OLED_VIN')} 1m"
-        d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
-        gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
-        d.op()
-        d.print_op(f"v({main.node('OLED_VIN')})", f"v({main.node('OLED_BST_FB')})")
-        r = run(d, need=("op_0", "op_1"))
-        check(f"WHAT-IF QOD tied: OLED_VIN with OLED off {temp}C", r["op_0"], None, BST_EN_VIL, "V",
-              f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN)")
-        check(f"WHAT-IF QOD tied: FB - OLED_VIN {temp}C", r["op_1"] - r["op_0"], None, BST_FB_OVER_VIN, "V",
-              f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
+        for tag, esd in (("generic ESD", ""), ("strong ESD IS 1e-11", " params: is=1e-11 rs=1"),
+                         ("very strong ESD IS 1e-9", " params: is=1e-9 rs=1")):
+            d = Deck(f"U21 off, QOD tied, {temp}C, {tag}")
+            d += f".temp {temp}"
+            vsys_network(d, main, base, "bat3.7", temp)
+            tps22917(d, main, "U21", isd_out=SW_ISD_MAX_85C if temp > 25 else 10e-9)
+            oled_input(d, main, panel_esd=True)
+            d.lines = [ln + esd if ln.startswith("XJ20 ") else ln for ln in d.lines]
+            d += f"RWHATIF_QOD {main.pin('U21', 'QOD')} {main.node('OLED_VIN')} 1m"
+            d += ["VCTL n_ctl 0 0", "VOE n_oe 0 1"]
+            gpio(d, main, "OLED_VCC_EN", "n_ctl", "n_oe")
+            d.op()
+            d.print_op(f"v({main.node('OLED_VIN')})", f"v({main.node('OLED_BST_FB')})")
+            r = run(d, need=("op_0", "op_1"))
+            check(f"WHAT-IF QOD tied: OLED_VIN with OLED off {temp}C {tag}", r["op_0"], None, BST_EN_VIL, "V",
+                  f"{DS_BST} Table 5.5 EN VIL max 0.4 V (EN tied to VIN)")
+            check(f"WHAT-IF QOD tied: FB - OLED_VIN {temp}C {tag}", r["op_1"] - r["op_0"], None, BST_FB_OVER_VIN,
+                  "V", f"{DS_BST} Table 5.1 abs max FB <= VIN + 0.3 V")
 
 
 def test_phantom_clamp_sensitivity(main, base, check):
