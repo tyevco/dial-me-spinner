@@ -343,7 +343,14 @@ def refill(path):
 
 
 def export_dsn(pcb_path, dsn_path):
+    """Specctra DSN for Freerouting.  KiCad exports every rule area as a full keepout, so the pour-only ones (no copper
+    pour, tracks/vias/pads allowed, e.g. the antenna and magnet-track pour bands) are dropped from the in-memory board
+    first; otherwise the router may not run tracks through them or reach pads inside them.  The file is not saved."""
     b = pcbnew.LoadBoard(pcb_path)
+    for z in list(b.Zones()):
+        if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour() and not (
+                z.GetDoNotAllowTracks() or z.GetDoNotAllowVias() or z.GetDoNotAllowPads()):
+            b.Delete(z)
     if not pcbnew.ExportSpecctraDSN(b, dsn_path):
         raise RuntimeError("DSN export failed")
 

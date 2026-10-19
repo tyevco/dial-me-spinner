@@ -921,7 +921,7 @@ def dsn_plane_as_layer_rule(dsn, net="GND", layer="In1.Cu"):
         f.write("".join(out))
 
 
-def route(path, minutes=30, threads=2, optimizer_passes=20):
+def route(path, minutes=30, threads=1, optimizer_passes=20):
     """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
     Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
     the run is bounded by its job timeout, after which it writes the best board so far.  The post-route optimizer
