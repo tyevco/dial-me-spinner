@@ -243,10 +243,13 @@ class Deck:
         return self
 
     def include(self, lib: str):
+        """Inline a model file. ngspice treats a node called 'gnd' as global ground even inside a .subckt, which
+        would silently tie a subcircuit's ground PORT to node 0 whatever the caller connects it to. So in every
+        subcircuit that has a 'gnd' port, that name is made local before the file goes into the deck."""
         path = lib if os.path.isabs(lib) else os.path.join(MODELS, lib)
         if not os.path.exists(path):
             raise FileNotFoundError(path)
-        self.lines.insert(0, f".include {path}")
+        self.lines.insert(0, f"* ---- {os.path.basename(path)}\n" + localize_gnd_ports(open(path).read()))
         return self
 
     def param(self, **kw):
@@ -340,6 +343,22 @@ class Deck:
             return res
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+
+def localize_gnd_ports(text: str) -> str:
+    """Rename a subcircuit's 'gnd' port (and its uses inside that subcircuit) to a local node name."""
+    out, inside, rename = [], False, False
+    for line in text.splitlines():
+        low = line.strip().lower()
+        if low.startswith(".subckt"):
+            head = re.split(r"\s+params:", line, maxsplit=1, flags=re.I)[0]
+            inside, rename = True, bool(re.search(r"(?i)(?<![\w.])gnd(?![\w.])", " ".join(head.split()[2:])))
+        if inside and rename and not low.startswith("*"):
+            line = re.sub(r"(?i)(?<![\w.])gnd(?![\w.])", "gnd_port", line)
+        if low.startswith(".ends"):
+            inside, rename = False, False
+        out.append(line)
+    return "\n".join(out)
 
 
 def eng(x: float, unit: str = "") -> str:
