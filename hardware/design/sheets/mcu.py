@@ -158,8 +158,8 @@ def build(d):
             "VBUS, 4.49-5.49 V for a 4.5-5.5 V source (hardware/sim test_hotplug_nrf_vbus_abs_max).\n"
             "DC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\n"
             "U12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n"
-            "~145 nH link (HBM 2 kV class = 1.33 A). U12 as close as the module courtyard allows (3.5 mm pad to\n"
-            "pad to D-); test_usb_input reads the placed distance.")
+            "~145 nH link (HBM 2 kV class = 1.33 A). U12 as close as the module courtyard allows (3.1 mm pad\n"
+            "centre to D- pad centre); test_usb_input reads the placed distance.")
     d.add("R12", "Device:R", "4.7", R0402, pins={"1": "VBUS", "2": "VBUS_NRF"},
           fields={"MPN": "FRC0402F4R70TS", "Manufacturer": "FOJAN", "LCSC": "C2909356"})
     d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS_NRF", "2": "GND"}, rot=0,
