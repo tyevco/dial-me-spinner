@@ -3,9 +3,11 @@
 Circuits (main board `sensors` sheet, plus the base board across the 12-way link):
   1. Piezo: BZ1 PKMCS0909E4000-R1 driven differentially by nRF P0.12 (BUZZ_A) / P1.08 (BUZZ_B) through
      R57 / R58, R59 bleed across BZ1. Complementary 4 kHz PWM (docs/firmware.md 8.1, H0H1 drive).
-  2. TMAG bus (TWIM0, 400 kHz): TMAG_SCL / TMAG_SDA (R50 / R51), TMAG_INT_N (R52), U30 TMAG5273,
+  2. TMAG bus (TWIM0, about 390 kHz: FREQUENCY = 0x06200000, docs/firmware.md 4.4): TMAG_SCL / TMAG_SDA
+     (R50 / R51), TMAG_INT_N (R52), U30 TMAG5273,
      U32 TPD4E05U06 clamps.
-  3. System bus (TWIM1, 400 kHz): I2C_SCL / I2C_SDA (R53 / R54) to U31 LIS2DW12 and, through main J1 -
+  3. System bus (TWIM1, 250 kHz, or 100 kHz per docs/firmware.md 3.1): I2C_SCL / I2C_SDA (R53 / R54) to U31
+     LIS2DW12 and, through main J1 -
      harness - base J3, to base U1 BQ25180. CHG_INT_N (R55) from the BQ25180 /INT, BTN_N (R56) from base
      Q1B (BSS138DW, gate from SW1 / R3 / R4), IMU_INT1 / IMU_INT2 push-pull from the LIS2DW12.
 
@@ -20,9 +22,12 @@ BQ25180) all leave the LDO in regulation, so +3V3 = 3.3 V +/-2 %. At VBAT 3.0 V 
 so +3V3 is about 2.99 V. The base-side parts see VBAT directly (BTN_N gate drive).
 
 TWIM master timing (TWIM table below): the nRF52840 at 400 kHz holds SCL low for only 1.25 us (Nordic errata
-219), which test_twim_tlow_400k_errata219 shows violating tLOW at every receiver (strict xfail, design issue
-in the firmware configuration); test_twim_tlow_errata219_remedy is the fixed configuration. The pin model's
-gate ramp (EDGE) is calibrated to the PS tHRF,25pF / tRF,25pF edge rates.
+219), which test_twim_tlow_400k_errata219 shows violating tLOW at every receiver (strict xfail: the OLD firmware
+configuration, kept as the evidence for rule NF-1); test_twim_tlow_errata219_remedy is the configuration
+firmware.md now documents (TWIM0 0x06200000, TWIM1 250 kHz, S0D1) and guards it. The bus-quality tests
+(test_system_bus_transaction & co.) keep the 400 kHz SCL pattern: its shorter low / high phases are stricter for
+tSU;DAT and tHIGH than the firmware's 250 kHz. The pin model's gate ramp (EDGE) is calibrated to the PS
+tHRF,25pF / tRF,25pF edge rates.
 """
 
 from __future__ import annotations
@@ -727,10 +732,10 @@ def tmag_tlow(d, vdd, cs, tlow, scale=None, drive=("SD", "min")):
     return _cross(t, v, 0.3 * vdd, +1, start=t0 + tlow - 0.05e-6) - _cross(t, v, 0.3 * vdd, -1, start=t0 - 0.1e-6)
 
 
-def twim_tlow_checks(main, base, check, sys_rate, tmag_rate, drive=("SD", "min")):
+def twim_tlow_checks(main, base, check, sys_rate, tmag_rate, drive=("SD", "min"), fw=""):
     """SCL low time at every receiver of both buses: TWIM1 (system bus) at `sys_rate`, TWIM0 (TMAG) at
     `tmag_rate`. Stronger pull-up (R -1 %) and the weakest pull-down are worst: both slow the fall into VIL
-    and speed the rise out of it."""
+    and speed the rise out of it. `fw` is appended to every check source (the firmware configuration under test)."""
     for cset in CSETS:
         for supply in ("vbat3.0", "hi"):
             vdd = VDD[supply]
@@ -738,32 +743,40 @@ def twim_tlow_checks(main, base, check, sys_rate, tmag_rate, drive=("SD", "min")
             tl = tmag_tlow(main, vdd, CSETS[cset], TWIM[tmag_rate]["tlow"], scale={"R50": 1 - main.tol("R50")},
                            drive=drive)
             check(f"TMAG_SCL tLOW at TMAG5273, TWIM0 @{tmag_rate} [{tag}]", tl, T_LOW, None, "s",
-                  f"{S_TMAG} Table 5.10 twlow 1300 ns (0.3·VCC, Table 5.3 VIL); {S_UM} Table 11 tLOW")
+                  f"{S_TMAG} Table 5.10 twlow 1300 ns (0.3·VCC, Table 5.3 VIL); {S_UM} Table 11 tLOW{fw}")
             sc = {"R53": 1 - main.tol("R53"), "R54": 1 - main.tol("R54")}
             out = i2c_transaction(main, base, vdd, CSETS[cset], scale=sc, rate=sys_rate, drive=drive)
             for name, m in out.items():
                 check(f"I2C_SCL tLOW at {name}, TWIM1 @{sys_rate} [{tag}]", m["tlow"], T_LOW, None, "s",
-                      TLOW_SRC[name])
+                      TLOW_SRC[name] + fw)
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "DESIGN ISSUE (firmware config): nRF52840 errata 219, the TWIM at 400 kHz drives SCL low for only 1.25 us; "
-    "the bus tLOW is 1.26 us at the TMAG5273, 1.22-1.23 us at the LIS2DW12 and 1.27-1.28 us at the BQ25180, "
-    "below 1.3 us "
-    "(UM10204 Table 11, LIS2DW12 Table 7, TMAG5273 Table 5.10). docs/firmware.md sets I2C_BITRATE_FAST on "
-    "i2c0 and i2c1 with no workaround. Fix: see test_twim_tlow_errata219_remedy"))
+    "DESIGN ISSUE (firmware-dependent, NF-1 I2C): nRF52840 errata 219, the TWIM at 400 kHz drives SCL low for only "
+    "1.25 us; the bus tLOW is 1.26 us at the TMAG5273, 1.22-1.23 us at the LIS2DW12 and 1.27-1.28 us at the "
+    "BQ25180, below 1.3 us (UM10204 Table 11, LIS2DW12 Table 7, TMAG5273 Table 5.10). The OLD docs/firmware.md set "
+    "I2C_BITRATE_FAST on i2c0 and i2c1 with no workaround; it now writes TWIM0 FREQUENCY = 0x06200000 and runs "
+    "TWIM1 at 250 kHz, guarded by test_twim_tlow_errata219_remedy"))
 def test_twim_tlow_400k_errata219(main, base, check):
-    """Firmware as documented: both TWIMs at 400 kHz, default S0D1 pins (weakest corner)."""
-    twim_tlow_checks(main, base, check, "400k", "400k")
+    """OLD firmware configuration: both TWIMs at 400 kHz (I2C_BITRATE_FAST), default S0D1 pins (weakest corner)."""
+    twim_tlow_checks(main, base, check, "400k", "400k", fw="; OLD firmware: I2C_BITRATE_FAST on i2c0 and i2c1")
+
+
+SRC_FW_NF1 = ("; firmware rule (hardware/sim, NF-1 I2C, nRF52840 errata 219): docs/firmware.md 1.3 / 3.1 / 4.4 - "
+              "TWIM0 FREQUENCY = 0x06200000 written after init, TWIM1 clock-frequency 250000 (K250, 0x04000000), "
+              "TWIM pins keep the default S0D1 drive")
 
 
 def test_twim_tlow_errata219_remedy(main, base, check):
-    """Remedy, S0D1 pins unchanged: TWIM0 (TMAG) at the errata 219 workaround FREQUENCY = 0x06200000
-    (390 kHz, SCL low > 1.3 us), TWIM1 (system bus) at 250 kbps (K250). 390 kHz is not enough on TWIM1: the
-    weakest S0D1 pin needs 20-30 ns to pull the 45-72 pF harness line to the LIS2DW12's 0.2·Vdd_IO point,
-    leaving 1.27-1.29 us there. H0D1 would fix that but puts the BQ25180 undershoot at the -0.3 V abs max
-    (test_system_bus_fast_edges note)."""
-    twim_tlow_checks(main, base, check, "250k", "390k")
+    """GUARD for the firmware rule NF-1 I2C (hardware/sim; nRF52840 errata 219; docs/firmware.md 1.3 TWIM pin
+    table, 3.1 &i2c0 / &i2c1, 4.4 TWIM0 register table): TWIM0 (TMAG) at the errata 219 workaround
+    FREQUENCY = 0x06200000 (390 kHz, SCL low > 1.3 us), TWIM1 (system bus) at 250 kHz (K250, 0x04000000), S0D1
+    pins unchanged (the weakest S0D1 corner). 390 kHz is not enough on TWIM1: the weakest S0D1 pin needs 20-30 ns
+    to pull the 45-72 pF harness line to the LIS2DW12's 0.2·Vdd_IO point, leaving 1.27-1.29 us there. H0D1 would
+    fix that but puts the BQ25180 undershoot at the -0.3 V abs max (test_system_bus_fast_edges note).
+    firmware.md also allows TWIM1 at I2C_BITRATE_STANDARD (100 kHz); that case is not simulated: no document gives
+    the TWIM SCL low phase at 100 kHz (the 250 kHz one is already inferred, TWIM table)."""
+    twim_tlow_checks(main, base, check, "250k", "390k", fw=SRC_FW_NF1)
 
 
 SYS_DRIVERS = {  # driver -> (control key, node key, sink ammeter, max sink)

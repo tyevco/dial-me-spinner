@@ -422,7 +422,7 @@ def test_jeita_nominal_mapping(jeita, key, check):
 @pytest.mark.parametrize("reg", [
     pytest.param("0x00", marks=pytest.mark.xfail(strict=True, reason=(
         "DESIGN ISSUE (firmware-dependent, charger_ts-1): with the default TS_CONTROL (0x00, the OLD firmware) the "
-        "worst-case COLD trip is about -2 °C and the worst-case HOT trip about +64 °C (IC threshold + bias "
+        "worst-case COLD trip is about -2 °C and the worst-case HOT trip about +65 °C (IC threshold + bias "
         "tolerance with RT1 R25/B tolerance), so the charger may charge outside the JEITA 0-60 °C window; "
         "firmware.md §13.1 now writes TS_CONTROL = 0x90 at init, guarded by the [0x90] case"))),
     "0x90",
