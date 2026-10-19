@@ -813,6 +813,37 @@ def test_usb_without_battery(main, base, check, ilim_code, led_cap, icc, motor):
                       (f"{tag}: +3V3", r["v3v3"], V3V3_MIN, None, "V", SRC_3V3)])
 
 
+USB_LOWPACK_XFAIL = pytest.mark.xfail(strict=True, reason=(
+    "DESIGN ISSUE: on USB the on-USB budget (LED 150 mA + OLED + actuator, ~0.54 A) is above ILIM min 450 mA, so "
+    "the pack supplements and SYS follows the pack, not the 4.5 V regulation; with aligned LED PWM peaks and a pack "
+    "at the 3.48 V SHIP threshold VLED falls below 3.3 V, and the firmware cannot derate by VBAT on USB (SYS is "
+    "regulated, the BQ25180 has no ADC: firmware.md 12.4)"))
+
+
+@pytest.mark.parametrize("cname,sync", [
+    ("nominal", False), ("worst", False),
+    pytest.param("nominal", True, marks=USB_LOWPACK_XFAIL), pytest.param("worst", True, marks=USB_LOWPACK_XFAIL),
+])
+def test_usb_low_pack(main, base, check, cname, sync):
+    """Verifier addition, 'VSYS as the charger delivers it' with a partly discharged pack: USB 5.0 V, ILIM 450 mA
+    (min), pack at the 3.48 V SHIP threshold (the lowest rested VBAT a user normally plugs in at), firmware on-USB
+    budget. When the load exceeds ILIM the BQ25180 supplements from the pack (SLUSE99C 8.3.2 / 8.3.3), so the
+    VBAT-dependent margins of the battery-only cases apply on USB too."""
+    s = System(main, base, CORNERS[cname])
+    vbat = FW_V_SHIP
+    tag = f"USB 5.0 V, pack {vbat} V {cname}, on-USB budget" + (", aligned PWM" if sync else ", average")
+    if sync:
+        loads = Loads(oled_icc=OLED_ICC_MAX, motor="pwm", motor_icoil=MOTOR_I45, **led_sync(FW_LED_SUST, s.n_led))
+        r = run_tran(s.deck(tag, loads, vbat=vbat, vbus=5.0, ilim=BQ_ILIM500[0]), stop=1.2e-3)
+        check_supply(check, s, r, tag, extra=[(f"{tag}: I(IN) peak", r["iin_max"], None, IIN_MAX, "A", SRC_IIN)])
+    else:
+        loads = Loads(oled_icc=OLED_ICC_MAX, oled_ripple=False, tx=False, motor="avg", motor_icoil=MOTOR_I45,
+                      **led_avg(FW_LED_SUST, s.n_led))
+        # DPPM / supplement operating point sits near VBAT + VDPPM: give Newton that initial guess
+        r = run_op(s.deck(tag, loads, vbat=vbat, vbus=5.0, ilim=BQ_ILIM500[0], vguess=vbat + 0.1))
+        check_supply(check, s, r, tag, dc=True, extra=[(f"{tag}: I(IN)", r["iin"], None, IIN_MAX, "A", SRC_IIN)])
+
+
 @pytest.mark.parametrize("vbat", [4.2, 3.7])
 def test_ground_bounce_logic_levels(main, base, check, vbat):
     """Ground offset between the boards during the uncapped worst case (all LED PWM edges together, both coils,
