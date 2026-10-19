@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HW = os.path.dirname(HERE)
@@ -175,7 +176,8 @@ def main_fixed(comps):
     put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", J1_MAIN_R, 330.0, 0.0, "B")
     put(lambda c: "AFC01" in mpn(c) or "FH12" in mpn(c) or "0.5K-HX" in mpn(c) or "ZIF" in c["value"].upper(),
         9.5, 270.0, 0.0, "F")
-    put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 12.0, 150.0, 0.0, "F")
+    # SWD pads beside the module's SWDIO/SWDCLK/NRESET/SWO pins, clear of the module, J20 and J11 courtyards
+    put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 20.8, 238.5, 0.0, "F")
     put(lambda c: "PKMCS" in mpn(c), 22.0, 22.0, 22.0, "B")
     # NFC coil tail pads on the top, right above the module's NFC1/NFC2 pins (the coil sits in the top cover)
     put(lambda c: c["value"] == "NFC_COIL", 21.5, 222.0, 222.0 - 90.0, "F")
@@ -279,9 +281,60 @@ def main_keepouts():
     return [("B", actuator), ("*", spindle_screws), ("B", tmag_zone), ("B", corridor, low_profile)]
 
 
+HUB_FLANGE_R = 8.5  # brass hub flange clamped against the board bottom (docs/mechanical.md, z 25.0-29.1)
+NUT_R = 4.6         # M4 nut on the board top (SPEC §8)
+CENTRE_HOLE_R = 2.5
+
+
+def clamp_keepouts(board):
+    """No tracks or vias where metal is clamped against the board: under the brass hub flange on the bottom
+    (r ≤ 8.5, + 0.3) and under the M4 nut on the top (r ≤ 4.6); and none on any layer within the copper-to-edge
+    clearance of the centre hole (Freerouting does not see the inner board edge). Pads (the GND spindle holes H1-H3)
+    and the GND pour stay allowed: the hub is GND."""
+    have = {z.GetZoneName() for z in board.Zones() if z.GetIsRuleArea()}
+    shim = types.SimpleNamespace(board=board)
+    circle = lambda r: [pol(r, a) for a in range(0, 360, 5)]  # noqa: E731
+    added = 0
+    for name, layers, r in (("HUB_FLANGE_NO_TRACKS", [pcbnew.B_Cu], HUB_FLANGE_R + 0.3),
+                            ("M4_NUT_NO_TRACKS", [pcbnew.F_Cu], NUT_R),
+                            ("CENTRE_HOLE_NO_TRACKS", [pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu],
+                             CENTRE_HOLE_R + 0.35)):
+        if name not in have:
+            pcbgen.BoardBuilder.keepout(shim, layers, circle(r), pads=False, pours=False, name=name)
+            added += 1
+    return added
+
+
+def enforce_keepouts(path):
+    """Remove every track and via that enters a no-track / no-via rule area (they are re-routed afterwards)."""
+    b = pcbnew.LoadBoard(path)
+    zones = [z for z in b.Zones() if z.GetIsRuleArea() and (z.GetDoNotAllowTracks() or z.GetDoNotAllowVias())]
+    gone = []
+    for t in list(b.GetTracks()):
+        via = t.Type() == pcbnew.PCB_VIA_T
+        for z in zones:
+            if via:
+                if z.GetDoNotAllowVias() and any(z.IsOnLayer(lay) for lay in (pcbnew.F_Cu, pcbnew.B_Cu)) and \
+                        z.Outline().Collide(t.GetPosition(), t.GetWidth(pcbnew.F_Cu) // 2):
+                    break
+            elif z.GetDoNotAllowTracks() and z.IsOnLayer(t.GetLayer()):
+                a, c = t.GetStart(), t.GetEnd()
+                n = max(1, int((c - a).EuclideanNorm() / pcbgen.MM(0.05)))
+                if any(z.Outline().Collide(pcbnew.VECTOR2I(a.x + (c.x - a.x) * k // n, a.y + (c.y - a.y) * k // n),
+                                           t.GetWidth() // 2) for k in range(n + 1)):
+                    break
+        else:
+            continue
+        gone.append(t.GetNetname())
+        b.Delete(t)
+    pcbnew.SaveBoard(path, b)
+    return gone
+
+
 def build_main(bb, comps, nets):
     bb.circle(pcbnew.Edge_Cuts, CX, CY, MAIN_R, 0.1)
     bb.edge_band_keepout(bb.circle_pts(CX, CY, MAIN_R, 180))
+    clamp_keepouts(bb.board)
     bb.circle(pcbnew.Edge_Cuts, CX, CY, 2.5, 0.1)  # Ø5 harness hole
     for i, th in enumerate((90, 210, 330)):   # plated GND spindle holes come from the schematic (H1-H3)
         ref = f"H{i + 1}"
@@ -1055,7 +1108,15 @@ def gnd_plane_fixup(path):
 
 
 def complete_routing(board, out):
-    """After Freerouting: GND pads off the plane get a via, then the grid router (finish_route) joins what is left."""
+    """After Freerouting: copper inside no-track rule areas goes, GND pads off the plane get a via, then the grid router
+    (finish_route) joins what is left."""
+    if board == "main":
+        b = pcbnew.LoadBoard(out)
+        if clamp_keepouts(b):
+            pcbnew.SaveBoard(out, b)
+    gone = enforce_keepouts(out)
+    if gone:
+        print(f"[{board}] removed {len(gone)} tracks/vias inside keep-outs: {sorted(set(gone))}")
     done, left = gnd_plane_fixup(out)
     if done or left:
         print(f"[{board}] GND plane fix-up: {done} pads given a via, {len(left)} without room")

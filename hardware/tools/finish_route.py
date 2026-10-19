@@ -201,7 +201,9 @@ class Router:
         self.log = log
         self.max_expand = 2_500_000
         self.protect_classes = {"Power", "Ground"}
-        self.protect_nets = {"GND"}
+        # never ripped: ground, the crystal, the USB and NFC pairs (their routing is length/pair sensitive)
+        self.protect_nets = {"GND", "XL1", "XL2", "USB_DP", "USB_DM", "NFC1", "NFC2"}
+        self.low_priority = ("TP_SPARE",)  # spare test pads may not rip other nets up
         self.rip_cost = 150.0  # per cell entered through rippable copper (x (1 + 3 x times the net was ripped))
         self.rip_history = {}  # net name -> times ripped (kept by finish() across rounds)
         self.rip_limit = 3
@@ -211,7 +213,7 @@ class Router:
         self.edge_clr = TO_MM(ds.m_CopperEdgeClearance)
         self.outline = pcbnew.SHAPE_POLY_SET()
         b.GetBoardPolygonOutlines(self.outline)
-        self.added = []  # (netname, [items]) per connection
+        self.added = []  # (netname, [uuids]) per connection
         self.ripped = set()
 
     def netclass(self, net):
@@ -227,7 +229,8 @@ class Router:
             return False
         if self.rip_history.get(it.GetNetname(), 0) >= self.rip_limit:
             return False
-        return it.GetNetClassName() not in self.protect_classes and it.GetNetname() not in self.protect_nets
+        return it.GetNetClassName() not in self.protect_classes and \
+            it.GetNetname().split("/")[-1] not in self.protect_nets
 
     def rasters(self, grid, netcode, w, clr, via_d, via_drill, margin=None, soft=False):
         """(blocked per layer, via blocked) — with soft=True also (soft per layer, soft via): cells blocked only
@@ -540,7 +543,7 @@ class Router:
         n = 0
         for t in list(self.b.GetTracks()):
             if t.GetNetname() in names and self.rippable(t):
-                self.b.Remove(t)
+                self.b.Delete(t)
                 n += 1
         for name in names:
             self.ripped.add(name)
@@ -572,7 +575,7 @@ class Router:
                 v.SetNet(net)
                 self.b.Add(v)
                 items.append(v)
-        self.added.append((net.GetNetname(), items))
+        self.added.append((net.GetNetname(), [t.m_Uuid.AsString() for t in items]))
         return items
 
     def open_connections(self, skip=("GND",), only=None):
@@ -712,6 +715,8 @@ def finish(path, log=print, grid=0.025, margin=0.6, skip=("GND",), max_rounds=30
         if not routed and failed and ripups < max_ripups:
             for net, ca, cb in failed:
                 name = net.GetNetname()
+                if name.split("/")[-1].startswith(r.low_priority):
+                    continue
                 items = r.route_pair(net, ca, cb, margin=net_margin.get(name, margin), ripup=True)
                 if items:
                     ripups += 1
@@ -724,12 +729,11 @@ def finish(path, log=print, grid=0.025, margin=0.6, skip=("GND",), max_rounds=30
         b = pcbnew.LoadBoard(path)
         byid = {t.m_Uuid.AsString(): t for t in b.GetTracks()}
         rejected = 0
-        for name, items in r.added:
-            ids = [t.m_Uuid.AsString() for t in items]
+        for name, ids in r.added:
             if any(i in bad for i in ids):
                 for i in ids:
                     if i in byid:
-                        b.Remove(byid[i])
+                        b.Delete(byid.pop(i))
                 rejected += 1
                 net_margin[name] = net_margin.get(name, margin) + 0.6
                 log(f"  DRC rejected the new {name} connection: removed (margin -> {net_margin[name]:.1f} cells)")
