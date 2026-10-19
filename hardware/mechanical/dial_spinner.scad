@@ -558,12 +558,12 @@ module main_board() {
 J3P = [for (p = BASE_PARTS) if (p[0] == "J3_plug") p][0];
 J1P = [for (p = MAIN_PARTS) if (p[0] == "J1_plug") p][0];
 UFLP = [for (p = MAIN_PARTS) if (p[0] == "U10_uFL") p][0];
-HARN_D = 1.9;     // 5x 28 AWG (OD 0.75) + 7x 32 AWG (OD 0.55): 2 x 6 ribbon, 4.5 x 1.5, modelled as a Ø1.9 chain
+HARN_D = 1.8;     // 5x 28 AWG (OD 0.75) + 7x 32 AWG (OD 0.55): 2 x 6 ribbon, 4.5 x 1.5, modelled as a Ø1.8 chain
 HARN_PTS = [
     bp_point(J3P, 0, J3P[7] - 1.05, BB_Z1 + 1.5), bp_point(J3P, 0, J3P[7] - 2.5, 15.1),
     concat(pol(7.5, BOT_SLOT_A + 8), [15.3]), concat(pol(3.6, BOT_SLOT_A), [15.4]), [0, 0, 15.4],
     [0, 0, 26.2], concat(pol(3.8, TOP_SLOT_A), [26.9]), concat(pol(8.8, TOP_SLOT_A), [27.95]),
-    [2.5, -13.2, 28.0], [8.0, -13.7, 28.0], [23.5, -14.2, 28.0], [24.6, -8.5, 28.0], [23.0, -3.8, 28.0],
+    [2.5, -13.2, 28.0], [8.0, -13.7, 28.0], [23.5, -14.2, 28.0], [24.6, -8.5, 28.0], [23.6, -2.8, 28.0],
     bp_point(J1P, 0, J1P[8] + 2.0, 27.7), bp_point(J1P, 0, J1P[8] + 1.05, 27.7)];   // ends at the plug back face
 module harness() color(c_wire) chain(HARN_PTS, HARN_D);
 // antenna coax (Ø1.13): feed end -> riser outside the base board -> bottom slot -> bore -> top slot -> u.FL
@@ -571,7 +571,7 @@ COAX_PTS = [
     [ANT_FEED_X, ANT_YC, ANT_Z0 + 0.65], [ANT_FEED_X + 1.0, ANT_YC - 2.0, ANT_Z0 + 1.2],
     [-14.6, 19.9, 7.5], [-14.6, 19.9, 14.2], [-12.0, 17.0, 15.0],
     concat(pol(8.0, BOT_SLOT_A - 6), [15.3]), concat(pol(3.4, BOT_SLOT_A - 10), [15.4]), [0.6, 0.3, 16.2],
-    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.3]),
+    [0.6, 0.3, 26.0], concat(pol(3.6, TOP_SLOT_A - 15), [26.6]), concat(pol(8.9, TOP_SLOT_A - 12), [27.3]), concat(pol(9.7, 245), [27.0]),
     [UFLP[2] - 2.0, UFLP[3] - 1.6, 26.5]];   // ends at the u.FL plug body
 module coax() color(c_coax) chain(COAX_PTS, 1.13);
 
@@ -662,21 +662,22 @@ module oled_bracket()
                 square([OLED_W - 0.4, OLED_L - 0.4], center = true);
                 square([OLED_W - 4.4, OLED_L - 4.4], center = true);
             }
-            for (a = HUB_SCREW_A) {
-                at_polar(HUB_SCREW_R, a, MB_Z1 + 0.05) cylinder(d = 4.0, h = BRK_Z1 - MB_Z1 - 0.05, $fn = fn_small);
-                rotate(a) translate([HUB_SCREW_R, -1.0, BRK_Z1 - BRK_RIM_T]) cube([16.3 - HUB_SCREW_R, 2.0, BRK_RIM_T]);
+            for (a = HUB_SCREW_A) at_polar(HUB_SCREW_R, a, MB_Z1 + 0.05) cylinder(d = 4.4, h = BRK_Z1 - MB_Z1 - 0.05, $fn = fn_small);
+            intersection() {     // spokes from the screw bosses out to the rim
+                for (a = HUB_SCREW_A) rotate(a) translate([HUB_SCREW_R, -1.0, BRK_Z1 - BRK_RIM_T]) cube([14, 2.0, BRK_RIM_T]);
+                translate([0, OLED_YC, 0]) cube([OLED_W - 0.6, OLED_L - 0.6, 100], center = true);
             }
         }
         for (a = HUB_SCREW_A) at_polar(HUB_SCREW_R, a, MB_Z1 - 0.1) {
             cylinder(d = 2.3, h = 5, $fn = 12);
-            translate([0, 0, BRK_Z1 - MB_Z1 - 1.0]) cylinder(d1 = 2.3, d2 = 4.0, h = 1.01, $fn = 16);   // M2 CSK
+            translate([0, 0, BRK_Z1 - MB_Z1 + 0.1 - 1.0]) cylinder(d1 = 2.3, d2 = 3.9, h = 1.01, $fn = 16);   // M2 CSK, open at the top
         }
         translate([0, 0, MB_Z1 - 0.1]) cylinder(d = NUT_OD + 1.0, h = 3, $fn = fn_small);
         for (a = MB_BRK_A) at_polar(MB_BRK_R, a, MB_Z1 - 0.1) cylinder(d = 4.8, h = 3, $fn = 16);   // saddle screw heads
         translate([0, OLED_YC - OLED_L / 2 - 1, MB_Z1]) translate([-9.0, 0, 0]) cube([18, 4.5, 3]);   // FPC fold relief
         // pockets over every top-side part taller than 0.95 mm (0.3 mm all round, 0.2 above)
         for (p = MAIN_PARTS) if (p[1] == "T" && p[10] > 0.95) translate([p[2], p[3], p[9] - 0.1]) rotate(p[4])
-            translate([p[5] - 0.3, p[7] - 0.3, 0]) cube([p[6] - p[5] + 0.6, p[8] - p[7] + 0.6, p[10] + 0.3]);
+            translate([p[5] - 0.31, p[7] - 0.31, 0]) cube([p[6] - p[5] + 0.62, p[8] - p[7] + 0.62, p[10] + 0.31]);
     }
 
 module oled_glass() {
@@ -908,8 +909,8 @@ module board_bottom_labels() {
     label("VSM08102 envelope", [-3, 10.5], 1.6);
     label("carriage @ click", [5.0, 27.0], 1.5, "left");
     label("J40 motor", [-19.0, 23.5], 1.5);
-    label("brass hub r≤8.5", [0, 10.5 - 14.0], 1.3);
-    label("harness", [12.0, -3.5], 1.4);
+    label("brass hub r≤8.5", [-11.0, 3.0], 1.3);
+    label("harness", [13.0, 0.5], 1.4);
     label("rotor envelope (ghost)", [0, -33.8], 1.6);
 }
 SEC_LABELS = [
@@ -961,10 +962,12 @@ else if (view == "board_bottom") {
 }
 else if (view == "base_top") { base_cup(); antenna(); battery(); battery_leads(); base_board(); guide_hw(); color([0.37, 0.42, 0.48, 0.25]) fa_lower_plate(); }
 else if (view == "clash") {
-    main_board(); detent_assembly(det_offset); spindle_hub(); harness(); coax();
-    for (i = [0:len(STATIONARY_NAMES) - 1]) color("red") translate([0.036, -0.069, -0.036]) render(convexity = 4) clash_rotor(i);
-    for (j = [14, 15, 10, 20, 21]) color("orange") translate([0.03, -0.06, -0.03]) render(convexity = 4) clash_pair(12, j);
-    color([0.75, 0.78, 0.82, 0.18]) rotor_envelope();
+    // board opaque, everything else ghosted (%), interference volumes solid: red = vs rotor, orange = FA-internal
+    main_board_pcb();
+    %main_bottom_parts(); %detent_assembly(det_offset); %spindle_hub(); %harness(); %coax(); %rotor_envelope();
+    for (i = [0:len(STATIONARY_NAMES) - 1]) color("red") render(convexity = 4) clash_rotor(i);
+    for (j = [14, 15, 10, 20, 21]) color("orange") render(convexity = 4) clash_pair(12, j);
+    color("orange") render(convexity = 4) clash_pair(21, 10);
 }
 else if (view == "clash_geom") {
     if (clash_mode == "rotor") clash_rotor(clash_item);

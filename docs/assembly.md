@@ -102,9 +102,9 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    2 / 3 / 4 mm and 5 rev/s ([detent research]). Bearing friction is ≈ 150 µN·m.
 2. **No ferromagnetic or inductor parts within 10 mm** of the TMAG5273 (U30, bottom, Hall element at r 29,
    θ 270°) or of the track annulus r 27–31 on the bottom (SPEC §5.3, §7). This includes the TPS61040 inductor
-   L20, any ferrite bead and shield cans. As placed, L20 (top) is ≈ 21 mm from U30, but its courtyard reaches
-   r ≈ 19.9, which is ≈ 7 mm in plane (and ≈ 5 mm higher) from the annulus edge at r = 27. Confirm that this
-   meets the rule or move L20 (§13 #23).
+   L20, any ferrite bead and shield cans. As placed at the time of writing, L20 (top) is ≈ 21 mm from U30, but
+   its courtyard reaches r ≈ 19.9, which is ≈ 7 mm in plane (and ≈ 5 mm higher) from the annulus edge at
+   r = 27. Confirm that this meets the rule or move L20 (§13 #23).
 3. **TPS22917 CT capacitor: done.** The TPS22917 pin table reads "CT: Switch slew rate control. Connect
    capacitor from this pin to VIN" ([TPS22917 SLVSDW8B](https://www.ti.com/lit/ds/symlink/tps22917.pdf), Pin
    Functions; confirmed by the power verifier). `main_power.py` now ties **C7 (1 nF/50 V) from LSW_CT to VSYS**
@@ -127,7 +127,7 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 7. **Test points** TP1 VSYS, TP2 +3V3, TP3 VLED and TP4 GND (main), plus TP1–TP4 VBUS, VBAT, VSYS and GND (base)
    must be exposed copper (no mask). Place them so they can be probed with the boards linked by the harness on the
    bench (B-6). On the main board, TP2–TP4 are on the top and are reachable only before the OLED and cover go on.
-   **Main TP1 (VSYS) is on the bottom** (r ≈ 18, θ ≈ 307°), so it is covered once the board is seated (Stage D).
+   **Main TP1 (VSYS) is on the bottom**, so it is covered once the board is seated (Stage D).
    **Base-board TPs and J2 are unreachable once Stage C has fitted the FA lower plate and the rotor**, which is
    why §7.2 adds a battery breakout.
 8. **Module u.FL clearance to the rotor: still open.** The mated u.FL plug stands about 2.5 mm proud of the module
@@ -412,9 +412,9 @@ floor-pocket layout at x = −23.85 and is being updated:
    whether its length clears the cup wall.
 3. **Swell gap.** SPEC §8 limits the pack to ≤ 6.0 mm. In the bay (z 2.5–9.0) it tops out at z 8.5, and the
    base board's underside is at z 9.5, which leaves the **1.0 mm** swelling gap SPEC asks for (the mechanical
-   verifier asked for 0.8–1.0 mm). Check it against the maximum thickness on the pack drawing, not the nominal. The only part on the
-   underside is RT1, the NTC (r 8, θ 200°): it must touch the pouch through a soft thermal pad, never as a hard
-   point (architecture §8.5, R28).
+   verifier asked for 0.8–1.0 mm). Check it against the maximum thickness on the pack drawing, not the nominal.
+   The only part on the underside is RT1, the NTC (r 8, θ 200°): it must touch the pouch through a soft thermal
+   pad, never as a hard point (architecture §8.5, R28).
 4. Fix the pack with thin double-sided foam tape, not hard adhesive, so it can swell and be replaced. Long axis
    along θ = 0°/180° (SPEC §8: |x| ≤ 27.5, |y| ≤ 17.25), with the leads at the θ = 180° end.
 5. Nickel is slightly ferromagnetic ([power research]). The cell's tab end is the lead end at θ = 180°; keep

@@ -5,5 +5,7 @@ Expected, not defects:
   * press base_cup ~0 mm^3: the plate under-bosses touch the cup stop faces at full travel (the hard stop).
   * press base_parts: includes SW1 actuator vs the press pad (switch travel + pad compression, ~1-2 mm^3).
   * pair detent x main_board ~0 mm^3: rails and saddle are bonded/screwed to the board bottom (face contact).
+  * near misses (envelope grown 0.3 mm): detent@click = the felt shoe resting on the ring (intended),
+    lower_spacer = the drop-stop flange 0.15 mm under the carrier lip (intended crash stop).
 Everything else that says CLASH is a real interference.  calcs_output.txt section 11 names the parts
 (exact for the rotor and hub, sampled for the actuator); docs/mechanical.md section 3 says who must act.
