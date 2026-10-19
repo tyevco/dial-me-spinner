@@ -8,3 +8,7 @@ fp-info-cache
 _autosave-*
 \#auto_saved_files#
 hardware/build/
+# Freerouting intermediates
+*.dsn
+*.ses
+*.rules

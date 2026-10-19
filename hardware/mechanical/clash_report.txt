@@ -1,0 +1,43 @@
+CLEAR  press  antenna
+CLASH  press  base_board  overlap ≈ 2.263 mm^3
+CLEAR  press  base_cup
+CLEAR  press  battery
+CLEAR  press  guide_pins
+CLEAR  rotor  antenna
+CLEAR  rotor  base_board
+CLEAR  rotor  base_cup
+CLEAR  rotor  battery
+CLEAR  rotor  detent@click
+CLEAR  rotor  detent@free
+CLEAR  rotor  fa_lower_plate
+CLEAR  rotor  guide_pins
+CLEAR  rotor  light_box
+CLEAR  rotor  lower_spacer
+CLASH  rotor  main_board  overlap ≈ 41.304 mm^3
+CLEAR  rotor  oled_bracket
+CLEAR  rotor  oled_glass
+CLEAR  rotor  spindle
+CLEAR  rotor  spindle_hub
+CLEAR  rotor  top_cover
+--- near misses (rotor envelope grown 0.3 mm) ---
+CLEAR  press  antenna
+CLASH  press  base_board  overlap ≈ 2.321 mm^3
+CLEAR  press  base_cup
+CLEAR  press  battery
+CLEAR  press  guide_pins
+CLEAR  rotor  antenna
+CLEAR  rotor  base_board
+CLEAR  rotor  base_cup
+CLEAR  rotor  battery
+CLASH  rotor  detent@click  overlap ≈ 0.600 mm^3
+CLEAR  rotor  detent@free
+CLEAR  rotor  fa_lower_plate
+CLEAR  rotor  guide_pins
+CLEAR  rotor  light_box
+CLASH  rotor  lower_spacer  overlap ≈ 9.465 mm^3
+CLASH  rotor  main_board  overlap ≈ 65.457 mm^3
+CLEAR  rotor  oled_bracket
+CLEAR  rotor  oled_glass
+CLEAR  rotor  spindle
+CLEAR  rotor  spindle_hub
+CLEAR  rotor  top_cover

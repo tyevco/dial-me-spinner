@@ -1,0 +1,233 @@
+dial-me-spinner rev A -- mechanical calculations (calcs.py)
+Geometry: SPEC.md section 8; assumptions tagged [assume]; research values [research]/[verifier].
+
+==============================================================================
+1. Rotor mass, moment of inertia, centre of gravity
+==============================================================================
+part                           mass g  I kg*m^2   z_cg mm
+-----------------------------  ------  ---------  -------
+316L ring 70/54/10 (net)       118.80  1.161e-04  20.55  
+48x N52 Ø2x2 magnets           2.26    1.902e-06  24.60  
+PA12-GF carrier                6.15    2.436e-06  18.43  
+608-2Z rotating share          7.65    8.116e-07  21.50  
+wave spring + retainer         0.60    6.615e-08  25.50  
+adhesive (bond line, magnets)  0.40    2.916e-07  20.00  
+TOTAL rotor                    135.86  1.216e-04  20.60  
+
+Bearing mid-plane z = 21.50 mm; rotor CoG offset = -0.90 mm (negative = below the balls).
+Radius of gyration = 29.9 mm.  The ring alone is 95 % of I.
+
+==============================================================================
+2. Stored energy, angular momentum, rim speed
+==============================================================================
+rev/s  E mJ  L mN*m*s  rim m/s  centrifugal force per magnet mN
+-----  ----  --------  -------  -------------------------------
+5      60    3.82      1.10     1.3                            
+10     240   7.64      2.20     5.4                            
+15     540   11.46     3.30     12.1                           
+30     2161  22.93     6.60     48.6                           
+Flick impulse needed for 10 rev/s, applied at the rim r = 35: 0.218 N*s (lateral reaction on the base, see section 9).
+
+==============================================================================
+3. Spin-down: SKF frictional-moment model, 608-2Z (oiled) vs 61808
+==============================================================================
+Axial load Fa = rotor weight = 1.33 N (vertical axis, gravity only), Fr = 0.05 N [assume].
+Lubrication: degreased + 1-2 drops ISO VG 2-10 oil -> nu = 10 or 20 mm^2/s at room temp [research].
+Krs = 3e-8, Kz = 3.1, mu_bl = 0.12, mu_EHL = 0.04 (same constants the verifier re-implemented).
+Moment at 10 rev/s (N*mm):
+bearing       nu mm2/s  M @600 rpm
+------------  --------  ----------
+608-2Z        10        0.101     
+608-2Z        20        0.148     
+608-2Z        200       0.538     
+61808 (6808)  10        1.084     
+61808 (6808)  20        1.623     
+61808 (6808)  200       5.668     
+  check vs research at Fa=1.32 N, nu=20: 608-2Z 0.147 N*mm (research 0.147)
+  check vs research at Fa=1.32 N, nu=20: 61808 (6808) 1.617 N*mm (research 1.6)
+
+Extra drag terms: eddy c = 1.3e-08 N*m*s (In1/F.Cu planes at 4.8-5.1 mm; B.Cu/In2 pour-free r >= 26 per SPEC), air k = 1.0e-09 N*m*s^2 [assume].
+  at 10 rev/s: eddy 0.0008 N*mm, air 0.0039 N*mm (both small vs. the bearing; knurl 'fan' drag is unmeasured)
+case                                from 5 rev/s    from 10 rev/s    from 15 rev/s  
+----------------------------------  --------------  ---------------  ---------------
+608-2Z oil nu10                     90 s / 176 rev  133 s / 493 rev  165 s / 885 rev
+608-2Z oil nu20                     66 s / 125 rev  96 s / 346 rev   118 s / 619 rev
+608-2Z nu20 x2.7 (pessimistic)      24 s / 47 rev   36 s / 130 rev   44 s / 233 rev 
+608-2Z factory grease run-in nu200  20 s / 36 rev   29 s / 98 rev    35 s / 176 rev 
+61808 oil nu10                      11 s / 19 rev   15 s / 50 rev    18 s / 88 rev  
+61808 oil nu20                      7 s / 12 rev    10 s / 33 rev    12 s / 59 rev  
+61808 nu20 x2.7                     3 s / 5 rev     4 s / 12 rev     4 s / 22 rev   
+
+Uncertainty: the SKF model is used below the bearing's minimum load and with drop lubrication.
+The one measured comparison (verifier) suggests it UNDER-predicts friction by up to ~2.7x, so the
+608 row 'x2.7' is the planning floor: quote ~40-120 s from 10 rev/s, acceptance >= 45 s.
+The 608/61808 ratio (~10x) is robust because the same model error applies to both.
+
+Axial-load sensitivity (608, nu20, 10 rev/s): the click-mode detent moment (~0.7 N x 29 mm =
+20 mN*m) exceeds the gravity-only moment capacity Fa*dm/2; a net preload of ~2.7 N stops the rocking:
+Fa N  M N*mm  Fa*dm/2 mN*m  spin from 10 rev/s s
+----  ------  ------------  --------------------
+1.33  0.148   10.0          96                  
+2.00  0.179   15.0          76                  
+2.70  0.207   20.2          64                  
+3.50  0.236   26.2          54                  
+5.00  0.285   37.5          43                  
+
+==============================================================================
+4. Detent torque vs in-plane radial offset (verified LUT, log-linear interpolation)
+==============================================================================
+Actuator resolution: 0.020 mm/full step at the slider x 0.75 (inclined slot) = 0.015 mm carriage per full step -> 500 full steps for 7.5 mm.
+offset mm  T1 mN*m   rim force N (r35)  f_n Hz  capture rev/s  full steps
+---------  --------  -----------------  ------  -------------  ----------
+0.0        16.5      0.471              9.1     0.76           0         
+0.5        13.73     0.392              8.3     0.69           33        
+1.0        11.42     0.326              7.6     0.63           67        
+1.5        9.5       0.271              6.9     0.57           100       
+2.0        5.651     0.161              5.3     0.44           133       
+2.5        3.362     0.096              4.1     0.34           167       
+3.0        2         0.057              3.2     0.26           200       
+3.5        1.029     0.029              2.3     0.19           233       
+4.0        0.5292    0.015              1.6     0.14           267       
+4.5        0.2722    0.008              1.2     0.10           300       
+5.0        0.14      0.004              0.8     0.07           333       
+5.5        0.06356   0.002              0.6     0.05           367       
+6.0        0.02886   0.001              0.4     0.03           400       
+6.5        0.0131    0.000              0.3     0.02           433       
+7.0        0.005947  0.000              0.2     0.01           467       
+7.5        0.0027    0.000              0.1     0.01           500       
+Note: LUT simulated for R_t = 30 mm (research); SPEC uses R_t = 29.0 (pitch 3.80 vs 3.93 mm) ->
+expect ~2-5 % lower torque and slightly faster fall-off. To verify on prototype (f_n self-calibration).
+
+==============================================================================
+5. Detent ringing / settling after release (I, bearing friction from the SKF model at low speed)
+==============================================================================
+Bearing friction at 1 rev/s: 0.045 N*mm; at 0.1 rev/s: 0.019 N*mm.
+detent                     shoe mN*m  cycles  t to <0.5 deg (s)
+-------------------------  ---------  ------  -----------------
+full click (16.5 mN*m)     0.0        154     >20              
+full click (16.5 mN*m)     1.6        4       0.50             
+default 9.5 mN*m (1.5 mm)  0.0        119     >20              
+default 9.5 mN*m (1.5 mm)  1.6        2       0.42             
+Rest error with the shoe: +/-0.23 deg (T_f / k).
+Click-spin with the shoe engaged, from 5 rev/s: ~2.3 s (prize-wheel feel); without shoe it is nearly as long as a free spin.
+Verifier: size the shoe for ~1.6 mN*m and make its engagement window cover the default strength
+(offset <= 1.5 mm), else the default setting rings undamped.  Felt/UHMW, not PTFE (mu too low).
+
+==============================================================================
+6. Balance: ISO 1940 G2.5 at 15 rev/s
+==============================================================================
+e_per = G/omega = 26.5 um  ->  U_per = m*e = 3.60 g*mm for the 136 g rotor (aim <= 2 g*mm).
+build           source                                                                                 U g*mm
+--------------  -------------------------------------------------------------------------------------  ------
+A no jig        ring OD/ID eccentricity 0.02 mm TIR (e = 0.01)                                         1.19  
+A no jig        48 magnets, mass sigma 3 % (random, RSS)                                               0.28  
+A no jig        glue blob 5 mg at r = 29                                                               0.14  
+A no jig        ring bonded on printed carrier, bore-to-register 0.05 TIR + bond gap 0.05 (e ~ 0.035)  4.45  
+A no jig        RSS before correction                                                                  4.62  
+B centring jig  ring OD/ID eccentricity 0.02 mm TIR (e = 0.01)                                         1.19  
+B centring jig  48 magnets, mass sigma 3 % (random, RSS)                                               0.28  
+B centring jig  glue blob 5 mg at r = 29                                                               0.14  
+B centring jig  ring bonded on a turning arbor through the 608, ring OD TIR <= 0.02 (e = 0.01)         1.27  
+B centring jig  RSS before correction                                                                  1.77  
+=> build A needs 1-3 correction steps; build B lands inside the 2 g*mm aim but must still be measured.
+Rotating force at the G2.5 limit: 0.032 N; free-body base acceleration ~ 15 mg (220 g device; LIS2DW12 can see it -> on-device balancing assistant).
+Correction quanta at r = 31 (ring bottom face): Ø2x1 drill dimple -0.93 g*mm; empty M2x3 tapped hole -1.49; brass grub in it +1.35; W-alloy grub +2.70 g*mm.
+
+==============================================================================
+6b. Device mass budget and centre of gravity
+==============================================================================
+group  item                                     g      z_cg mm
+-----  ---------------------------------------  -----  -------
+base   3x micro-suction arc pads                1.0    0.5    
+base   base cup PA12 (~10.3 cm^3)               10.4   6.0    
+base   LiPo 603450 protected, ~1100 mAh         21.0   5.7    
+base   flex antenna 146153-0100 + coax (share)  1.0    3.0    
+base   base board + USB-C + SW1 + J2/J3         5.7    10.6   
+base   guide pins, stop screws, springs         1.2    12.0   
+FA     FA lower plate PA12-GF                   5.4    13.4   
+FA     spindle 316 Ø8x1 + POM spacer            3.2    20.0   
+FA     608 inner ring + share of balls          5.3    21.5   
+FA     spindle hub PA12-GF + 3 inserts          1.1    27.5   
+FA     main board Ø64 4L + parts                12.3   29.9   
+FA     OLED glass + bracket                     5.0    33.2   
+FA     light box + diffuser + cover + lens      7.8    34.0   
+FA     stepper + carriage + magnet + rails      3.7    25.5   
+FA     screws, harness, coax (share)            2.4    22.0   
+rotor  rotor (section 1)                        135.9  20.6   
+       TOTAL                                    222.4  19.3   
+Floating assembly (moves on press) = 182 g; base = 40 g. Static tip angle on arc pads (r_edge 28) ~ 55 deg.
+
+==============================================================================
+7. Press-click force vs radius (3 springs + 3 stop screws at r = 29, centre TS-1187A)
+==============================================================================
+Spring: 302 SS wire 0.32 mm, Dm 3.63 (OD 3.95), 4 active + 2 closed/ground, k = 0.473 N/mm, L0 = 5.52, installed 2.7 -> P0 = 1.33 N each, at stop (0.60) L = 2.10 vs solid 1.92, F = 1.62 N, tau ~ 489 MPa.
+FA weight W = 1.79 N (rotor 136 g + non-rotating FA 46 g, section 6b); net preload on the stops at rest = 2.21 N.
+Switch: pre-gap 0.15 + travel 0.25 (to verify) + dot compression 0.023 -> actuation at 0.423 mm, F_sw = 1.6 N; hard stop at 0.60 mm.
+r mm  over a stop (θ=60°)  between stops (θ=0°)  θ=30°
+----  -------------------  --------------------  -----
+0     4.41                 4.41                  4.41 
+10    3.32                 3.50                  3.51 
+20    2.36                 2.79                  2.56 
+25    2.06                 2.53                  2.25 
+29    1.87                 2.36                  2.05 
+32.5  1.73                 2.22                  1.91 
+33.5  1.70                 2.19                  1.87 
+35    1.64                 2.14                  1.82 
+
+Device weight ~2.18 N.  Tip check for a press at the ring rim r = 33.5:
+  3 point feet at r = 28 (support edge 14.0 mm from centre): tips at 1.57 N  < rim click 1.70-2.19 N -> the device tips before it clicks (unless micro-suction pads hold).
+  3 arc pads 70° at r 25-31 (edge 28.1 mm): tips at 11.3 N -> OK.
+
+==============================================================================
+8. TMAG5273 sample rate / aliasing for the 24-pole-pair track
+==============================================================================
+  XZX, 4x avg (research config)    fs=  3100 Hz (nom  ): f_elec @30 rev/s = 720 Hz, advance  83.6 deg/sample, Nyquist at  64.6 rev/s, margin 2.15x
+  XZX, 4x avg (research config)    fs=  2790 Hz (-10 %): f_elec @30 rev/s = 720 Hz, advance  92.9 deg/sample, Nyquist at  58.1 rev/s, margin 1.94x
+  ZX, 4x avg                       fs=  4400 Hz (nom  ): f_elec @30 rev/s = 720 Hz, advance  58.9 deg/sample, Nyquist at  91.7 rev/s, margin 3.06x
+  ZX, 4x avg                       fs=  3960 Hz (-10 %): f_elec @30 rev/s = 720 Hz, advance  65.5 deg/sample, Nyquist at  82.5 rev/s, margin 2.75x
+  XZX skew: X = mean of two conversions ~215 us apart (time-centred on Z) -> X amplitude x cos(dphi/2) = 0.884 at 30 rev/s vs Z ~1.0 -> speed-dependent ellipse,
+  max atan2 error 3.5 deg electrical = 0.15 deg mechanical: correct in firmware as f(speed) or use ZX mode at high speed [estimate, verify on bench].
+  16-pole-pair track (research) would reach 97 rev/s; 24 pp trades that for detent = encoder period.
+  Hall element z = 28.73 -> gap to track face (z 25.6) = 3.13 mm (target 3.0, allowed 2.2-4.0 [verifier]); constant under press because sensor and rotor both float.
+
+==============================================================================
+9. Drop shock on the 608 and flick reactions
+==============================================================================
+608 pure-axial static limit = 0.25*C0 = 342 N [verifier].  Rotor 136 g:
+drop m  F @ 0.5 mm stop  F @ 1 mm  F @ 2 mm
+------  ---------------  --------  --------
+0.1     267              133       67      
+0.3     800              400       200     
+0.75    1999             1000      500     
+-> rigid seating cannot protect the 608 beyond ~0.1 m.  Design: outer race held by a wave spring
+   (30-50 N) under a printed retainer; above that the carrier lands on the POM spacer flange 0.15 mm
+   below (crash stop), so balls see <= spring force.  Brinelling still possible on edge impacts.
+Flick to 10 rev/s: lateral impulse 0.218 N*s -> ~7.3 N average over 30 ms vs slide threshold mu*W = 1.3-2.2 N: the puck slides unless held or on micro-suction pads.
+
+==============================================================================
+10. Detent actuator force budget (inclined-slot cam, slope 0.75)
+==============================================================================
+  carriage load 0.54 N (0.29 magnetic + mu 0.15 x (0.70+0.55+0.45 preload)); slot mu 0.1: slider thrust 0.50 N vs VSM08102 >= 0.78 N @500 PPS -> margin 1.56x
+  carriage load 0.54 N (0.29 magnetic + mu 0.15 x (0.70+0.55+0.45 preload)); slot mu 0.2: slider thrust 0.61 N vs VSM08102 >= 0.78 N @500 PPS -> margin 1.28x
+  Cam ratio 0.75 uses the full 10 mm stroke for 7.5 mm and gives 1.33x force advantage.
+
+==============================================================================
+11. Stack-up clearances (nominal; FA = floating assembly moves with the rotor)
+==============================================================================
+pair                                gap mm  note                                        
+----------------------------------  ------  --------------------------------------------
+ring bottom - cup wall top          +1.30   rest; 0.70 at full stop travel              
+ring bottom - stop-screw head       +1.00   rest; 0.40 at full stop (head is base-fixed)
+detent magnet face - track face     +1.00   constant (both on FA)                       
+TMAG element - track face           +3.13   target 3.0                                  
+carrier ribs - FA plate top         +1.90   FA-internal, constant                       
+carrier lip - POM drop stop         +0.15   intended crash stop                         
+stepper body - rotating web         +1.40   bowl floor                                  
+stepper front plate - collar r      +0.55   plan view                                   
+J1 (vertical SH, SPEC) - hub top    -1.15   NEGATIVE = clash                            
+u.FL mated plug - 608 outer race    -0.60   NEGATIVE = clash                            
+boss - switch (pre-gap)             +0.15   set per unit                                
+base board bottom - LiPo top (6.3)  +0.70   swelling margin                             
+cup ear bottom - LiPo corner        +0.25   θ=60/300                                    
+
+plots: renders/calc_spindown.png, renders/calc_detent.png, renders/calc_press.png
