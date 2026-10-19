@@ -41,11 +41,16 @@ Dup2  IO2 VBUS USBIN_USBLC6_DS
 Ddn2  VSS IO2  USBIN_USBLC6_DS
 * Transil (VBUS rail -> GND) as a forward diode behind a (vbr - 0.536 V) offset: V = vbr at 1 mA, rdt above it
 * (SPICE BV breakdown did not converge under the 0.8 ns IEC edge; EG = Vf(1 mA), XTI = 0: no VBR tempco).
-* Its forward direction (GND above VBUS) is not modelled: the GND->I/O diodes carry negative strikes.
+* Its forward direction (GND above VBUS, a unidirectional Transil conducts like a diode) is modelled by Dtrf with
+* the steering-diode law (assumption: ST gives no VF for the Transil; Table 2 VF 1.1 V max is for the I/O diodes).
+* Verifier addition: without it a negative VBUS excursion could only return through two steering diodes in
+* series and dragged D+/D- below GND.
 * Vtr is a 0 V probe: i(v.x<inst>.vtr) = Transil clamp current (positive when clamping).
 Vtr   VBUS trk 0
 Dtr   trk trz USBIN_USBLC6_TR
 Vtrz  trz VSS {vbr-0.536}
 .model USBIN_USBLC6_DS D(IS=1e-14 N=1.3 RS={rd} CJO={cio} M=0.3 VJ=0.7)
+Dtrf  VSS VBUS USBIN_USBLC6_TF
+.model USBIN_USBLC6_TF D(IS=1e-14 N=1.3 RS={rdt} CJO=0)
 .model USBIN_USBLC6_TR D(IS=1e-12 N=1 RS={rdt} CJO=0 EG=0.536 XTI=0)
 .ends USBIN_USBLC6_2
