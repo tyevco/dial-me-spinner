@@ -54,6 +54,7 @@ export default withMermaid(defineConfig({
           { text: 'Introduction', link: '/' },
           { text: 'Architecture', link: '/docs/architecture' },
           { text: 'SPEC (architecture of record)', link: '/hardware/design/SPEC' },
+          { text: 'Display study (rev B)', link: '/docs/display-study' },
         ],
       },
       {
