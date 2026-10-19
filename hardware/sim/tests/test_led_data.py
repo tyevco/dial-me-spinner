@@ -4,8 +4,9 @@ D101 DI (first WS2812C-2020-V6), plus the DNP SN74LV1T34 option (U43/C43 fitted,
 What is simulated (all passives straight from hardware/kicad/main/dial-me-spinner-main.net):
   * the P0.06 output stage, standard (S0S1) and high (H0H1) drive, at the nRF52840 PS min / typ / max
     IOH / IOL corners (models/led_data__nrf52840_gpio.lib), on +3V3 = RT9080-33 (+/-2 %, dropout at low VSYS);
-  * the PCB traces LED_DIN_MCU (U10.22 -> R40, ~1 mm since R40 sits next to pad 22, LED-DATA-1) and LED_DIN
-    (R43/U43 -> D101.DI) as LC ladders, and LED_DIN_R (R40 -> R41/R43/U43, the 40-50 mm run) as its lumped capacitance
+  * the PCB traces LED_DIN_MCU (U10.22 -> R40, a few mm since R40 sits next to pad 22, LED-DATA-1) and LED_DIN
+    (R43/U43 -> D101.DI) as LC ladders, and LED_DIN_R (R40 -> R41/R43/U43, the long run, ~35-50 mm between the
+    routed board and the placed estimates) as its lumped capacitance
     (an LC ladder in test_trace_and_r40_placement), with lengths taken from the routed board when routed, else from
     the placed pads (rectilinear MST x ROUTE_FACTOR);
   * D101.DI as CI <= 15 pF, II <= 1 uA and ESD clamps (models/led_data__ws2812c_din.lib), VDD = VLED = VSYS;
@@ -697,10 +698,10 @@ def test_load_extremes(check):
 
 def test_trace_and_r40_placement(check):
     """R40 as placed: next to U10 pad 22 (P0.06), 0.25 mm from it (fix LED-DATA-1, a layout.py pin anchor), so
-    LED_DIN_MCU is ~1 mm and the 40-50 mm run is LED_DIN_R (R40 -> R41/R43/U43 at the LED end).  That run is checked
-    both lumped (the model of every other test here) and as an LC ladder with its loads at the far end; strongest
-    drive, lightest load (most ringing), plus a fast-corner sensitivity beyond the PS fit (pre-driver 2x faster than
-    the strong corner, traces x2)."""
+    LED_DIN_MCU is a few mm and the long run (~35-50 mm, recorded below) is LED_DIN_R (R40 -> R41/R43/U43 at the LED
+    end).  That run is checked both lumped (the model of every other test here) and as an LC ladder with its loads at
+    the far end; strongest drive, lightest load (most ringing), plus a fast-corner sensitivity beyond the PS fit
+    (pre-driver 2x faster than the strong corner, traces x2)."""
     L = pcb_net_lengths()
     z0, _, _ = microstrip(track_width())
     for net in ("LED_DIN_MCU", "LED_DIN_R"):

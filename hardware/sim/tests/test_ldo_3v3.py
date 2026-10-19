@@ -19,6 +19,12 @@ an un-suffixed '0_cNN_esr' node); start-up uses voltage-dependent MLCC capacitan
 3.3 V value, so the fixed-C deck under-stated the inrush: 0.71 -> 0.94 A); COUT minimum is the DS 17.1 / Fig. 1
 1 uF effective (stricter than the 0.7 uF of section 8); tolerances come from the MPN letter everywhere; TJ uses the
 JEDEC theta-JA; reverse bias (VOUT > VIN) on VSYS collapse is checked against the DS abs max.
+
+LDO-1 (2026-10): SPEC 3 now reads 'Iq ≤ 2 µA typ / 4 µA max' (quoted and checked against SPEC.md by spec_ldo_iq), so
+test_quiescent_current_max_vs_spec is a guard instead of a strict xfail; the model's no-load input current is IQ at
+every accuracy / temperature / VIN corner (it was IQ + 12 nA for a +2 % part). SYS_REG: firmware sets 4.4 V (0x0A = 0x20);
+the checks keep the 4.5 V POR default (the only other allowed value) as the abs-worst corner, and the DC sweep also
+reads the 4.4 V +/-2 % window.
 """
 
 from __future__ import annotations
@@ -208,7 +214,9 @@ def spec_ldo_iq():
     assert ldo, "SPEC.md section 3: no '* **LDO**:' bullet"
     assert SPEC_LDO_IQ in ldo.group(0), f"SPEC.md section 3 LDO bullet no longer says {SPEC_LDO_IQ!r}: {ldo.group(0)!r}"
     m = re.search(r"Iq ≤ ([0-9.]+) µA typ / ([0-9.]+) µA max", ldo.group(0))
-    return float(m.group(1)) * 1e-6, float(m.group(2)) * 1e-6
+    typ, mx = float(m.group(1)) * 1e-6, float(m.group(2)) * 1e-6
+    assert (typ, mx) == pytest.approx((SPEC_IQ_TYP, SPEC_IQ_MAX)), (typ, mx)
+    return typ, mx
 
 
 # --------------------------------------------------------------------------------------------- netlist access
@@ -486,12 +494,12 @@ def test_dc_supply_and_temperature_corners(main, check, temp):
         deck += lines
         deck += f"ILOAD {n_out} 0 {load}"
         deck.dc("VSYS", 2.9, 4.65, 0.005)
-        for k, v in enumerate(VSYS_BATT + VSYS_USB):
+        for k, v in enumerate(VSYS_BATT + VSYS_USB_FW + VSYS_USB):
             deck.meas(f"dc v{tag}{k} FIND v({n_out}) AT={v}")
         r = deck.run()
         check_clean(r)
         res[tag] = r
-    for k, v in enumerate(VSYS_BATT + VSYS_USB):
+    for k, v in enumerate(VSYS_BATT + VSYS_USB_FW + VSYS_USB):
         need = max(W25Q_VMIN, WS_VIH_K * v + NRF_VOH_DROP)
         check(f"+3V3 min @ VSYS {v} V, {temp} C, peak load {i_peak * 1e3:.1f} mA", res["lo"][f"vlo{k}"], need, None, "V",
               "W25Q128JV Rev F 9.2 VCC >= 2.7 V; WS2812C-V6 VIH 0.6*VDD (PCN) + nRF52840 PS VOH = VDD-0.4 V")
@@ -601,7 +609,8 @@ def test_load_steps_slow_loop_sensitivity(main, check):
 
 def _vsys_slew_usb(main, base):
     """Fastest SYS rise on USB plug-in: BQ25180 ILIM (500 mA code, 498 mA max) into the smallest VSYS capacitance
-    of both boards (DC bias at 4.5 V, -tolerance, 60 C), ignoring every load (all of which slow it down)."""
+    of both boards (DC bias at SYS_REG 4.5 V, the POR default: more bias than the firmware's 4.4 V, so less C;
+    -tolerance, 60 C), ignoring every load (all of which slow it down)."""
     c = 0.0
     for d in (main, base):
         for r in caps_to_gnd(d, "VSYS"):
@@ -717,11 +726,11 @@ def test_load_step_monte_carlo(main, check):
     check("MC +3V3 max after release", worst_hi, None, VCI_MAX, "V", "SSD1351 VCI <= 3.5 V (NHD spec)")
 
 
-def _iq_deck(d, corner):
+def _iq_deck(d, corner, vsys=3.7, temp=25):
     deck = spicelib.Deck("LDO Iq")
     deck.include(LIB)
-    deck += "VSYS n_vsys 0 3.7"
-    lines, n_out = ldo_lines(d, "n_vsys", corner=corner)
+    deck += f"VSYS n_vsys 0 {vsys}"
+    lines, n_out = ldo_lines(d, "n_vsys", corner=corner, temp=temp)
     deck += lines
     deck.op()
     deck.print_op("i(VSENSE)", f"v({n_out})")
@@ -729,23 +738,44 @@ def _iq_deck(d, corner):
 
 
 def test_quiescent_current_typical(main, check):
-    """No load, VBAT 3.7 V: the LDO's own draw from VSYS (DS IQ, typical part) against SPEC 3."""
+    """No load, VBAT 3.7 V: the LDO's own draw from VSYS (DS IQ, typical part) against the SPEC 3 typical figure
+    ('Iq ≤ 2 µA typ'). The DS max part against the SPEC max: test_quiescent_current_max_vs_spec."""
+    spec_ldo_iq()
     r = _iq_deck(main, TYP).run()
     check_clean(r)
     # the Iq reading only means something if U1 is actually on and regulating (an off LDO also draws ~0)
     check("+3V3 in regulation during the Iq measurement", r["op_1"], ldo_vnom(main) * 0.98, ldo_vnom(main) * 1.02,
           "V", f"{DS} Table 14 accuracy +/-2 %")
-    check("LDO quiescent current, typ part, no load", r["op_0"], 0, SPEC_IQ_MAX * 1.001, "A",
-          f"SPEC.md 3 LDO Iq <= 2 uA ({DS} Table 14 IQ 2 uA typ)")
+    check("LDO quiescent current, typ part, no load", r["op_0"], 0, SPEC_IQ_TYP * 1.001, "A",
+          f"SPEC.md 3 LDO {SPEC_LDO_IQ} (typ) ({DS} Table 14 IQ 2 uA typ)")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="DESIGN ISSUE: SPEC 3 asks for LDO Iq <= 2 uA, but DS9080-09 Table 14 guarantees "
-                                       "only 4 uA max (2 uA is typical); a max part breaks the SPEC sleep budget")
+IQ_MAX_VSYS = (3.7, VSYS_BATT[-1], VSYS_USB_MAX)   # battery mid / full, USB at SYS_REG 4.5 V + 2 % (U1 regulating)
+
+
 def test_quiescent_current_max_vs_spec(main, check):
-    r = _iq_deck(main, LOW).run()
-    check_clean(r, exc=RuntimeError)   # a simulator failure must not pass as the expected check failure
-    check("LDO quiescent current, DS max part, no load", r["op_0"], 0, SPEC_IQ_MAX * 1.001, "A",
-          f"SPEC.md 3 LDO Iq <= 2 uA vs {DS} Table 14 IQ 4 uA max")
+    """LDO-1. SPEC 3 now reads 'Iq ≤ 2 µA typ / 4 µA max' (DS9080-09 Table 14: IQ 2 uA typ / 4 uA max). Until
+    2026-10 it said 'Iq ≤ 2 µA' and this test was a strict xfail: a DS max part draws 4 uA. Now a guard: a DS max-IQ part
+    at no load, at both accuracy extremes (-2 % with max dropout / line regulation, and +2 %), -10/25/60 C and VSYS
+    3.7 / 4.2 / 4.59 V, worst input current against the SPEC max. The typical part against 2 uA typ:
+    test_quiescent_current_typical. The DS gives IQ at 25 C only and the model holds it constant over temperature and
+    VIN (no DS data), so the -10/60 C rows rest on the model; the real ground current at the sleep load is a bring-up
+    measurement (LDO-6)."""
+    spec_ldo_iq()
+    vnom = ldo_vnom(main)
+    rows = []
+    for tag, corner in (("-2 % part", LOW), ("+2 % part", HIGH)):
+        for temp in TEMPS:
+            for vsys in IQ_MAX_VSYS:
+                r = _iq_deck(main, corner, vsys, temp).run()
+                check_clean(r)
+                # an off or drop-out LDO would read a different (lower) current: U1 must be on and regulating
+                assert r["op_1"] > 0.95 * vnom, f"U1 not regulating in the Iq deck ({tag}, {temp} C, {vsys} V): {r}"
+                rows.append((r["op_0"], tag, temp, vsys))
+    i_q, tag, temp, vsys = max(rows)
+    check(f"LDO quiescent current, DS max part, no load, max of {len(rows)} corners (at {tag}, {temp} C, VSYS {vsys} V; "
+          f"all {min(rows)[0] * 1e6:.4f}-{i_q * 1e6:.4f} uA)", i_q, 0, SPEC_IQ_MAX * 1.001, "A",
+          f"SPEC.md 3 LDO {SPEC_LDO_IQ} (max; LDO-1) vs {DS} Table 14 IQ 4 uA max")
 
 
 def _thermal(d, vsys, temp_amb, corner=TYP):
@@ -845,10 +875,14 @@ def test_reverse_bias_usb_unplug_at_buvlo(main, base, check):
           r["vrev"], None, REV_MAX, "V", f"{DS} section 10 abs max VOUT - VIN <= 0.3 V")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="DESIGN ISSUE: any VSYS collapse with VSYS-side load (shorted LED behind U2, "
-                                       "BATOCP trip on a VSYS overload) drives U1 to VOUT - VIN ~0.9-1.8 V, above the "
-                                       "DS9080-09 0.3 V abs max; the +3V3 capacitors dump 0.3-4.3 A through the PMOS "
-                                       "body diode (no other reverse-current path)")
+LDO3_ACCEPTED = ("DESIGN ISSUE (accepted risk, rev A): LDO-3 / architecture risk R38(a). A VSYS collapse with VSYS-side "
+                 "load drives U1 to VOUT - VIN ~0.89 V (BATOCP trip on a VSYS overload) / ~1.72 V (WS2812C shorted "
+                 "behind U2), above the DS9080-09 0.3 V abs max: the +3V3 capacitors discharge ~0.32 / ~4.1 A into VSYS "
+                 "through the PMOS body diode, the only reverse-current path (no +3V3 -> VSYS Schottky fitted). "
+                 "Accepted for rev A (~0.1 mJ per event); the fix, if needed, is a low-leakage Schottky at U1")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=LDO3_ACCEPTED)
 @pytest.mark.parametrize("case", ["batocp trip", "led short"])
 def test_reverse_bias_on_vsys_collapse(main, base, check, case):
     """Fault conditions: VSYS is pulled down by a VSYS-side fault while the charger disconnects the battery."""
