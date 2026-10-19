@@ -2485,12 +2485,12 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 |---|---|---|---|---|---|---|---|---|
 | **ACTIVE** | Any input or app activity | On, C7 08–0Ah | Per mode, capped | Tracking | LP 12.5 Hz (HP 400 Hz if tap is enabled) | HID 11.25–15 ms, latency 0; app set advertising | Running | Desk about **29 mA**; game about **104 mA** (range 40–180 mA with LEDs) |
 | **DIM** | 10 s without input | AEh or C7 03–04h, VCC on | Ambient or off | Tracking for 2 s after motion, then ARMED | LP | Latency 30 | Mostly idle | About 6–12 mA |
-| **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **63 µA** at 25 °C (estimate: the architecture.md §8.2 desk-idle budget, which assumes +8 dBm TX, with the OLED line at the simulated 17.6 µA of [§7.2](#72-init-sequence-and-power-sequencing)); about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
-| **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **37.5 µA** (25 °C typical; about 70 µA at 60 °C) |
+| **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **62 µA** at 25 °C, the architecture.md §8.2 budget, which assumes +8 dBm TX and carries the 17.6 µA OLED line of [§7.2](#72-init-sequence-and-power-sequencing); about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
+| **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **38 µA** (25 °C typical, the architecture.md §8.2 sum; about 70 µA at 60 °C) |
 | **SHIP** | VBAT < 3.53 V rested (the BQ25180 VBATPOR max of 3.46 V plus the reading's drift over temperature and ageing, [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
 | **SHUTDOWN** | Factory/transport command | Unpowered | | | | | | About 3 µA (PCM only); wakes on USB only |
 
-* **System OFF is not used.** It would save only about 2.6 µA of the 37.5 µA
+* **System OFF is not used.** It would save only about 2.6 µA of the 38 µA
   floor, because the always-on peripherals dominate: OLED leakage, BQ25180,
   LDO, TMAG, IMU and DRV5032. It also turns every wake into a reset. System ON
   idle with SENSE wakes is the everyday "off"; ship mode is for storage.
@@ -2930,8 +2930,8 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 | 19 | Actuator | Home from the click end and from the park stop; learn the HOME edges (5 sweeps each way at 80 PPS, [§5.4](#54-homing-with-the-drv5032)); go to click (x = 0) and read HOME; pluck test f_n → T1; sweep 3 strength points; 20 CLICK ↔ FREE cycles | Both homings complete; HOME asserted after every park stall; **HOME released at x = 0** (else reject or apply the §18 item 2 hardware fix); s_ast,L in 180–240 and s_rel,L in 190–260 steps with a spread ≤ 10; T1(full click) within 13–20 mN·m; no E_DET_STEPS over 20 cycles |
 | 20 | Free-spin quality | 50 spin-downs from about 5 rev/s in FREE; histogram of rest angles; spin-down time from 10 rev/s | No preferred rest angle (χ² test over 24 bins). Spin-down from 10 rev/s, median of 10 runs: **≥ 45 s (target ≥ 60 s)**, the verified mechanical acceptance of architecture.md R3 and bringup.md B-13. Record the value and seed the FREE predictor prior with it. SPEC's 2.5–3 N preload is predicted to give only 20–50 s ([§4.7](#47-motion-events-velocity-and-spin-down-prediction)), so a failure here is a mechanical finding (preload, architecture.md D3), not a firmware or test-limit error. |
 | 21 | BLE RF and NFC | RSSI at 1 m with nRF Connect; radio test / DTM carrier and TX power; RX sensitivity with the OLED animating vs off. NFC: a phone reads the test NDEF record through the top cover ([§9.7](#97-nfc-tag-emulation)) | RSSI ≥ −65 dBm at 1 m (TVP target); ≤ 3 dB difference animating vs off; tag read reliably (record the range; retune C16/C17 if it is short, TVP) |
-| 22 | Sleep current | PPK2 on BAT at room temperature: SLEEP, DESK_IDLE (no host), SHIP | SLEEP ≤ 60 µA, and investigate anything above 45 µA (typical 37.5 µA at 25 °C; the OLED line alone is 17.6 µA typical and up to about 46 µA at datasheet maxima, [§7.2](#72-init-sequence-and-power-sequencing)). DESK_IDLE (no host, app advertising off): record; expect about 56 µA (the ≈ 63 µA budget minus the connection's 7 µA), investigate above 65 µA. SHIP ≤ 8 µA including PCM (board ≤ 4.5 µA) |
-| 23 | USB | Enumeration; HID test (Windows Wheel settings, Linux `evtest`); SMP echo on CDC | Enumerates as HID + 2 CDC; dial events in the right direction |
+| 22 | Sleep current | PPK2 on BAT at room temperature: SLEEP, DESK_IDLE (no host), SHIP | SLEEP ≤ 60 µA, and investigate anything above 45 µA (typical 38 µA at 25 °C; the OLED line alone is 17.6 µA typical and up to about 46 µA at datasheet maxima, [§7.2](#72-init-sequence-and-power-sequencing)). DESK_IDLE (no host, app advertising off): record; expect about 55 µA (the 62 µA budget minus the connection's 7 µA), investigate above 65 µA. SHIP ≤ 8 µA including PCM (board ≤ 4.5 µA) |
+| 23 | USB | Enumeration, also from a 4.5 V supply through a 1 m cable (R12 4.7 Ω leaves 28 mV over the nRF's 4.35 V VBUS minimum, hardware/sim USB-1); HID test (Windows Wheel settings, Linux `evtest`); SMP echo on CDC | Enumerates as HID + 2 CDC at both supplies; dial events in the right direction |
 | 24 | DFU | Upload over BLE and USB, test boot, confirm; forced revert test; serial recovery (press while plugging) | Swap OK; revert OK; recovery entered |
 | 25 | Final | Write factory data (serial, LED variant, shoe_x_max, calibration backup); clear logs; BQ shutdown (0x29) | Unit wakes only on USB |
 
@@ -2987,23 +2987,25 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 ## 18. Open items and to-verify list
 
 **Problems found in SPEC or in the sibling documents that affect firmware**
-(reported; SPEC stays the reference except where the sheets are ahead of it,
-item 9). Items 1 and 6 (first part) are resolved; they stay here, marked, so
-the history is traceable.
+(reported; SPEC stays the reference, and the sheets and the netlist win where
+they disagree with it). Items 1, 6 (first part) and 9 are resolved; they stay
+here, marked, so the history is traceable.
 
 1. **TPS22917 CT reference. Resolved.**
    * The TPS22917 datasheet says to connect CT to **VIN**. The `main_power`
-     sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 100 Ω
+     sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 68 Ω
      to VLED and R3 = 100 kΩ as the ON pull-down, and SPEC §5.1 says the
      same. SPEC's "≈ 4 ms rise" is the turn-on time (tON = 3.8 µs/pF at
-     3.6 V); the 10–90 % rise is about 1.6 ms (SLVSDW8B §7.6).
+     3.6 V); the 10–90 % rise is about 1.6 ms (SLVSDW8B §7.6). R4 went from
+     100 Ω to 68 Ω so the VLED discharge (≤ 26.6 ms worst case) fits the
+     firmware's 30 ms allowance (hardware/sim, LSW-2).
    * SPEC now states that the TPS22918 (CT to GND) is *not* a drop-in, and
      §4 labels P1.04 "TPS22917 ON".
-   * The OLED boost-input switch U21 is wired the same way (C37 = 1 nF CT to
-     VIN, QOD open).
-   * Effect on firmware: the 5 ms power-on waits in [§6.4](#64-rail-sequencing)
-     and [§7.2](#72-init-sequence-and-power-sequencing) cover the ≈ 4 ms tON;
-     test 12 checks the VLED ramp.
+   * The OLED boost-input switch U21 has the same CT wiring (C37 = 1 nF CT to
+     VIN), with its QOD tied to OLED_VIN (hardware/sim, SLP-1, LSW-1).
+   * Effect on firmware: the 10 ms power-on waits in [§6.4](#64-rail-sequencing)
+     and [§7.2](#72-init-sequence-and-power-sequencing) cover the ≈ 4 ms tON
+     with margin (LED-DATA-V4, OLED-V2); test 12 checks the VLED ramp.
 2. **DRV5032 depth.** With the sensor on the top side, the die sits about
    2.4–2.8 mm above the detent-magnet face (the research recommended
    3.0–3.5 mm). My simulation gives |Bz| = 1.0–1.4 mT at full click, against
@@ -3059,22 +3061,41 @@ the history is traceable.
    * architecture.md §2 states 150 Radial Controller units per detent, while
      the MCU research recommends 100 (the Windows default is unverified).
      Firmware makes it a setting, default 100, pending a Windows test.
-7. **OLED sleep leakage.** About 5 µA leaks through the panel's VCI→VCC ESD
-   path into the 499 k/52.3 k divider, and 3.3 µA flows in the RES# pull-down.
-   Together they are about 37 % of the 32 µA sleep floor. Hardware options are
-   listed in docs/architecture.md §8.3.
+7. **OLED sleep leakage (accepted for rev A).** About 5 µA leaks through the
+   panel's VCI→VCC ESD path into the 499 k/52.3 k divider, 3.3 µA flows in the
+   RES# pull-down, and about 5.4 µA of D21 reverse leakage (about 30 µA at
+   60 °C) flows through U21's QOD. The OLED line, about 17.6 µA, is about
+   46 % of the 38 µA sleep floor ([§12.1](#121-states)). Rev-B options, not
+   done: a low-IR rectifier for D21, or the TPS61040 EN on its own GPIO with a
+   ≤ 400 kΩ pull-down and U21's QOD open (simulated 32.2 µA total; EN must not
+   rise before VIN) (hardware/sim, sleep budget). Further options are listed in
+   docs/architecture.md §8.3.
 8. **CHG_INT_N** delivers 128 µs pulses into a SENSE pin. Capture relies on
    the nRF52840 LATCH register (TVP); polling while on USB is the backstop.
-9. **SPEC behind the sheets** (reported as architecture.md §13 items 12 and
-   13). Firmware follows the sheets and the netlist:
-   * SPEC §3 and §5.3 still describe an AO3401A + 2N7002 OLED boost-input
-     disconnect. The `display` sheet has U21 TPS22917 instead (VIN = VSYS
-     with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down, C37 1 nF
-     from CT to VIN, QOD open, VOUT = OLED_VIN). Its always-on
-     reverse-current blocking (IIN,RCB ≤ 1 µA) keeps OLED_VIN from
-     back-feeding VSYS ([§3.1](#31-board-dts-draft), [§7.2](#72-init-sequence-and-power-sequencing)).
-   * SPEC §4 and §5.5 give 100 Ω per piezo side; the `sensors` sheet has
-     R57/R58 = 470 Ω plus the R59 1 MΩ bleed ([§8.1](#81-piezo)).
+9. **SPEC behind the sheets. Resolved** (reported as architecture.md §13
+   items 12 and 13). SPEC now matches the sheets and the netlist:
+   * SPEC §3 and §5.3 describe the OLED boost-input switch as U21 TPS22917
+     (VIN = VSYS with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down,
+     C37 1 nF from CT to VIN, QOD tied to VOUT = OLED_VIN), as on the
+     `display` sheet. Its always-on reverse-current blocking
+     (IIN,RCB ≤ 1 µA) keeps OLED_VIN from back-feeding VSYS
+     ([§3.1](#31-board-dts-draft), [§7.2](#72-init-sequence-and-power-sequencing)).
+   * SPEC §4 and §5.5 give R57/R58 = 470 Ω per piezo side plus the R59 1 MΩ
+     bleed, as on the `sensors` sheet ([§8.1](#81-piezo); hardware/sim, PB-1).
+10. **Actuator thrust (still open; architecture.md risk R4).** The verified
+    worst-case load of 0.8–1.15 N exceeds the 8 mm VSM08102's thrust at any
+    battery VSYS (0.93 N best case). Select the 10 mm motor (≥ 1.2 N) or cut
+    the preloads to ≤ 0.5 N (hardware/sim, MD-4). Firmware cannot close the
+    gap: the 313 PPS homing retries, the 3.55 V move threshold and the
+    temperature-compensated duty ([§5.3](#53-stepping-profile)) only keep the
+    rated current.
+11. **SPICE expected failures that depend on this document.** The suite keeps
+    strict xfails for findings that only firmware rules answer: LSW-3 (DIN
+    high with VLED off, [§6.4](#64-rail-sequencing)) and NEW-1 (dead battery
+    on USB at 100 mA, [§7.2](#72-init-sequence-and-power-sequencing),
+    [§13.3](#133-input-current-strategy-on-usb)). The §1.3 GPIO-table drift
+    (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
+    revision, so `test_gpio_sleep_states_from_firmware_doc` should now pass.
 
 **To verify on prototype or against documentation**
 
@@ -3093,8 +3114,25 @@ the history is traceable.
 * I2S running with SDOUT only; WS2812C V6 timing on the scope; LED per-IC
   current (0.2 mA).
 * The U2 (VLED) and U21 (OLED_VIN) turn-on ramps (tON about 4 ms with
-  1 nF CT) and the VLED QOD fall (about 27 ms), against the 5 ms and 30 ms
-  waits of [§3.1](#31-board-dts-draft) and [§6.4](#64-rail-sequencing).
+  1 nF CT) and the VLED QOD fall (about 24 ms nominal, ≤ 26.6 ms worst case;
+  the datasheet tFALL row implies an internal QOD of about 170 Ω, NEW-4),
+  against the 10 ms and 30 ms waits of [§3.1](#31-board-dts-draft) and
+  [§6.4](#64-rail-sequencing). U21's temperature and the VSYS sag at the
+  first OLED enable (≈ 0.3 A for ~2 ms, LSW-4); FB with the OLED off
+  (0.26–0.29 V against the TPS61040's 0.3 V abs max, LSW-1).
+* LED PWM phase alignment of the summed ring current after power-up, which
+  sets whether the instantaneous budget of [§6.3](#63-power-limiter) can be
+  relaxed (PI-2).
+* I2C with the errata-219 settings: tLOW at U30 pin 1 and U31 pin 1; SCL rise
+  time at J3 (above 250 ns, run TWIM1 at 100 kHz); SCL/SDA ringing at J3
+  (hardware/sim, NF-1, PB-2, NF-3).
+* NFC: read range through the top cover and the C16/C17 retune; the NCS NFC
+  Kconfig and API names; whether T2T and T4T link into one image; which
+  TIMER the nrfx NFCT driver claims ([§9.7](#97-nfc-tag-emulation)).
+* Whether the retained rail-state record survives a BATOCP or brown-out
+  collapse ([§15](#15-fault-handling)).
+* The RT9080's ground current at the ≈ 20 µA sleep load (LDO-6; the TPS7A0233
+  is the alternate).
 * Piezo sound level with the 470 Ω series resistors.
 * The SSD1351 VCC-to-AFh delay (vendor 200 ms); the A0h remap for the actual
   mounting; SPI edge rates (tR/tF ≤ 15 ns); the anomaly-198 carve-out with
@@ -3106,14 +3144,16 @@ the history is traceable.
   detent); Swift Pair with RPA privacy; directed advertising per OS; whether
   Windows accepts peripheral latency 30.
 * GATT authorization callback availability in the NCS version used.
-* Stepper thrust above 500 PPS at VSYS 3.4–4.2 V; stroke time; HOME edge
+* Stepper thrust above 500 PPS at VSYS 3.55–4.2 V; stroke time; HOME edge
   repeatability and drift with temperature (the ±10-step margin of §5.4);
   homing time; that repeated 50 % stalls at the park stop do not wear or jam
   the nut.
 * Bearing friction, spin-down priors, friction-shoe engagement offset and
   torque.
-* BQ25180 SYS_MODE and CHG_DIS fields for USB suspend; ship entry with VBUS
-  present; WAKE-flag interrupt behaviour.
+* BQ25180 ship entry with VBUS present; WAKE-flag interrupt behaviour;
+  whether a press while charging sets TS_FAULT or pulses /INT
+  (charger_ts-v2). (The SYS_MODE and CHG_DIS fields for USB suspend are now
+  taken from SLUSE99C Table 8-19 and ICHG_CTRL bit 7, [§13.3](#133-input-current-strategy-on-usb).)
 * LIS2DW12 register bit fields, current at 3.3 V, and tap thresholds through
   the floating assembly.
 * Flick-artifact press-rejection thresholds.
@@ -3125,6 +3165,8 @@ the history is traceable.
 
 * SPEC and nets: `hardware/design/SPEC.md`, `hardware/design/nets.py`;
   docs/architecture.md.
+* SPICE suite: `hardware/sim` (tests and `results/report.md`), described in
+  docs/simulation.md; the finding ids cited above come from its tests.
 * Subsystem research and verifier reports (session scratchpad,
   `research/<key>.full.json`): sensing, detent, display, leds, power,
   mcu_rf_fw, mechanical. The corrected values are used throughout.
