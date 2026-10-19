@@ -365,7 +365,8 @@ def build_main(bb, comps, nets):
     x, y = pol(24.0, 90)
     bb.text(pcbnew.B_Fab, "ACTUATOR / CARRIAGE CORRIDOR", x, y, 0.8, mirror=True)
     # silkscreen
-    bb.text(pcbnew.F_SilkS, "dial-me-spinner main rA", CX, CY + 23.0, 1.0)
+    # bottom silk, above the hub flange: the top silk inside the LED-cap ring is full of references
+    bb.text(pcbnew.B_SilkS, "dial-me-spinner main rA", CX, CY - 11.0, 1.0, mirror=True)
     x, y = pol(30.6, 90)
     bb.text(pcbnew.B_SilkS, "DETENT", x, y, 0.8, mirror=True)
     for th, label in ((0, "θ0 USB"), (270, "ENC")):
@@ -860,7 +861,8 @@ def prune_dangling(path, rounds=6):
     them, and one the router bypassed (it reached the ball directly) is a dead stub."""
     removed = 0
     for _ in range(rounds):
-        rpt, _ = drc(path)
+        rpt, before = drc(path)
+        before = before.get("[unconnected_items]", 0)
         spots = []
         kind = None
         for line in open(rpt, encoding="utf-8"):
@@ -897,7 +899,7 @@ def prune_dangling(path, rounds=6):
         pcbnew.SaveBoard(path, b)
         pcbgen.refill(path)
         _, after = drc(path)
-        if after.get("[unconnected_items]", 0):
+        if after.get("[unconnected_items]", 0) > before:
             shutil.copyfile(backup, path)  # that piece was load-bearing after all: keep the board as it was
             os.remove(backup)
             break
@@ -909,6 +911,7 @@ def prune_dangling(path, rounds=6):
 def finish(board, path):
     """Post-route clean-up (needs the pours): duplicate/dangling/overlaid wiring, GND stitching, silk, refill."""
     b = pcbnew.LoadBoard(path)
+    finish_route.anchor_all(b)  # T-joints and off-centre via joints get real anchors before stubs are trimmed
     dups, trimmed = pcbgen.dedupe_tracks(b), pcbgen.trim_dangling(b)
     pcbnew.SaveBoard(path, b)
     b = pcbgen.refill(path)
@@ -1102,6 +1105,9 @@ def gnd_plane_fixup(path):
         if not on_plane:
             lonely += [it for it in cl if isinstance(it, pcbnew.PAD)]
     done, left = pcbgen.fanout_vias(b, "GND", pads=lonely) if lonely else (0, [])
+    if left:  # a signal-size via reaches tighter spots
+        more, left = pcbgen.fanout_vias(b, "GND", pads=left, via=0.4, drill=0.2, track=0.2, max_dist=3.0)
+        done += more
     pcbnew.SaveBoard(path, b)
     pcbgen.refill(path)
     return done, left
@@ -1110,10 +1116,24 @@ def gnd_plane_fixup(path):
 def complete_routing(board, out):
     """After Freerouting: copper inside no-track rule areas goes, GND pads off the plane get a via, then the grid router
     (finish_route) joins what is left."""
+    b = pcbnew.LoadBoard(out)
+    # a board that was already finished: its outer GND pours and bare stitching vias would block the router
+    # (add_pours and finish() put them back afterwards)
+    pours = [z for z in b.Zones() if not z.GetIsRuleArea() and z.GetNetname() == "GND"
+             and (z.IsOnLayer(pcbnew.F_Cu) or z.IsOnLayer(pcbnew.B_Cu))]
+    gnd_ends = {(p.x, p.y) for t in b.GetTracks() if t.GetNetname() == "GND" and t.Type() != pcbnew.PCB_VIA_T
+                for p in (t.GetStart(), t.GetEnd())}
+    bare = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_VIA_T and t.GetNetname() == "GND" and not t.IsLocked()
+            and (t.GetPosition().x, t.GetPosition().y) not in gnd_ends]
+    for z in pours:
+        b.Delete(z)
+    for v in bare:
+        b.Delete(v)
+    if pours or bare:
+        print(f"[{board}] removed {len(pours)} outer GND pours and {len(bare)} stitching vias before routing")
     if board == "main":
-        b = pcbnew.LoadBoard(out)
-        if clamp_keepouts(b):
-            pcbnew.SaveBoard(out, b)
+        clamp_keepouts(b)
+    pcbnew.SaveBoard(out, b)
     gone = enforce_keepouts(out)
     if gone:
         print(f"[{board}] removed {len(gone)} tracks/vias inside keep-outs: {sorted(set(gone))}")
@@ -1149,9 +1169,13 @@ def main():
             continue
         if a.complete:
             out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
-            complete_routing(board, out)
-            add_pours(board, out)
-            finish(board, out)
+            for _ in range(3):  # the clean-up can open a joint the router made; route again until it holds
+                complete_routing(board, out)
+                add_pours(board, out)
+                finish(board, out)
+                _, counts = drc(out)
+                if not counts.get("[unconnected_items]", 0):
+                    break
             warn = {}
             rpt, counts = drc(out, warn)
             print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)

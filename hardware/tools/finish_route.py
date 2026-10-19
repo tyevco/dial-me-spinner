@@ -200,7 +200,7 @@ class Router:
         self.plane_layers = plane_layers
         self.log = log
         self.max_expand = 2_500_000
-        self.protect_classes = {"Power", "Ground"}
+        self.protect_classes = {"Power", "Ground", "Supply"}
         # never ripped: ground, the crystal, the USB and NFC pairs (their routing is length/pair sensitive)
         self.protect_nets = {"GND", "XL1", "XL2", "USB_DP", "USB_DM", "NFC1", "NFC2"}
         self.low_priority = ("TP_SPARE",)  # spare test pads may not rip other nets up
@@ -495,20 +495,21 @@ class Router:
         """Route between two clusters. Returns the new items, or None. With ripup=True, rippable copper of other
         nets may be crossed; what the new route conflicts with is removed (self.ripped gets the victims' nets)."""
         w, clr, via_d, via_drill = self.netclass(net)
-        allpts = []
-        for cl in (ca, cb):
-            for it in cl:
-                bb = it.GetBoundingBox()
-                allpts += [(TO_MM(bb.GetLeft()), TO_MM(bb.GetTop())), (TO_MM(bb.GetRight()), TO_MM(bb.GetBottom()))]
-        xs, ys = [p[0] for p in allpts], [p[1] for p in allpts]
-        # windows grow until a path is found (a cluster may be a long track: clip to the region between them)
-        ca_c = _centroid(ca)
-        cb_c = _centroid(cb)
+        # window: the smaller cluster's box grown by the gap to the other cluster's nearest anchor (a plane-sized
+        # GND cluster or a long track would otherwise make it the whole board), then grown again if no path
+        def box(cl):
+            bbs = [it.GetBoundingBox() for it in cl]
+            return (min(TO_MM(b_.GetLeft()) for b_ in bbs), min(TO_MM(b_.GetTop()) for b_ in bbs),
+                    max(TO_MM(b_.GetRight()) for b_ in bbs), max(TO_MM(b_.GetBottom()) for b_ in bbs))
+        bxa, bxb = box(ca), box(cb)
+        area = lambda bx: (bx[2] - bx[0]) * (bx[3] - bx[1])  # noqa: E731
+        small, other = (bxa, cb) if area(bxa) <= area(bxb) else (bxb, ca)
+        # the other cluster's anchor nearest to the small cluster's box joins the window
+        cx_, cy_ = (small[0] + small[2]) / 2, (small[1] + small[3]) / 2
+        px, py = min(_anchors(other), key=lambda q: math.hypot(q[0] - cx_, q[1] - cy_))
         for padding in (pad_mm, pad_mm * 2.5):
-            lo_x = max(min(xs), min(ca_c[0], cb_c[0]) - 12.0) - padding
-            hi_x = min(max(xs), max(ca_c[0], cb_c[0]) + 12.0) + padding
-            lo_y = max(min(ys), min(ca_c[1], cb_c[1]) - 12.0) - padding
-            hi_y = min(max(ys), max(ca_c[1], cb_c[1]) + 12.0) + padding
+            lo_x, lo_y = min(small[0], px) - padding, min(small[1], py) - padding
+            hi_x, hi_y = max(small[2], px) + padding, max(small[3], py) + padding
             grid = Grid(lo_x, lo_y, hi_x, hi_y, self.g)
             src, _ = self.masks(grid, ca, w, clr)
             dst, dpts = self.masks(grid, cb, w, clr)
@@ -539,10 +540,17 @@ class Router:
                     victims.append(t)
                     break
         names = sorted({t.GetNetname() for t in victims})
-        # the whole victim net goes (its unlocked tracks and vias), so it is re-routed clean, not patched
+        # a small victim net (≤ 3 pads) goes whole, so it is re-routed clean; a larger one loses only the copper in
+        # the way (its pieces are joined again by the next rounds)
+        npads = {}
+        for fp in self.b.GetFootprints():
+            for pd in fp.Pads():
+                npads[pd.GetNetname()] = npads.get(pd.GetNetname(), 0) + 1
+        whole = {nm for nm in names if npads.get(nm, 0) <= 3}
+        victim_ids = {t.m_Uuid.AsString() for t in victims}
         n = 0
         for t in list(self.b.GetTracks()):
-            if t.GetNetname() in names and self.rippable(t):
+            if self.rippable(t) and (t.GetNetname() in whole or t.m_Uuid.AsString() in victim_ids):
                 self.b.Delete(t)
                 n += 1
         for name in names:
@@ -575,8 +583,19 @@ class Router:
                 v.SetNet(net)
                 self.b.Add(v)
                 items.append(v)
+        # anchor both ends the way a router would: at a pad, a via centre or a track end (a track entered part-way
+        # along is split there), so the post-route clean-up does not take the joint for an open stub
+        if runs:
+            k0, pts0 = runs[0]
+            k1, pts1 = runs[-1]
+            for k, (y, x) in ((k0, pts0[0]), (k1, pts1[-1])):
+                xx, yy = grid.xy(x, y)
+                items += self._anchor(net, pcbnew.VECTOR2I(MM(xx), MM(yy)), self.layers[k], w, items)
         self.added.append((net.GetNetname(), [t.m_Uuid.AsString() for t in items]))
         return items
+
+    def _anchor(self, net, pt, layer, w, new_items):
+        return anchor_end(self.b, net, pt, layer, w, {t.m_Uuid.AsString() for t in new_items})
 
     def open_connections(self, skip=(), only=None):
         """[(net, cluster_a, cluster_b)] nearest-first between the clusters of every net with more than one
@@ -598,6 +617,81 @@ class Router:
                 todo.append((net, tree[ai], rest[ci]))
                 tree.append(rest.pop(ci))
         return todo
+
+
+def anchor_end(b, net, pt, layer, w, exclude=()):
+    """Extra copper so that a track end at `pt` joins its net at an anchor the post-route clean-up recognises: a pad
+    (nothing to do), a via centre (a short track to it) or a track end (a track entered part-way along is split at
+    the nearest point of its centreline, plus a short track to that point). Returns the new items."""
+    code, tol = net.GetNetCode(), MM(0.002)
+    for fp in b.GetFootprints():
+        for pd in fp.Pads():
+            if pd.GetNetCode() == code and pd.IsOnLayer(layer) and pd.HitTest(pt):
+                return []
+    olds = [t for t in b.GetTracks() if t.GetNetCode() == code and t.m_Uuid.AsString() not in exclude]
+
+    def seg(a, c):
+        t = pcbnew.PCB_TRACK(b)
+        t.SetStart(a)
+        t.SetEnd(c)
+        t.SetWidth(MM(w) if isinstance(w, float) else w)
+        t.SetLayer(layer)
+        t.SetNet(net)
+        b.Add(t)
+        return t
+    for o in olds:
+        if o.Type() == pcbnew.PCB_VIA_T and o.HitTest(pt, 0):
+            c = o.GetPosition()
+            return [] if (c - pt).EuclideanNorm() <= tol else [seg(pt, c)]
+    for o in olds:
+        if o.Type() == pcbnew.PCB_VIA_T or o.GetLayer() != layer or not o.HitTest(pt, 0):
+            continue
+        a, c = o.GetStart(), o.GetEnd()
+        if (a - pt).EuclideanNorm() <= tol or (c - pt).EuclideanNorm() <= tol:
+            return []
+        q = pcbnew.SEG(a, c).NearestPoint(pt)
+        if (q - a).EuclideanNorm() <= tol or (q - c).EuclideanNorm() <= tol:
+            end = a if (q - a).EuclideanNorm() <= tol else c
+            return [seg(pt, end)]
+        o.SetEnd(q)  # split the existing track at the joint
+        tail = pcbnew.PCB_TRACK(b)
+        tail.SetStart(q)
+        tail.SetEnd(c)
+        tail.SetWidth(o.GetWidth())
+        tail.SetLayer(o.GetLayer())
+        tail.SetNet(o.GetNet())
+        tail.SetLocked(o.IsLocked())
+        b.Add(tail)
+        return [] if (q - pt).EuclideanNorm() <= tol else [seg(pt, q)]
+    return []
+
+
+def anchor_all(b):
+    """Normalise every track joint on the board: a track end that only touches its net part-way along another
+    track or off-centre in a via gets an anchor (anchor_end). Returns the number of joints fixed."""
+    tol = MM(0.002)
+    fixed = 0
+    segs = [t for t in b.GetTracks() if t.Type() != pcbnew.PCB_VIA_T]
+    for t in segs:
+        for pt in (t.GetStart(), t.GetEnd()):
+            code, layer = t.GetNetCode(), t.GetLayer()
+            joined = False
+            for o in b.GetTracks():
+                if o.GetNetCode() != code or o.m_Uuid.AsString() == t.m_Uuid.AsString():
+                    continue
+                if o.Type() == pcbnew.PCB_VIA_T:
+                    if (o.GetPosition() - pt).EuclideanNorm() <= tol:
+                        joined = True
+                        break
+                elif o.GetLayer() == layer and ((o.GetStart() - pt).EuclideanNorm() <= tol or
+                                                (o.GetEnd() - pt).EuclideanNorm() <= tol):
+                    joined = True
+                    break
+            if joined:
+                continue
+            added = anchor_end(b, t.GetNet(), pt, layer, t.GetWidth(), {t.m_Uuid.AsString()})
+            fixed += 1 if added else 0
+    return fixed
 
 
 def _seg_seg(a0, a1, b0, b1):
@@ -700,23 +794,23 @@ def finish(path, log=print, grid=0.025, margin=0.6, skip=(), max_rounds=30, max_
             return remaining
         log(f"finish_route round {rnd + 1}: {len(todo)} open connections")
         routed, failed, ripped = 0, [], False
-        seen_nets = set()
-        for net, ca, cb in todo:
-            name = net.GetNetname()
-            if name in seen_nets:  # clusters of a net change once one of its connections is routed: next round
-                continue
-            items = r.route_pair(net, ca, cb, margin=net_margin.get(name, margin))
-            if items:
+        for name in dict.fromkeys(n.GetNetname() for n, _, _ in todo):  # nets, nearest connection first
+            for _ in range(200):
+                conns = sorted(r.open_connections(skip=skip, only={name}), key=lambda t: _dist(t[1], t[2]))
+                if not conns:
+                    break
+                net, ca, cb = conns[0]
+                items = r.route_pair(net, ca, cb, margin=net_margin.get(name, margin))
+                if not items:
+                    failed.append((net, ca, cb))
+                    break
                 routed += 1
-                seen_nets.add(name)
                 log(f"  {name:32s} routed ({len(items)} items)")
-            else:
-                failed.append((net, ca, cb))
         if not routed and failed and ripups < max_ripups:
-            for net, ca, cb in failed:
+            # spare test pads rip others up only after every other open connection has tried and failed
+            low = lambda n: n.GetNetname().split("/")[-1].startswith(r.low_priority)  # noqa: E731
+            for net, ca, cb in sorted(failed, key=lambda f: low(f[0])):
                 name = net.GetNetname()
-                if name.split("/")[-1].startswith(r.low_priority):
-                    continue
                 items = r.route_pair(net, ca, cb, margin=net_margin.get(name, margin), ripup=True)
                 if items:
                     ripups += 1
