@@ -555,7 +555,8 @@ def base_keepouts():
 J2_POS = (17.0, 222.0)   # battery connector (r, θ)
 BOSS_R = 20.0            # M2 boss at θ 270: Ø4.5 boss clears the pack (|y| ≤ 17.25); 1.9 mm FR4 to the edge
 ANT_Y_INNER = 19.0       # antenna inner edge (device y), hardware/mechanical/dial_spinner.scad ANT_YC - ANT_W/2
-ANT_B_CLEAR = 3.6        # with the 3.5 mm height gap: ≥ 5 mm from B.Cu copper
+ANT_B_CLEAR = 3.6        # B.Cu pour: with the 3.5 mm height gap, ≥ 5 mm from the antenna
+ANT_B_TRACK_CLEAR = 1.5  # thin B.Cu tracks/vias may come closer (≈ 3.8 mm): they hardly load a ground-plane-free antenna
 ANT_F_POUR_CLEAR = 2.0   # top pour held back from over the antenna
 BQ_POS = (19.5, 255.0)   # charger (r, θ)
 BGA_CLEAR_MM = 1.6  # free radius around the BQ25180 so its escape stubs and first vias have room
@@ -580,12 +581,14 @@ def build_base(bb, comps, nets):
     # 2.4 GHz antenna under the θ 90 edge (inner edge at y = ANT_Y_INNER, z ≈ 6): bottom copper (z 9.5) stays
     # ≥ 5 mm away; top copper (z 11.1) is ≥ 5 mm above it anyway, so only the top pour is held back
     seg = lambda y0: [(px, py) for px, py in bb.circle_pts(CX, CY, BASE_R + 1.0, 96) if py < CY - y0] or []  # noqa: E731
-    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu], {}),
+    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu], dict(tracks=False, vias=False, pads=False)),
+                           (ANT_Y_INNER - ANT_B_TRACK_CLEAR, [pcbnew.B_Cu], dict(pours=False)),
                            (ANT_Y_INNER - ANT_F_POUR_CLEAR, [pcbnew.F_Cu], dict(tracks=False, vias=False, pads=False))):
         half = math.sqrt((BASE_R + 1.0) ** 2 - y0 ** 2)
         pts = [(CX - half, CY - y0)] + sorted(seg(y0), key=lambda q: -math.atan2(CY - q[1], q[0] - CX)) + \
               [(CX + half, CY - y0)]
-        bb.keepout(layers, pts, name="ANTENNA_KEEPOUT_" + ("B" if layers == [pcbnew.B_Cu] else "F_POUR"), **kw)
+        kind = "TRACKS" if kw.get("pours") is False else "POUR"
+        bb.keepout(layers, pts, name=f"ANTENNA_KEEPOUT_{'B' if layers == [pcbnew.B_Cu] else 'F'}_{kind}", **kw)
     bb.text(pcbnew.F_SilkS, "dial-me-spinner base rA", CX - 2.0, CY + 15.5, 0.8)
 
 
@@ -605,7 +608,7 @@ BOARDS = {
                  fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
                             ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
     "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
-                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.4,
+                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.3,
                  post_fixed=base_post_fixed, post_place=base_post_place,
                  fiducials=[("F", 19.5, 45), ("F", 19.5, 170), ("F", 19.5, 300)]),
 }

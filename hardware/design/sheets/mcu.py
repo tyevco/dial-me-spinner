@@ -154,12 +154,12 @@ def build(d):
 
     d.group("USB VBUS (module pad 32) and second-stage USB ESD",
             "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\n"
-            "above the 5.8 V VBUS abs max; with 1.5-4.7 R the pin peaks at 5.5 V (hardware/sim test_usb_input).\n"
-            "2.2 R keeps RSOURCE,VBUS <= 2 R + cable (PS 5.3.8.6). C12 on the module side; total sink C < 10 uF.\n"
+            "above the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) it peaks at 5.07-5.48 V (hardware/sim test_usb_input).\n"
+            "DC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\n"
             "U12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n"
             "~145 nH link (HBM 2 kV class = 1.33 A). Place U12 within 3 mm of pads D+/D-, flow-through.")
-    d.add("R12", "Device:R", "2.2", R0402, pins={"1": "VBUS", "2": "VBUS_NRF"},
-          fields={"MPN": "FRC0402F2R20TS", "Manufacturer": "FOJAN", "LCSC": "C2909330"})
+    d.add("R12", "Device:R", "4.7", R0402, pins={"1": "VBUS", "2": "VBUS_NRF"},
+          fields={"MPN": "FRC0402F4R70TS", "Manufacturer": "FOJAN", "LCSC": "C2909356"})
     d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS_NRF", "2": "GND"}, rot=0,
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
     d.add("U12", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",

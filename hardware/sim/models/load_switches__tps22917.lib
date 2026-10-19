@@ -97,13 +97,23 @@ V_U1_U2_V2      U1_U2_N75775 0 1n
 *    the path, so RON, RCB, QOD, IQ/ISD and the ON-pin logic remain the vendor's.  (A first version drove a
 *    PMOS gate from an error amplifier; it was numerically stiff, so the loop was removed.)
 *  - C_int = 33 pF (CT->VIN): Table 7.6 CT-open tON 120 us @3.6 V / 100 us @5 V = tON_k * C_int.
-B_SL_ICT        CT GND I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * min(max(V(VIN),0),10)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02))
+B_SL_ICT        CT GND I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * min(max(V(SL_VINF),0),10)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02))
 C_SL_INT        CT VIN 33p
-B_SL_TONK       SL_TONK 0 V = pwl(V(VIN), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
-B_SL_SRK        SL_SRK 0 V = pwl(V(VIN), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
+B_SL_TONK       SL_TONK 0 V = pwl(V(SL_VINF), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
+B_SL_SRK        SL_SRK 0 V = pwl(V(SL_VINF), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
 B_SL_VTOT       SL_VTOT 0 V = V(SL_TONK) * V(SL_SRK)
 B_SL_SWEND      SL_SWEND 0 V = V(VIN) + 0.5
-B_SL_VRAW       SL_VRAW 0 V = V(SL_VTOT)/min(max(V(VIN), 0.5), 10) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
+* FIXED (verifier, 2026-10-19): the slew constants (tON_k, SRON_k, Vtot, the 0.9 VIN delay term and the CT
+* sink current) used the instantaneous VIN.  Vtot = tON_k*SRON_k falls faster with VIN than 0.9*VIN, so
+* dVref/dVIN was about -0.9: a VIN sag RAISED Vref, which drew more current and sagged VIN further.  With the
+* nominal 49 uF load the 82 uF of VSYS bulk kept it stable, but a CT-open ramp was inflated and a 445 uF load
+* ran away to 24 A.  They now use VIN low-passed with 1 ms (SL_VINF), so the switch sets the slew from the
+* supply level and a fast sag of its own making cannot feed back; the swing (VIN - CT) and the full-on test
+* still use the real VIN.  Constant-VIN behaviour (Table 7.6 correlation) is unchanged.
+B_SL_VINB       SL_VINB 0 V = V(VIN,GND)
+R_SL_VINF       SL_VINB SL_VINF 1Meg
+C_SL_VINF       SL_VINF 0 1n
+B_SL_VRAW       SL_VRAW 0 V = V(SL_VTOT)/min(max(V(SL_VINF), 0.5), 10) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(SL_VINF))
 * soft start of the ramp (softplus, 50 mV knee, about 30 us at 1.9 V/ms): the real slew starts smoothly and a
 * hard corner only produces a numerical current spike in the output capacitance
 B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(min(V(SL_VRAW)/0.05, 40)))

@@ -121,8 +121,10 @@ def build(d):
           pins={"A2": "VBUS", "B2": "VSYS", "C2": "VBAT", "D2": "GND",
                 "B1": "I2C_SCL", "C1": "I2C_SDA", "A1": "CHG_INT_N", "D1": "CHG_TSMR"},
           fields={"MPN": "BQ25180YBGR", "Manufacturer": "Texas Instruments", "LCSC": "C3682423"})
-    d.add("C1", "Device:C", "2.2u/25V", C0603, pins={"1": "VBUS", "2": "GND"},
-          fields={"MPN": "CC0603KRX5R8BB225", "Manufacturer": "YAGEO", "LCSC": "C309478"})
+    # 0805 X7R: an 0603 X5R loses too much to DC bias at 5.5 V + temperature to keep the BQ25180's >= 1 uF
+    # effective CIN (hardware/sim test_usb_input, USB-3)
+    d.add("C1", "Device:C", "2.2u/25V", "Capacitor_SMD:C_0805_2012Metric", pins={"1": "VBUS", "2": "GND"},
+          fields={"MPN": "CC0805KKX7R8BB225", "Manufacturer": "YAGEO", "LCSC": "C277470"})
     d.add("C2", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
     d.add("C3", "Device:C", "4.7u", C0603, pins={"1": "VBAT", "2": "GND"},
@@ -155,8 +157,10 @@ def build(d):
           datasheet="https://www.lcsc.com/datasheet/C318884.pdf",
           description="Tactile switch SPST-NO 5.1x5.1x1.5 mm, 160 gf (1.6 N), 0.2 mm travel",
           fields={"MPN": "TS-1187A-B-A-B", "Manufacturer": "XKB Connection", "LCSC": "C318884"})
-    d.add("R4", "Device:R", "1M", R0402, pins={"1": "SW_GATE", "2": "GND"},
-          fields={"MPN": "0402WGF1004TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C26083"})
+    # 100k, not 1M: the Q1 gates (~90-150 pF) must discharge within the BQ25180 deglitch after a release, or TS/MR
+    # sits between the press threshold and the NTC voltage and reads a false temperature (hardware/sim test_charger_ts)
+    d.add("R4", "Device:R", "100k", R0402, pins={"1": "SW_GATE", "2": "GND"},
+          fields={"MPN": "0402WGF1003TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25741"})
     q_fields = {"MPN": "BSS138DW-7-F", "Manufacturer": "Diodes Incorporated", "LCSC": "C154900"}
     q_ds = "https://www.diodes.com/assets/Datasheets/ds30203.pdf"
     d.add("Q1", "Transistor_FET:Q_Dual_NMOS_S1G1D2S2G2D1", "BSS138DW", "Package_TO_SOT_SMD:SOT-363_SC-70-6",
@@ -172,8 +176,8 @@ def build(d):
           "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
           fields={"MPN": "SM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160411"})
-    d.add("C4", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
-          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
+    d.add("C4", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
+          fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
 
     d.group("Test points and power flags",
             "PWR_FLAGs mark VBUS (USB-C) and GND\nas externally driven for ERC.")

@@ -5838,7 +5838,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
 			(at 264.16 38.1 0)
 			(effects
 				(font
@@ -5865,7 +5865,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CC0603KRX5R8BB225"
+		(property "MPN" "CC0805KKX7R8BB225"
 			(at 264.16 38.1 0)
 			(effects
 				(font
@@ -5883,7 +5883,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C309478"
+		(property "LCSC" "C277470"
 			(at 264.16 38.1 0)
 			(effects
 				(font
