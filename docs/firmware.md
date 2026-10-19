@@ -3,9 +3,11 @@
 **Status:** plan only; no firmware code exists yet. **Target:** nRF Connect SDK
 (NCS) v3.x on Zephyr 4.x, built with sysbuild, with MCUboot and the SoftDevice
 Controller. **Hardware:** [`hardware/design/SPEC.md`](../hardware/design/SPEC.md)
-rev A and its net names in [`nets.py`](../hardware/design/nets.py). Where this
-document and SPEC disagree, SPEC wins. The disagreements found are listed in
-[§18](#18-open-items-and-to-verify-list).
+rev A, its net names in [`nets.py`](../hardware/design/nets.py) and the
+generated sheets in [`sheets/`](../hardware/design/sheets/). Where this
+document and SPEC disagree, SPEC wins, except where the sheets are already
+ahead of SPEC (the OLED boost-input switch U21 and the piezo resistors). The
+disagreements found are listed in [§18](#18-open-items-and-to-verify-list).
 
 This document is written for the person who will implement and bring up the
 firmware. Each section gives the decision, the numbers behind it, and what
@@ -107,8 +109,8 @@ both used, so **SPIM0 and SPIM1 are unavailable**.
 | RTC1 | Zephyr kernel timer | LFXO 32.768 kHz, 20 ppm |
 | TWIM0 (ID 3, shares with SPIM0) | Encoder driver, through nrfx directly | Dedicated to the TMAG5273, 400 kHz. The Zephyr I2C driver must **not** bind ([§3](#3-devicetree-and-kconfig)). |
 | TWIM1 (ID 4, shares with SPIM1) | Zephyr I2C | LIS2DW12 (0x19) and BQ25180 (0x6A, over the link), 400 kHz |
-| SPIM2 (ID 35) | Spare | Fallback for the LEDs (`worldsemi,ws2812-spi`, MOSI only on P0.06) if I2S cannot run with SDOUT alone |
-| SPIM3 (ID 47) | OLED, through `zephyr,mipi-dbi-spi` | 16 MHz. Anomalies 198 and 195 apply ([§7.1](#71-spi-link-and-the-spim3-errata)). |
+| SPIM2 (ID 35) | Spare | Same-pin fallback for the OLED (8 MHz, [§7.1](#71-spi-link-and-the-spim3-errata)), or for the LEDs (`worldsemi,ws2812-spi`, MOSI only on P0.06) if I2S cannot run with SDOUT alone. It can serve only one of the two. |
+| SPIM3 (ID 47) | OLED, through `zephyr,mipi-dbi-spi` | 16 MHz (SPEC §4). Anomalies 198 and 195 apply, with their workarounds ([§7.1](#71-spi-link-and-the-spim3-errata)). Fallback: SPIM2 at 8 MHz on the same pins. |
 | I2S (ID 37) | LED ring, `worldsemi,ws2812-i2s` | The nRF52840 has only one I2S |
 | QSPI (ID 41) | W25Q128JV | MCUboot secondary slot plus assets |
 | PWM0 (ID 28) | Detent stepper, through nrfx_pwm directly | 4 channels at 25 kHz |
@@ -140,9 +142,9 @@ against 17.37 µA for a GPIOTE IN channel
 | P0.15 | OLED_CS_N | `cs-gpios`, active low | Output | High |
 | P0.16 | OLED_DC | `dc-gpios` | Output | Low |
 | P1.01 | OLED_RES_N | `reset-gpios`, active low | Output | High (keeps GDDRAM; 3.3 µA flows in the 1 MΩ pull-down) |
-| P1.02 | OLED_VCC_EN | +13 V boost enable (regulator node) | Output | Low |
+| P1.02 | OLED_VCC_EN | ON of U21 (TPS22917 boost-input load switch, R25 100 kΩ pull-down), regulator node | Output | Low |
 | P0.06 | LED_DIN_MCU | I2S SDOUT | Standard drive | **GPIO output, driven low** (SPEC §5.4), set after the all-zero frame and before VLED goes off ([§6.4](#64-rail-sequencing)) |
-| P1.04 | LED_PWR_EN | VLED load switch (regulator node) | Output | Low |
+| P1.04 | LED_PWR_EN | ON of U2 (TPS22917 VLED load switch, R3 100 kΩ pull-down), regulator node | Output | Low |
 | P0.24 / P0.25 | TMAG_SCL / TMAG_SDA | TWIM0 | External 4.7 kΩ pull-ups | Disconnected |
 | P0.27 | TMAG_INT_N | GPIOTE IN, high-to-low (tracking) | No pull (47 kΩ external) | SENSE low (latched INT) |
 | P0.08 / P1.09 | I2C_SCL / I2C_SDA | TWIM1 | External 4.7 kΩ pull-ups | Disconnected |
@@ -155,7 +157,7 @@ against 17.37 µA for a GPIOTE IN channel
 | P0.07, P0.11 | MOT_B_IN1, MOT_B_IN2 | PWM0 channels 2, 3 | Standard drive | Disconnected |
 | P1.15 | MOT_NSLEEP | Shared DRV8837 nSLEEP | Output | Low |
 | P1.14 | HOME_N | DRV5032FA output (push-pull, low = magnet present, always powered) | Input, no pull | Input, interrupt disabled |
-| P0.12 / P1.08 | BUZZ_A / BUZZ_B | PWM1 channel 0 / channel 1 inverted | H0H1 drive | Disconnected (`pwm1_sleep` uses low-power-enable). The piezo is a capacitor between two floating pins, so no current flows. |
+| P0.12 / P1.08 | BUZZ_A / BUZZ_B | PWM1 channel 0 / channel 1 inverted | H0H1 drive | Disconnected (`pwm1_sleep` uses low-power-enable). The piezo is a capacitor between two floating pins, so no current flows; R59 (1 MΩ across BZ1) bleeds any shock-generated charge. |
 | P1.00 | SWO | UARTE0 TX (log) | Output | Disconnected |
 | P0.03, P0.04, P1.11, P1.13 | TP_SPARE1–4 | Scope timing toggles in `dev` builds | Output | Disconnected. **P0.04 is the only fast spare pin.** |
 | P0.10, P0.28, P0.29, P0.31, P1.03, P1.05–P1.07 | not connected | none | Reset default (input disconnected) | Same |
@@ -383,7 +385,7 @@ against the current bindings.
 		compatible = "gpio-keys";
 		debounce-interval-ms = <5>;
 		dial_press: dial_press {
-			gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;   /* BTN_N, BSS138 on the base board */
+			gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;   /* BTN_N, Q1B (BSS138DW) on the base board */
 			label = "Dial press";
 			zephyr,code = <INPUT_KEY_ENTER>;
 		};
@@ -392,16 +394,16 @@ against the current bindings.
 	vled: regulator-vled {
 		compatible = "regulator-fixed";
 		regulator-name = "VLED";
-		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;   /* LED_PWR_EN -> TPS22917 ON */
-		startup-delay-us = <5000>;    /* TVP: measure the real ramp (CT question, §18) */
-		off-on-delay-us = <10000>;    /* QOD discharge of about 30 µF takes about 10 ms */
+		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;   /* LED_PWR_EN -> U2 TPS22917 ON (R3 100 kΩ pull-down) */
+		startup-delay-us = <5000>;    /* U2 tON about 4 ms: C7 = 1 nF from CT to VIN (SPEC §5.1); scope it at test 12 */
+		off-on-delay-us = <30000>;    /* QOD: about 49 µF through R4 100 Ω + 150 Ω internal, fall about 27 ms (architecture.md §7) */
 	};
 
 	oled_vcc: regulator-oled-vcc {
 		compatible = "regulator-fixed";
 		regulator-name = "+13V_OLED";
-		enable-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;   /* OLED_VCC_EN -> 2N7002 -> AO3401A */
-		startup-delay-us = <5000>;    /* oled_power.c waits the rest of the 200 ms asynchronously */
+		enable-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;   /* OLED_VCC_EN -> U21 TPS22917 ON (R25 100 kΩ pull-down) -> OLED_VIN -> TPS61040 */
+		startup-delay-us = <5000>;    /* U21 tON about 4 ms (C37 = 1 nF CT to VIN); oled_power.c waits the rest of the 200 ms asynchronously */
 		off-on-delay-us = <100000>;
 	};
 
@@ -572,7 +574,7 @@ against the current bindings.
 
 	led_strip: ws2812 {
 		compatible = "worldsemi,ws2812-i2s";
-		chain-length = <48>;           /* SPEC §5.4: D1 at θ=0°, CCW */
+		chain-length = <48>;           /* SPEC §5.4/§8: D101 at θ=0°, CCW */
 		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
 		lrck-period = <10>;            /* SCK 3.2 MHz -> 4 SCK = 1.25 µs per LED bit */
 		nibble-zero = <0x8>;           /* T0H 312.5 ns / T0L 937.5 ns */
@@ -1634,8 +1636,13 @@ because the ring may be moving. "Blanking" here means suppressing the
 * 48× WS2812C-2020-V6, 5 mA per channel. The WS2812B-2020-V6 (12 mA per
   channel) is a drop-in, so the variant is a factory setting; **the default
   assumes 12 mA**, which is the safe direction.
-* LED j (0-based; D(j+1) in SPEC) sits at θ = 7.5°·j, CCW from the USB-C
-  direction. That gives 2 LEDs per detent.
+* LED j (0-based; D(101+j) in SPEC and the `leds` sheet) sits at θ = 7.5°·j,
+  CCW from the USB-C direction. That gives 2 LEDs per detent.
+* Data path: P0.06 → R40 220 Ω → LED_DIN_R (R41 100 kΩ pull-down) → R43 0 Ω
+  → D101 DIN, at 3.3 V logic. A DNP SN74LV1T34 level shifter (U43, powered
+  from VLED, with C43) replaces R43 only if the bench test at VSYS 4.6 V shows
+  bit errors. Firmware is the same either way, including the DIN rules of
+  [§6.4](#64-rail-sequencing).
 * Timing: T0H 312.5 ns, T0L 937.5 ns, T1H/T1L 625 ns (all inside the V6
   windows), with reset at least 280 µs
   ([WS2812C-2020-V6 DS](https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf),
@@ -1649,7 +1656,7 @@ because the ring may be moving. "Blanking" here means suppressing the
 * *TVP:* the I2S runs with only SDOUT routed. If the driver insists on SCK and
   LRCK pins, no second fast spare pin exists (only P0.04). Fall back to
   `worldsemi,ws2812-spi` on SPIM2 (4 MHz, 0x70/0x40 frames, MOSI only on
-  P0.06) with no hardware change.
+  P0.06) with no hardware change, as long as the OLED stays on SPIM3.
 
 ### 6.2 Frame pipeline
 
@@ -1722,10 +1729,12 @@ scale_codes(frame, s);                   /* current is linear in code, so this i
      whenever the I2S is not driving the pin, so DIN never floats on the
      100 kΩ pull-down alone; `i2s0_sleep` (no low-power-enable) also leaves it
      an output low.
-  3. `regulator_disable(vled)`. Wait 10 ms (QOD discharge of about 30 µF)
-     before turning on again.
-* **On:** `regulator_enable(vled)` (LED_PWR_EN high), wait at least 5 ms (TVP:
-  measure, see the CT question in [§18](#18-open-items-and-to-verify-list)),
+  3. `regulator_disable(vled)`. Wait at least 30 ms before turning on again
+     or treating VLED as off: QOD discharges about 49 µF (C8, C9,
+     C101–C148) through R4 = 100 Ω plus the switch's internal 150 Ω, a fall
+     time of about 27 ms (architecture.md §7).
+* **On:** `regulator_enable(vled)` (LED_PWR_EN high), wait at least 5 ms (U2's
+  tON is about 4 ms with C7 = 1 nF from CT to VIN; check the ramp at test 12),
   and only then hand P0.06 back to the I2S: PSEL.SDOUT stays assigned, so the
   I2S takes the pin when it next starts; re-apply the I2S default pinctrl
   state if the scope shows no data (TVP). Then send the first frame.
@@ -1804,8 +1813,8 @@ with the verifier's corrections.
 | 19 | BEh | 05h | VCOMH = 0.82 × VCC |
 | 20 | A6h | | Normal display |
 | 21 | 15h / 75h / 5Ch | 00h 7Fh / 00h 7Fh / 32 KB of 00h | **Clear GDDRAM before VCC on** |
-| 22 | (hardware) | | OLED_VCC_EN high (the AO3401A connects the TPS61040, which ramps to 13.0 V) |
-| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. TVP: measure VCC settling and shorten with margin. |
+| 22 | (hardware) | | OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN with a ramp of about 4 ms (C37 = 1 nF from CT to VIN), and the TPS61040 then ramps to 13.0 V |
+| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 5 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's ramp; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, never below 5 ms. |
 | 24 | AFh | | Display on; SEG/COM turn on about 200 ms later (tAF) |
 
 | Transition | Sequence | Notes |
@@ -1815,8 +1824,9 @@ with the verifier's corrections.
 | **Short idle** (DIM) | AEh only, VCC kept on | About 5 mA. Gives instant re-show for idles under 30 s. |
 | **Off for long storage / ship** | AEh → VCC_EN low → RES# low | VCI stays up (no switch on +3V3) |
 
-Never apply VCC while VCI is off. The P-FET disconnect guarantees this in
-hardware, and firmware keeps the order anyway.
+Never apply VCC while VCI is off. U21 guarantees this in hardware: R25 holds
+its ON pin low whenever the nRF (on +3V3, which also feeds VCI) is unpowered
+or in reset. Firmware keeps the order anyway.
 
 ### 7.3 LVGL configuration
 
@@ -1856,14 +1866,17 @@ hardware, and firmware keeps the order anyway.
 ### 8.1 Piezo
 
 * PKMCS0909E4000-R1, driven complementary from PWM1 at 4.0 kHz (resonance):
-  ±3.3 V, about 72 dB(A) minimum at 10 cm.
+  ±3.3 V, about 72 dB(A) minimum at 10 cm (research figure; TVP with the
+  470 Ω series resistors).
 * A detent or segment tick is 1–2 cycles (0.25–0.5 ms), rate-limited to 200
   ticks/s.
   * Above about 8 rev/s in click mode, tick on segment boundaries rather than
     on every detent (24 × 8 = 192/s).
   * Volume is set by cycle count and duty, in levels 0–3.
-* Silent mode is a setting (GATT, menu). With the high-drive outputs and 100 Ω
-  per side, edge currents are tens of mA, which is fine.
+* Silent mode is a setting (GATT, menu). With the high-drive outputs and
+  470 Ω per side (R57/R58), the edge current is at most about 7 mA (a 6.6 V
+  step across 940 Ω; estimate), which is fine. R59 (1 MΩ across BZ1) bleeds
+  the piezo while the pins are disconnected in sleep.
 
 ### 8.2 Press handling (`press.c`)
 
@@ -2340,7 +2353,7 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 |---|---|---|---|
 | Rotation | TMAG_INT_N SENSE low (latched W&S INT) | DIM, DESK_IDLE, SLEEP | Trigger after 0.5–4.3° of rotation, plus at most one W&S interval (10/100 ms) |
 | Press | BTN_N SENSE low | All System ON states | About 5 ms (debounce) |
-| Press (ship) | BQ25180 TS/MR via Q1, ≥ 2 s hold | SHIP | 2 s + boot |
+| Press (ship) | BQ25180 TS/MR via Q1A, ≥ 2 s hold | SHIP | 2 s + boot |
 | Pick-up / shake | IMU_INT1 SENSE high (latched) | DESK_IDLE, SLEEP | ≤ 80 ms (12.5 Hz ODR) |
 | USB plug | POWER USBDETECTED (VBUS ≥ 4.3 V guaranteed) | All; BQ adapter wake from SHIP/SHUTDOWN | Immediate |
 | Charger status | CHG_INT_N SENSE low | All | Handled silently (charging indicator only) |
@@ -2633,8 +2646,8 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 | 8 | VSYS ADC calibration | Battery emulator at 3.800 V, no USB | Raw gain within ±3 %; store `cal/vsys_gain`; residual ≤ 10 mV |
 | 9 | Ship mode | Write 0x49, unplug, measure; hold the press 2 s | Battery current ≤ 4.5 µA (board side); wakes on the 2 s press |
 | 10 | Press | BTN_N press/release counts | 10/10 presses detected, no bounce |
-| 11 | OLED | Power sequence, colour bars, full white; measure +13V_OLED at the TP; sleep current | 12.5–13.5 V; correct colours and orientation; no garbage on first light |
-| 12 | LEDs | VLED ramp (scope); walk R/G/B over 48 LEDs; all red at 50 % → current | All 48 in order (D1 at θ = 0°, CCW); about 48 × 2.5 mA (C) or 6 mA (B) ±15 % → sets the factory LED variant |
+| 11 | OLED | Power sequence, colour bars, full white; measure +13V_OLED at C39 (the net has no test pad); sleep current | 12.5–13.5 V; correct colours and orientation; no garbage on first light |
+| 12 | LEDs | VLED ramp and fall at TP3 (scope); walk R/G/B over 48 LEDs; all red at 50 % → current | VLED tON ≤ 5 ms (about 4 ms expected) and fall ≤ 30 ms ([§6.4](#64-rail-sequencing)); all 48 in order (D101 at θ = 0°, CCW); about 48 × 2.5 mA (C) or 6 mA (B) ±15 % → sets the factory LED variant |
 | 13 | Piezo | 4 kHz tone | Audible / mic SPL ≥ spec (optional) |
 | 14 | IMU | ST self-test (CTRL3 ST bits); flat-orientation Z ≈ +1 g; tap → INT1 | Self-test within limits; INT1 fires |
 | 15 | TMAG basic | ID and manufacturer registers; 6-byte CRC frames streaming; measured sample rate | CRC OK; rate 2.8–3.4 kSPS (record it); frame length confirmed 6 or 8 |
@@ -2697,15 +2710,22 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 ## 18. Open items and to-verify list
 
 **Problems found in SPEC or in the sibling documents that affect firmware**
-(reported; SPEC stays the reference):
+(reported; SPEC stays the reference except where the sheets are ahead of it,
+item 9). Items 1 and 6 (first part) are resolved; they stay here, marked, so
+the history is traceable.
 
-1. **TPS22917 CT reference.**
-   * The TPS22917 datasheet says to connect CT to **VIN**, but the
-     `main_power` sheet ties C7 to GND.
-   * SPEC also calls the TPS22918 (CT to GND) "pin-compatible" and labels the
-     ON pin "TPS22918" in §4.
-   * Effect on firmware: the VLED rise time and inrush are unknown, so the
-     5 ms power-on wait in [§6.4](#64-rail-sequencing) has to be measured.
+1. **TPS22917 CT reference. Resolved.**
+   * The TPS22917 datasheet says to connect CT to **VIN**. The `main_power`
+     sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 100 Ω
+     to VLED and R3 = 100 kΩ as the ON pull-down, and SPEC §5.1 says the
+     same (≈ 4 ms rise).
+   * SPEC now states that the TPS22918 (CT to GND) is *not* a drop-in, and
+     §4 labels P1.04 "TPS22917 ON".
+   * The OLED boost-input switch U21 is wired the same way (C37 = 1 nF CT to
+     VIN, QOD open).
+   * Effect on firmware: the 5 ms power-on waits in [§6.4](#64-rail-sequencing)
+     and [§7.2](#72-init-sequence-and-power-sequencing) cover the ≈ 4 ms tON;
+     test 12 checks the VLED ramp.
 2. **DRV5032 depth.** With the sensor on the top side, the die sits about
    2.4–2.8 mm above the detent-magnet face (the research recommended
    3.0–3.5 mm). My simulation gives |Bz| = 1.0–1.4 mT at full click, against
@@ -2749,11 +2769,15 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
    depends on the unproven fingerprint lock.
 5. **No spare fast GPIO.** If the nRF I2S cannot run with SDOUT alone, only
    P0.04 is available for SCK and there is no fast pin for LRCK. Fallback is
-   SPIM2 (`ws2812-spi`) on the same pin.
+   SPIM2 (`ws2812-spi`) on the same pin. SPIM2 is also the OLED fallback
+   ([§7.1](#71-spi-link-and-the-spim3-errata)), so it can rescue only one of
+   the two.
 6. **Sibling documents.**
-   * docs/architecture.md §6.6 says "LVGL on SPIM2", while SPEC §4 says SPIM3.
-     Firmware follows SPEC: SPIM3 at 16 MHz with the anomaly-198 RAM
-     carve-out, keeping SPIM2 at 8 MHz as a devicetree-only fallback.
+   * **Resolved:** docs/architecture.md §6.6 used to say "LVGL on SPIM2".
+     Its §6.3, §6.6, decision D6 and risk R19 now agree with SPEC §4 and
+     with this document: SPIM3 at 16 MHz with the anomaly 198 and 195
+     workarounds, SPIM2 at 8 MHz on the same pins as a devicetree-only
+     fallback.
    * architecture.md §2 states 150 Radial Controller units per detent, while
      the MCU research recommends 100 (the Windows default is unverified).
      Firmware makes it a setting, default 100, pending a Windows test.
@@ -2763,6 +2787,16 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
    listed in docs/architecture.md §8.3.
 8. **CHG_INT_N** delivers 128 µs pulses into a SENSE pin. Capture relies on
    the nRF52840 LATCH register (TVP); polling while on USB is the backstop.
+9. **SPEC behind the sheets** (reported as architecture.md §13 items 12 and
+   13). Firmware follows the sheets and the netlist:
+   * SPEC §3 and §5.3 still describe an AO3401A + 2N7002 OLED boost-input
+     disconnect. The `display` sheet has U21 TPS22917 instead (VIN = VSYS
+     with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down, C37 1 nF
+     from CT to VIN, QOD open, VOUT = OLED_VIN). Its always-on
+     reverse-current blocking (IIN,RCB ≤ 1 µA) keeps OLED_VIN from
+     back-feeding VSYS ([§3.1](#31-board-dts-draft), [§7.2](#72-init-sequence-and-power-sequencing)).
+   * SPEC §4 and §5.5 give 100 Ω per piezo side; the `sensors` sheet has
+     R57/R58 = 470 Ω plus the R59 1 MΩ bleed ([§8.1](#81-piezo)).
 
 **To verify on prototype or against documentation**
 
@@ -2780,6 +2814,10 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 * Whether `PINCTRL_DT_DEFINE` works on disabled `&i2c0`/`&pwm0` nodes.
 * I2S running with SDOUT only; WS2812C V6 timing on the scope; LED per-IC
   current (0.2 mA).
+* The U2 (VLED) and U21 (OLED_VIN) turn-on ramps (tON about 4 ms with
+  1 nF CT) and the VLED QOD fall (about 27 ms), against the 5 ms and 30 ms
+  waits of [§3.1](#31-board-dts-draft) and [§6.4](#64-rail-sequencing).
+* Piezo sound level with the 470 Ω series resistors.
 * The SSD1351 VCC-to-AFh delay (vendor 200 ms); the A0h remap for the actual
   mounting; SPI edge rates (tR/tF ≤ 15 ns); the anomaly-198 carve-out with
   Partition Manager; SPIM3 sleep current (anomaly 195).

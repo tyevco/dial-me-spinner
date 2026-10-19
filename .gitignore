@@ -12,3 +12,5 @@ hardware/build/
 *.dsn
 *.ses
 *.rules
+hardware/sim/results/
+.pytest_cache/

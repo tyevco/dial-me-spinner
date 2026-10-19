@@ -11,13 +11,15 @@ step passing first.
 * **[TVP]** means *to verify on prototype*: the number comes from a model, a datasheet typical or an unverified
   vendor claim, not from a measurement on this design.
 * **Mechanical model:** `hardware/mechanical/dial_spinner.scad`, described in [`docs/mechanical.md`](mechanical.md).
-  Where SPEC §8 is not buildable as written, the model deviates from it and marks the constant `DEV:`. SPEC §8
-  has since been revised: the base board is a Ø46 disc on two M2 bosses at r = 21, the pack lies along
-  θ = 0°/180°, the antenna sits on a printed shelf along y = +26, both link connectors are side-entry and the FA
-  lower plate is a 3-spoke spider. This document follows SPEC and the generated boards for those items (§2.2,
-  §6, §7.1, §7.2, §11.2). It still follows the model for the guide pins and stop screws, the FA springs, the
-  spindle slots and hub, and the feet (§4.3, §11). The model is being updated to the generated boards, so
-  re-check those steps against `docs/mechanical.md` before printing parts.
+  Where SPEC §8 is not buildable as written, the model deviates from it and marks the constant `DEV:`. The model
+  takes the board parts from the generated PCBs (`extract_board_parts.py`), so its clash check tests the boards
+  as placed. SPEC §8 has since been revised: the base board is a Ø46 disc on one M2 boss at r = 20, θ = 270°, a
+  printed rib and the USB-C shell; the pack lies along θ = 0°/180°; the antenna shelf is centred on y = +23.5;
+  both link connectors are side-entry; and the FA lower plate is a 3-spoke spider. This document follows SPEC and
+  the generated boards for those items (§2.2, §6, §7.1, §7.2, §11.2), and the model for the parts SPEC does not
+  define: guide pins and stop screws, springs, press pad, spindle stack and its M4 clamp, rotor seat and ESD
+  strap, feet (§4.3, §10, §11). `docs/mechanical.md` §12 is the reference build order; re-check against it
+  before printing or machining parts.
 * Designators are the ones in the schematic sheet modules (`hardware/design/sheets/*.py`) and on the generated
   boards. The BOM, CPL and `ORDER-NOTES.md` that `release.py` writes come from the same netlists (§2), so treat
   those files, not this text, as the order record.
@@ -29,7 +31,7 @@ step passing first.
 | Item | Made by | Notes |
 |---|---|---|
 | Main board PCB + PCBA (Ø64, 4-layer, ENIG) | JLCPCB, Standard PCBA, **both sides** | MDBT50Q module via Global Sourcing or consignment (§4.1) |
-| Base board PCB + PCBA (Ø46 + USB tab, 2-layer, ENIG) | JLCPCB, Standard PCBA, top side, plus RT1 on the bottom (§3.1) | BQ25180 DSBGA, X-ray required (§3.2) |
+| Base board PCB + PCBA (Ø46 + USB tab, 2-layer, ENIG) | JLCPCB, Standard PCBA, top side only | BQ25180 DSBGA, X-ray required (§3.2) |
 | 12-way link harness through the spindle (plus a separate bench harness) | Hand | §6 |
 | 2.4 GHz flex antenna + coax | Hand (adhesive + u.FL mate) | §7.1 |
 | 1S LiPo pack + JST-PH breakout lead | Hand | Check polarity before plugging in (§7.2) |
@@ -67,7 +69,7 @@ bottom 180° − θ + α), so the JLC preview should already show every part the
 | Vias | 0.25 mm drill / 0.45 mm pad, 0.5 mm pad on the power and GND net classes (`layout.py`), **tented** | Module inner pads escape inward to tented vias under the module body ([mcu verifier]). If any via touches a pad, order "epoxy filled & capped" instead |
 | Solder mask | **White** (matches the white light-box interior in SPEC §8) or black | White raises the cavity-floor reflectance and recovers band-edge brightness. Black gives crisper pixels. Both sides get the same colour. Check JLC's minimum mask dam for the chosen colour against the 0.5 mm-pitch ZIF and LGA pads |
 | Silkscreen | Any, but **none inside the LED cavity r 27–30** | Silk and bare copper inside the cavity show as specular hotspots ([leds research]). As generated, the stock LED footprints' own silk marks (D101–D148) and R42's reference lie in this band: remove them or accept the hotspots (§13 #22) |
-| Board outline | Ø64 disc, centre Ø5; 3× **plated GND** M2 (H1–H3) at r = 6.5, θ 90°/210°/330°; 2× NPTH M2 (H4/H5) at r = 17, θ 60°/120° | SPEC §8. H1–H3 clamp the spindle hub and are the GND end of the ring's ESD bleed path (§10.1). H4/H5 hold the actuator bracket |
+| Board outline | Ø64 disc, centre Ø5; 3× **plated GND** M2 (H1–H3) at r = 6.5, θ 90°/210°/330°; 2× NPTH M2 (H4/H5) at r = 17, θ 60°/120° | SPEC §8. The spindle's M4 spigot passes the Ø5 hole. The brass hub's face on the plated H1–H3 pads is the GND end of the ring's ESD bleed (§10.1, §11.4), and the OLED-bracket screws go through H1–H3 into the hub. H4 holds the stepper saddle; the model leaves H5 unused |
 | Fiducials | FID1–FID3 on the top, FID4–FID6 on the bottom (1 mm copper, 2 mm mask opening) | Three per assembled side (`layout.py`) |
 | Electrical test | Yes (JLC default for multilayer) | |
 
@@ -80,9 +82,10 @@ bottom 180° − θ + α), so the JLC preview should already show every part the
 | Surface finish | **ENIG** (required) | JLC requires ENIG for 0.20–0.25 mm BGA pads. The BQ25180YBG is a 0.4 mm-pitch DSBGA-8 on 0.23 mm NSMD pads ([power verifier]; [BQ25180 datasheet](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) |
 | Copper | 1 oz | Charger traces carry up to 1 A |
 | Solder mask | Green is fine (hidden) | Mask opening on the DSBGA must be ≤ 0.05 mm larger than the 0.23 mm pad. The footprint (`base.py`) opens it 0.025 mm per side, giving 0.28 mm openings and a dam of about 0.12 mm at 0.4 mm pitch. If that is below JLC's minimum for the chosen colour, JLC may merge the openings. Accept it, since no traces run between balls **[TVP: check the JLC DFM report]** |
-| Board outline | Ø46 disc plus a 13 mm-wide tab to r = 34.6 at θ = 0° for the USB-C; 2× NPTH M2 (H1/H2) at r = 21, θ = 90°/270° | SPEC §2, §8; `layout.py`. The holes sit outside the pack, and the USB-C shell clamped in the cup wall is the third support (§11.2) |
+| Board outline | Ø46 disc plus a 13 mm-wide tab to r = 34.6 at θ = 0° for the USB-C; one NPTH M2 hole (H1, Ø2.2) at r = 20, θ = 270° | SPEC §8; `layout.py`. H1 sits outside the pack. A printed rib under the θ = 90° edge and the USB-C shell, captured in the cup wall, are the other two supports (§11.2) |
 | USB-C shell legs | Plated slots per the HRO TYPE-C-31-M-12 footprint | Shell legs carry the cable side loads |
-| Bottom side | **Only RT1**, the 0402 NTC (r 8, θ 200°) | `layout.py` puts it there so it reads the cell through a soft thermal pad (architecture §8.5, R28). The underside faces the LiPo across 1.0 mm (§7.2) |
+| Bottom side | **No components** (single-sided board) | It faces the LiPo across 1.0 mm (§7.2). The NTC RT1 is on the top at r 8, θ 200° (SPEC §8) |
+| Antenna keep-out | No B.Cu copper (tracks, vias, pour) for y > 15.4 and no F.Cu pour for y > 17 | SPEC §8, `layout.py` `ANTENNA_KEEPOUT_*`: keeps base-board copper ≥ 5 mm from the antenna under the θ = 90° edge (§7.1) |
 | Fiducials | FID1–FID3 on the top | `layout.py` |
 
 ### 2.3 Panelization of round boards
@@ -92,7 +95,8 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
 
 * Main board: put tabs where the rim is free of parts. File the nubs flush, because the light box (r 27–30) and
   the top cover (r 32.5) sit very close to the r = 32 edge.
-* Base board: keep tabs off the USB tab and away from the 2 M2 holes at r = 21 (θ 90°/270°).
+* Base board: keep tabs off the USB tab, away from the M2 hole at r = 20, θ = 270°, and off the θ = 90° edge
+  that rests on the cup's rib.
 
 ### 2.4 Pre-order checks (do them in the Gerber viewer, not only in KiCad)
 
@@ -132,16 +136,19 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
    why §7.2 adds a battery breakout.
 8. **Module u.FL clearance to the rotor: still open.** The mated u.FL plug stands about 2.5 mm proud of the module
    and points down, toward the rotor. The layout follows SPEC §8: U10 is on the bottom at r = 14.5, θ = 215°,
-   with its u.FL end toward the centre, and its courtyard reaches in to r ≈ 8.5. That puts the plug above the 608,
-   the bearing retainer and the carrier collar, which rotate and reach up to z = 26.0 at r ≤ 12.2 in the model,
-   and leaves no margin to the spindle-flange keep-out r ≤ 8.5 (`docs/mechanical.md` §3 item 7 asks for the
-   module to start at r ≥ 8.7). In the earlier model the plug overlapped the rotor's swept envelope by
-   ≈ 41 mm³ (z 24.4–26.0, r 9.5–12.2; a `clash_geom` run on `main_board`). Before ordering, re-run the clash check
-   with the as-placed board (`hardware/mechanical/extract_board_parts.py` brings the board parts into the model)
-   and either show clearance or move the module so that its u.FL sits at r ≥ 13 over the bowl (the carrier web is
-   at z ≤ 19 there).
-9. **Base-board mounting holes: done.** SPEC §8 and the base board now use 2× M2 (H1/H2) at r = 21,
-   θ = 90°/270°, outside the pack, with the USB-C shell as the third support. The cup has to match (§11.2).
+   with its u.FL end toward the centre. Its courtyard reaches in to r ≈ 6.25, and the model's clash check
+   (`docs/mechanical.md` §3B item B1) puts the module's inner end at r 6.8, about 1.5 mm into the brass hub
+   (r ≤ 8.5), and the mated plug (bottom z 25.8) 0.2 mm into the rotating cap ring. Before ordering, move the
+   module so that its inner end is at r ≥ 8.8 with the u.FL end facing outward over the bowl (B1), or show
+   clearance in a fresh clash check (`extract_board_parts.py`, then `check_clashes.sh`).
+9. **Base-board mounting: done.** SPEC §8 and the base board now use one M2 hole (H1) at r = 20, θ = 270°,
+   outside the pack, plus the cup's rib under the θ = 90° edge and the USB-C shell. The θ = 90° boss is gone: it
+   stood on the antenna strip.
+10. **Other placement checks from the model** (`docs/mechanical.md` §3, re-run the clash check on the final
+    boards): the battery connector J2 (S2B-PH-SM4-TB, ≈ 5.5 mm tall) and its plug must clear the rotor web and the
+    FA ring (B3); R42 must stay clear of the top-cover skirt at r ≥ 30.6 (B5); the main-board top within r ≤ 4.5
+    stays free for the M4 nut (A7). Bottom-side parts in the actuator corridor θ 30–160°, r 8.5–27 must stay
+    ≤ 1.3 mm tall unless the model shows clearance (A11).
 
 ---
 
@@ -153,11 +160,9 @@ rails**, or accept JLC adding process edges. Break-off tabs (mouse bites) leave 
   and its ESD array U32, both DRV8837 (U40, U41), link J1, motor connector J40, piezo BZ1, and their passives.
   Top: LEDs, ZIF J20, LDO U1, both TPS22917 load switches (U2, U21), 13 V boost, LIS2DW12, DRV5032 U42, TC2030
   pads. `ORDER-NOTES.md` lists every bottom-side placement. Plan for two reflow passes.
-* **Base board: Standard PCBA.** This is the safer tier for a 0.4 mm DSBGA plus an X-ray request. Check JLC's
-  current rules on which tier offers X-ray. Every part is on the top except **RT1** (0402 NTC, r 8, θ 200°),
-  which `layout.py` puts on the bottom against the pack (§2.2); `ORDER-NOTES.md` lists it as the only bottom-side
-  placement. Either order two-sided assembly for that one part, or remove RT1 from the BOM and CPL before upload
-  and hand-solder it (§13 #21).
+* **Base board: Standard PCBA, top side only.** This is the safer tier for a 0.4 mm DSBGA plus an X-ray request.
+  Check JLC's current rules on which tier offers X-ray. The board is single-sided (SPEC §8), so `ORDER-NOTES.md`
+  should list no bottom-side placements for it.
 * Most ICs are JLC Extended parts. Each unique Extended part carries a per-order setup fee, so check the BOM
   quote and consider ordering 5 boards per order.
 
@@ -184,7 +189,7 @@ Ask JLC to send the X-ray images. If they are not available, rely on the electri
 4. D101-D148 are rotated in 7.5 deg steps around a ring. Please check each placement against the
    pin-1 mark in the preview.
 5. DNP (footprint only, do not place): main board R11, U43, C43.
-6. The main board is assembled on both sides. The base board has one bottom-side part (RT1).
+6. The main board is assembled on both sides. The base board is assembled on the top side only.
 ```
 
 Copy notes 5 and 6 from the generated `hardware/fab/<board>/ORDER-NOTES.md` rather than from this text (§3.5):
@@ -197,16 +202,16 @@ The CPL already carries the per-part rotation and origin corrections (§2). The 
 * LEDs D101–D148: pin-1 marks follow the ring; the DI/VDD pad column faces the previous LED.
 * TMAG5273 U30 (bottom, θ = 270°, Hall element at r = 29.0): long axis radial (SPEC §5.5), so its X axis is
   tangential.
-* MDBT50Q U10 (bottom, r 14.5, θ 215°): the u.FL end faces the board centre (SPEC §8), so the coax runs straight
-  into the spindle bore.
+* MDBT50Q U10 (bottom): the u.FL end points the way the final board has it. As placed now it faces the board
+  centre (SPEC §8); §2.4 item 8 may turn it outward.
 * AFC01-S30FCA-00 ZIF J20 (top, r 9.5, θ = 270°): pin 1 matches the folded FPC (§7.4). Contacts are on the
   **bottom**.
-* BQ25180 U1 (base): ball A1.
+* BQ25180 U1 (base, r 19.5, θ 255°): ball A1.
 * Polarised parts: VCOMH tantalum C32 (C7189, + to the panel pin), B5819W D21 cathode to +13V_OLED, BAV99 D20
   orientation; on the base, SMF5.0A D1 cathode to VBUS.
 * Side-entry JST SH link connectors `SM12B-SRSS-TB`, entry toward the board centre: J1 (main, bottom, r 17.5,
   θ 330°) and J3 (base, top, r 15.5, θ 120°). Pin 1 position (§6). Also the motor connector J40 (main, bottom)
-  and the battery connector J2 (base, BAT+ silk at pin 1, §7.2).
+  and the battery connector J2 (base, r 17, θ 222°, mouth radially outward, BAT+ silk at pin 1, §7.2).
 
 ### 3.5 DNP
 
@@ -221,7 +226,7 @@ board only):
 * The **DRV5012AEDMRR** fallback wake latch of SPEC §5.5 is not on the `sensors` sheet, so the board has no
   footprint for it.
 * Test pads (TP1–TP4, TP10–TP13, TP40 and the base TP1–TP4), the TC2030 footprint J10 and the plated spindle
-  holes H1–H3 are `in_bom = False`. The fiducials and the NPTH holes (main H4/H5, base H1/H2) are board-only.
+  holes H1–H3 are `in_bom = False`. The fiducials and the NPTH holes (main H4/H5, base H1) are board-only.
   None of these needs a part.
 
 ---
@@ -274,19 +279,20 @@ APPROTECT enabled by default, which changes the programming procedure.
 | Bearing oil | ISO VG 2–10 (e.g. Mobil Velocite No.3 = VG 2, No.6 = VG 10) | Base oil type not stated by Mobil |
 | Track magnets | 48 + ≥ 10 spare, NdFeB **Ø2.0×2.0 mm N52**, axially magnetised, NiCuNi, one batch | ±0.05 mm and ±5 % Br vary by vendor ([detent research]) |
 | Detent magnet | 1 + spares, **Ø3×2 mm N52** axial | Near-equivalent: [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8"×1/16") |
-| Linear stepper | VIC-TECH VSM08102 (Ø8, M2×0.4, 0.02 mm/full step, ~10 mm stroke, 20 Ω/phase), or its 10 mm sibling for thrust margin | Listings conflict on stroke and the 10 mm part's thrust is unverified; get the drawing ([vendor page](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)) |
+| Linear stepper | VIC-TECH VSM08102 (Ø8, M2×0.4, ~10 mm stroke, 20 Ω/phase), slider with the spring-preloaded anti-backlash nut | Thrust margin is only ≈ 0.9–1.4× at rest (`docs/mechanical.md` §7). The 10 mm sibling does not fit the bowl. Fallback: N20 or Ø6 planetary gearmotor with a lead screw. Get the drawing and thrust curve ([vendor page](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)) |
 | Antenna | Molex **146153-0100** (100 mm coax), as SPEC §5.2 and §8 specify | The 50 mm -0050 is too short for the shelf-to-u.FL route (§7.1). -0100 is at DigiKey/Mouser ([Molex](https://www.molex.com/ja-jp/products/part-detail/1461530100)); LCSC C916292 is the -0050, so do not order it |
-| Battery | Protected 1S LiPo, 603450 class, **≤ 6.0 mm thick** at the drawing maximum (SPEC §8), JST-PH 2.0 lead, UN38.3 report | The bay envelope is 55 × 34.5 mm (\|x\| ≤ 27.5, \|y\| ≤ 17.25) with the long axis along θ = 0°/180° and the leads at the θ = 180° end. A protected 603450 is about 34.5 × 54–55 mm (diagonal 64–65 mm). The cup inner diameter is 66.8 mm. 6.0 mm leaves the 1.0 mm swelling gap (§7.2) |
-| Harness (final) | 12× JST SH pre-crimped double-ended leads, **28 AWG on the power pins 1–4 and 8** (SPEC §2), 28 or 30 AWG on the signals, + 2× SHR-12V-S housings | §6. One end stays loose until it has been threaded through the spindle (Stage C) |
+| Battery | Protected 1S LiPo, **≤ 6.0 mm thick** at the drawing maximum (SPEC §8), ≤ 34.5 × 55 mm including the PCM, JST-PH 2.0 lead, UN38.3 report | The bay envelope is 55 × 34.5 mm (\|x\| ≤ 27.5, \|y\| ≤ 17.25) with the long axis along θ = 0°/180° and the leads at the θ = 180° end. The mechanical BOM picks a 503450/523450-class pack, ≤ 5.6 mm, ≤ 53 mm long preferred, with the leads leaving the PCM end ≥ 4 mm off the centreline to clear the θ = 180° guide column (`docs/mechanical.md` §13). 6.0 mm leaves the 1.0 mm swelling gap (§7.2) |
+| Harness (final) | 12 single JST SH wires pre-crimped on both ends (SSH-003T-P0.2 contacts, no housings), **28 AWG on the power pins 1–4 and 8** (SPEC §2), 32 AWG on the seven signals, ≈ 100 mm, + 2× SHR-12V-S housings | §6. Both ends stay loose until the wires have been threaded through the spindle (Stage C) |
 | Harness (bench) | A second 12-way SH lead, housings fitted on both ends | Used only for Stages A–B, so the final harness never has to be de-pinned (§6) |
 | Battery breakout | Short JST-PH 2.0 extension (PH plug ↔ PH receptacle housing) with BAT+ cut and both ends, plus GND, brought out as a 3-wire 28–30 AWG tail to a 3-pin header and a shorting jumper | §7.2. Gives a battery disconnect and a PPK2/bench tap once J2 is buried |
-| RF test pigtail | 1.13 mm coax, ≈ 150–200 mm, **u.FL receptacle** (sold as "U.FL/IPEX male") on one end, SMA on the other, plus 1–2 clip-on ferrites | B-11.2 d/e (Stage R, §11.5). Check that it mates with the Molex antenna's u.FL plug and that its receptacle end passes the main-board Ø5 hole and the hub channel (3.5 × 1.5 mm in the model) **[TVP]** |
+| RF test pigtail | 1.13 mm coax, ≈ 150–200 mm, **u.FL receptacle** (sold as "U.FL/IPEX male") on one end, SMA on the other, plus 1–2 clip-on ferrites | B-11.2 d/e (Stage R, §11.5). Check that it mates with the Molex antenna's u.FL plug **[TVP]**. It leaves round the board edge (§11.4): the main-board Ø5 hole now carries the spindle's M4 spigot |
 | Motor lead | SHR-04V-S housing; ideally a factory-crimped SH lead on the motor | Avoid hand-crimping SH contacts ([detent verifier]) |
-| Fasteners | M2, **A4/316 stainless or brass**, nylon where possible | Test every screw with an N52 magnet. No carbon steel within 10 mm of the track. The 3 hub screws through the plated H1–H3 must be metal (A4 or brass), because they carry the ring's ESD bleed to GND (§12). No metal fastener within 10 mm of the antenna (§13 #19) |
-| Guide pins and stop screws (model) | 3× brass Ø3.0 pins, tapped M2 at the top, bonded into the cup ears; 3× M2 A4 or brass pan-head stop screws | Model `guide_pins()`: the springs push the FA plate up against the screw heads (§11.3) |
-| FA springs | 3× compression, 302/316 wire 0.35 mm, OD 4.0, free 6.0 mm, 5 active coils (k ≈ 0.53 N/mm) | Installed at about 3.56 mm for 3.9 N total; 3.4 mm gives 4.15 N ([mechanical verifier]). SPEC: ≈ 4 N. **The model's pockets give an installed length of only ≈ 2.65 mm** (ear seat z 10.25 to plate seat z 12.9). At that length this spring gives ≈ 5.3 N, and its solid height (≈ 7 × 0.35 = 2.45 mm) leaves 0.2 mm of travel against the 0.6 mm overload stop. Re-spec the spring to the pockets before buying, for example ≈ 3.5 active coils, free length ≈ 4.3–4.5 mm, k ≈ 0.78 N/mm, ≈ 1.3 N each at 2.65 mm, solid height ≤ 1.9 mm **[TVP]** |
-| Bearing wave spring | Non-magnetic (316 or BeCu), ≥ 2.5–3 N axial preload (SPEC §8) | Meant to keep every ball loaded under the ±0.7 N alternating detent pull ([detent verifier]). In the model it sits between the outer race and a snap retainer in the carrier, so it only retains the race; it does not load the balls (see §13 #12) |
-| Feet | 3× rubber or micro-suction at r = 28 | High-μ gel feet make it tip instead of slide under a hard flick ([mechanical verifier]) |
+| Fasteners | M2, **brass** (or A4/316 stainless), nylon where the antenna needs it | Test every screw with an N52 magnet. No carbon steel within 10 mm of the track. The OLED-bracket screws through the plated H1–H3 into the brass hub are brass (M2 × 6 countersunk); the hub face clamped on the H1–H3 pads is the GND end of the ring's ESD bleed (§12). The θ 60° stop screw, above the antenna, is nylon (§7.1) |
+| Guide pins and stop screws (model) | 3× knurled brass Ø3.0 pins (11.0 mm at θ 180°/300°, 7.0 mm at θ 60°), M2 tapped at the top, pressed with Loctite 638 and locked by Ø1.0 cross pins; 3× M2 × 3 brass pan-head stop screws. At θ 60°, above the antenna: PEEK pin, PEEK cross pin and a nylon screw | `docs/mechanical.md` §8: the springs push the FA plate up against the screw heads (§11.3). The θ 180° guide sits at r = 30 so its column clears the pack end |
+| FA springs | 3× compression, 302 SS, wire 0.32 mm, OD 3.95, 3 active + 2 closed/ground, free length 4.72 mm, k ≈ 0.63 N/mm | Installed at 2.60 mm (column/ear seat z 10.5 to plate seat z 13.1): 1.33 N each, 4.0 N total (SPEC: ≈ 4 N). Solid height 1.60 mm leaves 0.50 mm of margin at the 0.50 mm hard stop. A spare set with free length 5.03 mm gives 4.6 N at the same installed length. Measure the rate **[TVP]** |
+| Bearing seat | 22 mm-bore single-turn wave washer (working height ≤ 0.5 mm, 30–50 N, stainless) + 0.5 mm 316 cap ring (OD 24.4 / ID 19.9) | A compliant drop seat for the outer race; the cap ring is bonded on the collar top (§10.1). It does not preload the balls (see §13 #12) |
+| Turned and small mechanical parts | 316L spindle with M4×0.5 spigot, brass hub, brass lower spacer, M4×0.5 brass nut, Ø3 × 1 silicone press pad, PB ESD strap and silver conductive epoxy, 0.7 mm cover glass, FR4 link plate | Full list with drawings: `docs/mechanical.md` §13 |
+| Feet | 3× micro-suction arc pads, 70° each, r 25–31 (model) | SPEC says point feet at r = 28, which tip under a rim press. High-μ gel feet make it tip instead of slide under a hard flick ([mechanical verifier]) |
 
 ---
 
@@ -319,20 +325,21 @@ The pinout is identical on both boards and the harness is straight-through, 1→
   keep the **final harness** for the spindle. The final harness is never fitted with both housings before it
   has been threaded, so no SH contact ever has to be extracted from a housing. Extracting and re-inserting SH
   contacts is error-prone, and the detent verifier warns against reworking SH crimps.
-* **Threading (final harness).** A 12-way SHR housing is about 14 mm wide and cannot pass the **Ø6 bore** or the
-  3.5 × 1.5–1.9 mm spindle exit slots (model). Use leads pre-crimped on both ends, for example JST "ASSHSSH28K"
-  series double-ended leads **[TVP: confirm the part number and length]**. Insert one end into the base-side
-  housing (J3) and leave the other 12 contacts loose. At Stage C, feed the loose contacts into the spindle's
-  lower exit slot a few at a time, together with the antenna coax, and fish them out of the upper slot with a
-  loop of 0.2 mm nylon line. Insert them into the main-side housing only then (Stage D1). The bore
-  cross-section (28 mm²) easily holds 12× 28 AWG (≈ 0.7 mm OD) plus the 1.13 mm coax. **The exit slots do not:**
-  in the model the spindle slots and the hub channel are 3.5 × 1.5–1.9 mm (≈ 5.3–6.7 mm²), while 12 × 0.7 mm
-  wires plus the coax take ≈ 5.6 mm². SPEC §2 keeps 28 AWG on the five power leads (pins 1–4 and 8), so thinner
-  wire can help only on the seven signals: 5× 28 AWG + 7× 30 AWG (≈ 0.5 mm OD) plus the coax take ≈ 4.3 mm²
-  (estimate from the same ODs). Widen the slots (≈ 5 × 2.5 mm) before printing (§13 #15).
-* **Length.** Measure on the first mechanical mock-up, from base J3 (top side) up through the spindle and out
-  of its upper side slot to main J1 (bottom side, r = 17.5, θ = 330°). Allow a **≥ 5 mm service loop**,
-  because the FA moves 0.3–0.6 mm on every press while the base is fixed. On the first unit, and on any unit that
+* **Threading (final harness).** A 12-way SHR housing is about 14 × 3 mm and cannot pass the **Ø6 bore** or the
+  spindle's 5.0 mm-wide side slots (model: the lower window at θ = 120°, z 14.45–16.35, and the upper slot at
+  θ = 270°, z 25.8–28.25, with the brass hub's 5.0 mm C-gap above it). Use 12 single wires pre-crimped on both ends
+  (SSH-003T-P0.2 contacts): 28 AWG on pins 1–4 and 8 (SPEC §2), 32 AWG on the seven signals (`docs/mechanical.md`
+  §13) **[TVP: confirm the lead part numbers]**. At Stage C, while the FA lower stack is still on the bench, push
+  the contact ends in through the θ = 120° window and about 10 mm up the bore with a pull string, then the antenna
+  coax, plug first, and keep all top ends inside the bore. Insert the base-end contacts into one housing, which
+  then plugs into J3 (Stage C3–C4). Fish the top ends out of the θ = 270° slot after the rotor is on, and insert
+  them into the main-side housing only then (Stage D1). The bore cross-section (28 mm²) easily holds the wires plus
+  the 1.13 mm coax, and so does the 5.0 × 1.9 mm lower window (9.5 mm²): even 12× 28 AWG (≈ 0.7 mm OD) plus the
+  coax take only ≈ 5.6 mm².
+* **Length.** About 100 mm per wire: a modelled path of ≈ 85 mm from base J3 (top side) up through the spindle
+  and out of its upper slot to main J1 (bottom side, r = 17.5, θ = 330°), plus 15 mm of slack
+  (`docs/mechanical.md` §12). Re-measure on the first mechanical mock-up. Allow a **≥ 5 mm service loop**,
+  because the FA moves up to 0.5 mm on every press while the base is fixed. On the first unit, and on any unit that
   gets the RF S11 test (Stage R), add a **≥ 10 mm lift loop** parked straight inside the spindle bore (nothing
   rotates in the bore). It lets the main board be lifted about 10 mm off the hub to reach J1 and the u.FL
   **[TVP: check on the mock-up]**.
@@ -349,8 +356,8 @@ The pinout is identical on both boards and the harness is straight-through, 1→
 
   | Check | Bench harness | Final harness | Pass |
   |---|---|---|---|
-  | Each pin to the same pin at the other end | All 12, on the bench | Stage C2, base end in J3, base unpowered, base TPs still reachable: each loose contact for pins 1–2 (VSYS TP), 3/4/8 (GND TP) and 5 (VBUS TP) | < 0.5 Ω |
-  | Each pin to its neighbours | All, on the bench | Loose contacts against each other at C2; then at D1 across adjacent cavities of the fitted main-side housing | > 10 MΩ loose; > 100 kΩ once the base board loads the nets |
+  | Each pin to the same pin at the other end | All 12, on the bench | Stage C4, base end in J3, base unpowered, base TPs still reachable: each loose contact for pins 1–2 (VSYS TP), 3/4/8 (GND TP) and 5 (VBUS TP) | < 0.5 Ω |
+  | Each pin to its neighbours | All, on the bench | Loose contacts against each other at C4; then at D1 across adjacent cavities of the fitted main-side housing | > 10 MΩ loose; > 100 kΩ once the base board loads the nets |
   | Pins 1–2 (VSYS) to 3/4/8 (GND) | open | D1, at the housing front | > 100 kΩ (the base VSYS-to-GND reading, B-3c) |
 
   Final-harness signal pins 6, 7 and 9–12 are verified by function in Stage D (USB enumerates, both I2C devices
@@ -364,41 +371,47 @@ The pinout is identical on both boards and the harness is straight-through, 1→
 
 ### 7.1 Antenna and coax (Molex 146153-0100)
 
-SPEC §8 places the 34.9 × 9 × 0.1 mm flex on a printed shelf at z ≈ 5.5–6.0 along the chord y = +26 (θ ≈ 90°),
-outer edge ≤ r 33: about 9.5 mm below the ring, about 6 mm above the desk and ≥ 4 mm from the pack side
-(y = 17.25). The coax (100 mm on the -0100) rises to the spindle's lower side slot, runs up the bore and leaves
-through the upper slot to the module's u.FL (U10, main-board bottom, r = 14.5, θ = 215°, u.FL end toward the
-centre). The 50 mm -0050 is too short for this route.
+SPEC §8 places the 34.9 × 9 × 0.1 mm flex on a printed shelf at z ≈ 5.5–6.0, centred on the chord y = +23.5
+(θ ≈ 90°; strip y 19.0–28.0, corners at r ≤ 33): about 9.5 mm below the ring, about 6 mm above the desk and
+1.75 mm in plan from the pack side (y = 17.25). The coax (100 mm on the -0100) rises to the spindle's lower side
+slot, runs up the bore and leaves through the upper slot to the module's u.FL (U10, main-board bottom, r = 14.5,
+θ = 215°). The 50 mm -0050 is too short for this route.
 
-**Geometry: check SPEC's shelf on the mock-up** (also §13 #19). The committed model still has the earlier
-floor-pocket layout at x = −23.85 and is being updated:
+**Geometry** (SPEC §8, `docs/mechanical.md` §9):
 
-* SPEC's numbers do not all fit together. Centred on y = +26, the 9 mm-wide strip's outer corners sit at
-  r ≈ 35.1, outside the cup's inner wall at r = 33.4 (Ø70, 1.6 mm wall). With the corners at r ≤ 33 the centre
-  moves to y ≈ 23.5 and the inner edge to y ≈ 19.0, only ≈ 1.75 mm from the pack side instead of ≥ 4 mm. The
-  base-board boss at r = 21, θ = 90° (H1) also stands on the strip, and a metal screw or insert there would break
-  the 10 mm metal keep-out (§12). The cup design has to settle all three.
+* The earlier chord y = +26 put the strip's corners at r ≈ 35.1, outside the cup's inner wall at r = 33.4, so
+  SPEC moved it to y = +23.5. The pack is then only 1.75 mm away in plan instead of ≥ 4 mm, and SPEC replaced the
+  θ = 90° base-board boss, which stood on the strip, with a printed rib at y 17.75–18.75 (§11.2). The base board
+  keeps its copper ≥ 5 mm from the antenna: no B.Cu copper for y > 15.4 and no F.Cu pour for y > 17 (`layout.py`).
+* The θ = 60° guide ear sits 0.75 mm above the antenna's +x end, so its pin, cross pin and stop screw are plastic
+  (§4.3). The steel spring stays unless S11 says otherwise **[TVP]**.
 * At z ≈ 5.5–6 the radiator is about 6 mm above the desk (SPEC). A metal desk still detunes it; bring-up
   B-11.2e tests that case.
-* **Route:** the antenna side (θ ≈ 90°) lies in the FA lower plate's open sector centred on θ = 120° (spokes at
-  60°/180°/300°, SPEC §8), so the coax rises past the plate without a plate hole. Allow bend radii (≥ 5 mm for
-  1.13 mm coax) and a press-travel loop: the run between the shelf (stationary) and the spindle slot (FA, moves
-  0.6 mm) is the travel loop. Keep any excess as a gentle loop away from the antenna and the rotor gap; do not
-  coil it next to the antenna. The u.FL plug has to pass the spindle's lower slot (§6) **[TVP]**.
+* **Route (model):** the coax leaves the antenna's −x end (verify on the Molex drawing), rises at
+  (x, y) ≈ (−14.6, 19.9), outside the base board (r 23) and inside the FA ring (r 26), crosses over J3 at
+  z ≈ 15, enters the spindle through the θ = 120° window together with the harness, runs up the bore, leaves
+  through the θ = 270° slot and the hub's C-gap, and runs flat against the board to the u.FL. That is ≈ 64 mm to
+  the as-placed u.FL (§2.4 item 8 may change it). Stow the remaining ≈ 25–35 mm as one gentle loop against the
+  cup wall at θ ≈ 100–150°, away from the antenna body, and leave ≥ 3 mm of slack where the coax crosses the
+  press gap **[TVP: check S11 with the final routing]**. The turns into and out of the Ø6 bore are tighter than
+  the usual 5 × OD bend radius **[TVP]**.
+* **Plug passage:** the u.FL plug (≈ Ø2.0 × 1.3 plus the crimp sleeve) has to pass the 5.0 × 1.9 mm lower window
+  and the 5.0 × 2.45 mm upper slot. Trial-fit a real plug in a spare spindle before the batch is machined
+  **[TVP]**.
 
 **Fitting:**
 
 1. Clean the shelf with IPA. Apply the antenna's adhesive once, without bubbles, and do not stretch the
    flex. Keep metal paint, plating and conductive tape away from it.
-2. Route the coax with ≥ 5 mm bend radius. Fix it with Kapton every 15–20 mm. It must never cross the rotor
-   running gap.
+2. Route the coax with ≥ 5 mm bend radius where there is room. Fix it with Kapton every 15–20 mm. It must never
+   cross the rotor running gap.
 3. **u.FL mating is rated for only about 30 cycles.** Unmate with a u.FL extraction tool, never by pulling the
    cable, and log every cycle. The planned sequence for a unit that gets the full RF test is:
 
    | When | Antenna plug mates with | Antenna plug cycles | Module receptacle cycles |
    |---|---|---|---|
    | Stage B, B-11.2 a–c | RF test pigtail (coax still free in the base) | 1 | 0 |
-   | Stage D2, before the main board is lowered | RF test pigtail again, led out through the main-board Ø5 hole or round the board edge (§11.4) | 2 | 0 |
+   | Stage D2, before the main board is lowered | RF test pigtail again, led out round the board edge (§11.4) | 2 | 0 |
    | Stage R, after B-11.2 d/e | Module (main board lifted ≈ 10 mm) | 3 | 1 |
 
    A unit that skips the S11 test (§11.5) mates the module once at D2: 1 cycle each.
@@ -413,20 +426,21 @@ floor-pocket layout at x = −23.85 and is being updated:
 3. **Swell gap.** SPEC §8 limits the pack to ≤ 6.0 mm. In the bay (z 2.5–9.0) it tops out at z 8.5, and the
    base board's underside is at z 9.5, which leaves the **1.0 mm** swelling gap SPEC asks for (the mechanical
    verifier asked for 0.8–1.0 mm). Check it against the maximum thickness on the pack drawing, not the nominal.
-   The only part on the underside is RT1, the NTC (r 8, θ 200°): it must touch the pouch through a soft thermal
-   pad, never as a hard point (architecture §8.5, R28).
+   The base board is single-sided, so nothing sits on its underside over the pack. The NTC RT1 is on the top
+   (r 8, θ 200°) and reads board and pack-air temperature, not the cell skin (SPEC §8).
 4. Fix the pack with thin double-sided foam tape, not hard adhesive, so it can swell and be replaced. Long axis
-   along θ = 0°/180° (SPEC §8: |x| ≤ 27.5, |y| ≤ 17.25), with the leads at the θ = 180° end.
+   along θ = 0°/180° (SPEC §8: |x| ≤ 27.5, |y| ≤ 17.25), against the cup's θ = 0° end stop, with the leads at the
+   θ = 180° end (model: leaving at y ≈ −7.5, clear of the θ = 180° guide column).
 5. Nickel is slightly ferromagnetic ([power research]). The cell's tab end is the lead end at θ = 180°; keep
    any extra nickel strip or steel hardware away from the TMAG side (θ = 270°).
 6. **Battery breakout (fit at Stage B on every unit that will get B-9.9b, B-10 or B-9.8f after Stage C).** Once
    the FA lower plate and the rotor are in, J2 cannot be reached. J2 sits on the base-board top at r = 17,
-   θ = 212° (SPEC §8, `layout.py`), and the pack leads come up past the board edge from the θ = 180° end. The
-   pack can then no longer be unplugged or replaced by a supply. Fit the breakout lead (§4.3) between the pack
-   and J2. Bring its 3-wire tail (BAT+ pack side, BAT+ board side, GND) out through a Ø3 cable port printed in
-   the cup wall of a **dev cup**, at z ≈ 3–8 (below the base board), at θ ≈ 190–230° near the pack's lead end
-   and J2, clear of the θ = 180° guide pin and away from the antenna side (θ ≈ 90°) **[TVP: mock-up]**. Outside
-   the cup:
+   θ = 222°, mouth radially outward (SPEC §8, `layout.py`), and the pack leads come up past the board edge at
+   θ ≈ 195° (model). The pack can then no longer be unplugged or replaced by a supply. Fit the breakout lead
+   (§4.3) between the pack and J2. Bring its 3-wire tail (BAT+ pack side, BAT+ board side, GND) out through a Ø3
+   cable port printed in the cup wall of a **dev cup**, at z ≈ 3–8 (below the base board), at θ ≈ 190–230° near
+   the pack's lead end and J2, clear of the θ = 180° guide column and away from the antenna side (θ ≈ 90°)
+   **[TVP: mock-up]**. Outside the cup:
    * **jumper fitted:** normal operation;
    * **jumper open:** battery disconnected, for safe harness plugging (Stage C–D) and for supply tests;
    * **PPK2 ammeter mode:** VIN to the pack side, VOUT to the board side, GND to GND, in series with the real pack;
@@ -439,9 +453,9 @@ floor-pocket layout at x = −23.85 and is being updated:
 
 ### 7.3 Detent actuator, carriage and detent magnet
 
-The actuator hangs from the main-board underside in the bowl (r 12–27, z 19–29.1), chord placement near θ = 90°.
-The carriage slides the magnet radially from r = 29.0 (click) to r = 21.5 (free) along θ = 90°, 1.0 mm above the
-track (SPEC §1, §8).
+The actuator hangs from the main-board underside in the bowl (r 12–27, z 19–29.1), chord placement near θ = 90°
+(model: chord at y = 15.5, sweeping θ ≈ 35–160°, stepper saddle on the θ = 60° hole H4). The carriage slides the
+magnet radially from r = 29.0 (click) to r = 21.5 (free) along θ = 90°, 1.0 mm above the track (SPEC §1, §8).
 
 1. **Motor coil check:** about 20 Ω per coil pair for the VSM08102 (measure your part), and the cross pairs
    open. Terminate the lead in an SHR-04V-S housing: pin 1 A+, 2 A−, 3 B+, 4 B− (SPEC §5.6).
@@ -449,28 +463,36 @@ track (SPEC §1, §8).
    to the track face. With an alternating track, either polarity gives 24 detents, and the polarity only shifts
    the rest phase by 7.5°, which calibration absorbs. Record which face is down. The DRV5032 home sensor is
    omnipolar.
-3. **Clearances:** stepper can ≥ 10 mm from the track and from the parked magnet; steel lead-screw tip ≥ 5 mm
-   from the detent magnet; nothing ferrous within 4 mm of any magnet face ([detent research]).
-4. **Guide and anti-lash** (detent verifier's limits for the 8 mm VSM08102):
-   * Preload the carriage **0.4–0.5 N** against its vertical and tangential reference faces, on a PTFE/POM
-     sliding pair. Do not go above 0.5 N with the 8 mm motor. If the guide needs more, use the 10 mm sibling
-     (thrust unverified, get the drawing).
-   * Fit an **anti-lash spring of ≥ 0.3 N along the screw axis, pushing toward PARK**, or a split anti-backlash
-     nut instead. The magnetic radial force on the carriage reverses by up to ±0.29 N at intermediate offsets,
-     so without this the M2 nut rattles across its lash. Pushing toward PARK makes the spring assist the
-     retraction, which the magnet opposes whenever the rotor rests in a well.
-   * Budget the worst case in either direction as 0.29 N (magnetic) + the anti-lash spring + μ × preload. With
-     a 0.3 N spring and μ ≈ 0.1–0.2 that is ≈ 0.65–0.7 N, against the motor's 0.78 N rated pull-out thrust at
-     500 PPS: little margin. Keep the spring near 0.3 N, step at ≤ 300–500 PPS through the loaded 0–4 mm zone
-     ([detent verifier]), and treat lost steps in B-9.10d as a reason to move to the 10 mm motor.
-   * Couple the slider pin-in-slot (travel axis only). The M2×0.4 lead screw self-locks, so the carriage cannot
-     be pushed by hand. Move it only by stepping (bring-up B-9.10).
+3. **Clearances:** the detent research asks for the stepper can ≥ 10 mm from the track and from the parked magnet,
+   the steel lead-screw tip ≥ 5 mm from the detent magnet and nothing ferrous within 4 mm of any magnet face
+   ([detent research]). The model's layout cannot meet this: the can comes within 3.1 mm of the nearest track
+   magnet and the lead screw within 4.6 mm (`docs/mechanical.md` §3 A12). Bench-test the free-mode cogging before
+   the PCB is frozen **[TVP]**.
+4. **Guide and lash** (`docs/mechanical.md` §7, which supersedes the earlier spring-preload scheme):
+   * Bond the two rails to the board bottom and shim them with Kapton so the 0.48 mm carriage plate has
+     **≤ 0.02 mm** vertical play (feeler), with PTFE tape on both faces. There is no spring preload.
+   * Bond the 0.8 mm FR4 link plate with the inclined slot under the carriage web. A small phosphor-bronze leaf on
+     the slider presses its Ø1.5 brass pin against one slot flank at about 0.5 N, so the reversing ±0.29 N
+     magnetic radial force cannot rattle the pin across the slot.
+   * Use the VIC-TECH slider with the spring-preloaded anti-backlash nut and check the total lash at the carriage
+     (≤ 0.03 mm with a dial indicator and ±0.5 N reversal). A separate anti-lash spring toward PARK does not fit
+     as a near-constant force here and would drop the thrust margin below 1×.
+   * The thrust margin of the 8 mm motor is only ≈ 0.9–1.4× at rest on a rating given at 500 PPS. Keep the
+     friction low (PTFE tape, lubricated slot), move the carriage only with the rotor at rest or below 1 rev/s,
+     and step the loaded 0–4 mm zone at ≤ 300 PPS. Gate: slider thrust ≥ 0.85 N at 3.0 V / 300 PPS against the
+     real carriage. If it fails, fall back to an N20 or Ø6 planetary gearmotor; the 10 mm stepper does not fit the
+     bowl.
+   * The M2×0.4 lead screw self-locks, so the carriage cannot be pushed by hand. Move it only by stepping
+     (bring-up B-9.10).
+   * Fit the damping shoe (felt or UHMW-PE pad on the carriage flexure, not PTFE) so that it lands on the ring top
+     face outside the magnets only at offsets ≤ 1.5 mm.
 5. **Park before assembly:** mount the actuator on the main board, plug the motor lead into J40 and step the
    carriage to PARK (r = 21.5) on the bench (Stage A8, B-9.10a–c) before the main board is lowered over the rotor,
    so the detent magnet is not dragged across the track during assembly. J40 sits on the board's bottom side and
    cannot be reached once the board is seated.
-6. **Gap:** the nominal gap is 1.0 mm, with 0.8 mm minimum including bearing play and runout; it must never
-   touch. Check the sub-assembly heights with calipers. The gap cannot be reached with a feeler once assembled.
+6. **Gap:** the nominal gap is 1.0 mm (RSS ±0.13 mm, worst case ±0.25 mm in `docs/mechanical.md` §5); it must
+   never touch. Check it with feeler gauges at the click position once the board is clamped (Stage D) and correct
+   a whole-rotor height error with 0.05 mm **brass** shims between the hub top and the board (§11.4).
 
 ### 7.4 OLED panel into the ZIF (last electronic step)
 
@@ -487,10 +509,12 @@ boost verified at 13 V and discharged).
    contacts face the PCB. Insert squarely up to the stiffener and close the lid.
 4. **Bend rules:** radius ≥ 0.5 mm, ≥ 1 mm preferred. Bend only between the glass edge and the COF driver IC,
    never across the IC or the 4 mm stiffener, and do not press on the IC area.
-5. **Mounting:** support the glass on its back perimeter only, outside the 28.86 mm viewing area, with 0.3–0.5 mm
-   foam tape on the bracket. The **active-area centre (1.47 mm off the glass centre, away from the FPC edge) goes
-   on the dial axis**, not the glass centre. Keep ≥ 0.3 mm air gap to the window. The window and top cover carry
-   press loads; the glass must not ([display research](https://newhavendisplay.com/content/specs/NHD-1.5-128128G.pdf)).
+5. **Mounting:** support the glass on its back perimeter only, outside the 28.86 mm viewing area, with thin foam
+   tape on the bracket rim (0.3–0.5 mm per the display research; the model leaves room for 0.2 mm). The
+   **active-area centre (1.47 mm off the glass centre, away from the FPC edge) goes on the dial axis**, not the
+   glass centre. Keep ≥ 0.3 mm air gap to the window, the 0.7 mm cover glass bonded in the top cover (0.6 mm in
+   the model). The window and top cover carry press loads; the glass must not
+   ([display research](https://newhavendisplay.com/content/specs/NHD-1.5-128128G.pdf)).
 6. **Light separation:** the opaque light-box inner wall must seal to the PCB (≤ 0.1 mm or thin black foam) and
    to the cover. The diffuser ring and the OLED window are separate parts, otherwise LED light pipes into the
    window.
@@ -575,8 +599,9 @@ keep them away from children and pets. N52 discs chip if allowed to snap togethe
 
 ## 9. Bearing preparation (608)
 
-Bearing friction sets the spin time. Factory grease gives about 9–14 s spins from 10 rev/s instead of 40–120 s,
-and contact seals (RSH/RS1) stop the rotor in under 1 s ([mechanical research and verifier](https://cdn.skfmediahub.skf.com/api/public/0901d1968065e9e7)).
+Bearing friction sets the spin time. For this rotor the SKF model gives about 28 s from 10 rev/s on factory
+grease against 95–131 s on oil (`docs/mechanical.md` §4), and contact seals (RSH/RS1) stop the rotor in about
+1 s ([mechanical research and verifier](https://cdn.skfmediahub.skf.com/api/public/0901d1968065e9e7)).
 
 1. Buy at least 5 bearings of the chosen type (608-2Z or 608-2RSL, CN clearance, ABEC-5/P5 or better).
 2. **Degrease.** **Never pour IPA, naphtha or any other flammable solvent straight into an ultrasonic tank.**
@@ -594,8 +619,10 @@ and contact seals (RSH/RS1) stop the rotor in under 1 s ([mechanical research an
    and repeat until the bearing runs free and silent.
 3. Dry with clean, dry air, but **do not spin the bearing up with an air jet**.
 4. Oil with **1–2 drops of ISO VG 2–10** synthetic instrument oil. Do not over-oil: excess oil adds viscous drag.
-5. Reject any bearing with shield rub, grit or a notchy feel. The final selection is by measured spin-down on the
-   rotor (bring-up B-13). Keep the runner-up as a spare.
+5. Spin-test each bearing on a Ø8 arbor: more than 30 s from a finger flick, with no shield rub, grit or notchy
+   feel (`docs/mechanical.md` §4). Fit the best one (§10.1) and keep the runner-up as a spare. B-13 then measures
+   the spin-down on the rotor. Swapping the bearing later means warming the bonded cap ring to about 120 °C to
+   lift it off.
 6. Re-oiling will be needed periodically: shields are meant for inner-ring rotation and this design spins the
    outer ring ([mechanical verifier]). Note the date in the build log.
 
@@ -605,47 +632,52 @@ and contact seals (RSH/RS1) stop the rotor in under 1 s ([mechanical research an
 
 ### 10.1 Assembly
 
-The order is fixed: **carrier bond → magnets → static balance on the arbor → bearing in**.
+The order is fixed: **magnets → bearing into the carrier → ring bonded on the arbor → static balance → wave washer,
+cap ring and ESD strap** (`docs/mechanical.md` §5, §12).
 
 1. Check the ring: OD 70 / ID 54 / 10 mm, OD/ID concentricity ≤ 0.02 mm TIR, faces flat and square ≤ 0.02 mm
    (§8.2 magnet test too).
-2. Bond the **PA12-GF carrier** (web z 17–19, r 11–27) concentric to the ring ID. **No aluminium or copper may
-   rotate within 13 mm of the detent magnet's path.** An aluminium web would cost about 0.13–1.6 N·mm of eddy
-   drag, against about 0.15 N·mm of bearing friction ([mechanical verifier]).
-3. Install the magnets (§8) **before** balancing.
-4. Weigh the ring + carrier + magnets (expect ≈ 130 g: ring 124 g, magnets 2.3 g, carrier), then
-   **static-balance it on the arbor (§10.3), without the bearing.**
-5. Only then press the 608 outer race into the carrier's Ø22 seat, pressing **on the outer race only**, never
-   through the balls. If you use retaining compound, keep it out of the bearing. Fit the wave spring and the snap
-   retainer above the outer race (model `wave_spring()`, `bearing_retainer()`). **ESD bleed (SPEC §8):** the
-   touchable ring must reach GND through conductive epoxy → 608 races → spindle → the main board's plated
-   H1–H3. The PA12-GF carrier insulates the ring from the outer race, so make the conductive-epoxy link between
-   them now and check ring-to-outer-race continuity with a DMM. Its layout is not defined in `docs/mechanical.md`
-   yet (§13 #20). Weigh the finished rotor (expect ≈ 135–140 g) **[TVP]** and use that value for I in
-   B-12/B-13.
+2. Install the magnets (§8) **before** balancing.
+3. Bore the printed **PA12-GF carrier** (web z 17–19, r 11–27) to Ø22 H7 and turn its register in the same
+   chucking (bore-to-register ≤ 0.02 mm TIR). **No aluminium or copper may rotate within 13 mm of the detent
+   magnet's path.** An aluminium web would cost about 0.13–1.6 N·mm of eddy drag, against about 0.15 N·mm of
+   bearing friction ([mechanical verifier]). Slide the prepared 608 (§9) into the collar against its lower lip
+   (slip fit), pushing **on the outer race only**, never through the balls.
+4. **Bond the ring on an arbor.** Slide the carrier, with the 608 seated, onto a ground Ø8 arbor in a lathe or
+   V-blocks, spread epoxy on the register, and rotate and tap the ring until a dial indicator on the OD reads
+   ≤ 0.02 mm TIR. Set the ring top 0.60 ± 0.03 mm above the 608 outer-race top face with a flat that carries a
+   0.60 mm annular spigot resting on the race. Cure undisturbed.
+5. **Static-balance** the rotor (§10.3).
+6. Fit the wave washer and bond the 0.5 mm 316 cap ring on the collar top. **ESD bleed (SPEC §8):** bond the
+   0.1 × 3 mm phosphor-bronze strap with silver conductive epoxy from the ring ID along the web and up the collar
+   to under the cap ring, so the touchable ring connects through the cap ring and wave washer to the outer race
+   (`docs/mechanical.md` §4). Check ring-to-outer-race continuity with a DMM. Weigh the finished rotor (≈ 134 g
+   in `calcs.py`) **[TVP]** and use the measured value for I in B-12/B-13.
 
-### 10.2 Balance targets
+### 10.2 Balance targets (`docs/mechanical.md` §5, `calcs.py`)
 
 | Item | Value |
 |---|---|
-| ISO G2.5 at 15 rev/s for ~137 g | U_perm ≈ **3.6 g·mm** (e = 26.5 µm) |
+| ISO G2.5 at 15 rev/s for the 134 g rotor | U_per ≈ **3.5 g·mm** |
 | Target | **≤ 2 g·mm** ([mechanical research]) |
-| Ring eccentricity 0.02 mm TIR | ≈ 1.24 g·mm ([mechanical verifier]) |
+| Ring OD/ID eccentricity 0.02 mm TIR | ≈ 1.17 g·mm |
+| Ring-to-bearing eccentricity | ≈ 1.25 g·mm bonded on the arbor (TIR ≤ 0.02); ≈ 4.4 g·mm bonded freehand |
+| RSS before correction, bonded on the arbor | ≈ 1.7 g·mm |
 | One missing magnet | 1.37 g·mm |
-| Correction pit Ø2 × 1 mm in 316L at r = 31 (ring bottom face) | ≈ 25 mg ≈ **0.78 g·mm** each. Calibrate by weighing chips: the drill-point cone adds mass |
-| M2 brass/316 set screw in a balance hole (if provided) | ≈ 2.2 g·mm |
+| Corrections on the ring bottom face at r = 31 | Ø2 × 1 dimple −0.93 g·mm; empty M2 balance hole −1.49; brass grub screw +1.35; non-magnetic W-alloy grub screw +2.70. Calibrate a dimple by weighing chips: the drill-point cone adds mass |
 
-### 10.3 Static balance (§10.1 step 4, before the bearing goes in)
+### 10.3 Static balance (§10.1 step 5)
 
-1. Mount the ring + carrier + magnets on a stepped arbor: a Ø22 h6 seat (it fills the empty bearing seat) with
-   Ø6–8 ground journals.
-2. Roll it on two level, hardened knife edges (or a prop balancer's roller set). Do not balance on the 608
-   itself: its breakaway friction (≈ 0.04–0.1 N·mm) masks imbalances below about 4–10 g·mm.
-3. Let it settle 5 times from random start angles. The heavy spot comes to rest at the bottom.
-4. Remove mass at the heavy spot with shallow Ø1.5–2 mm pits on the **ring bottom face at r ≈ 31**, which faces
-   the base lip and is not visible. Alternatively, add brass or 316 at the light spot. **Never add steel or
-   ferrous putty.**
-5. Repeat until the rotor stays put at any angle. Knife-edge sensitivity is roughly 0.5–1 g·mm **[TVP]**.
+1. Mount the rotor, 608 seated, on a ground Ø8 arbor.
+2. Balance on two level, hardened knife edges or a magnetic balancer. The 608's breakaway friction
+   (≈ 0.04–0.1 N·mm) masks imbalances below about 4–10 g·mm if the rotor turns on its own bearing, so follow
+   `docs/mechanical.md` §5 for the bearing (a second, freshly degreased 608, or spinning the arbor) **[TVP]**.
+3. Let it settle from random start angles. The heavy spot comes to rest at the bottom.
+4. Correct on the **ring bottom face at r = 31**, which faces the base lip and is not visible: dimples at the heavy
+   spot, or grub screws in the four M2 balance holes (θ 45°/135°/225°/315°). **Never add steel, W-Ni-Fe or
+   ferrous putty** (§12).
+5. Repeat until there is no preferred rest angle in 20 random releases. Knife-edge sensitivity is roughly
+   0.5–1 g·mm **[TVP]**.
 
 ### 10.4 Dynamic trim (after full assembly, Stage E, **before** the B-13 spin-down acceptance) **[TVP]**
 
@@ -659,7 +691,9 @@ weight:
    gap between the ring and the cup wall, or with a thin spatula.
 3. Correction = −V0 / (V1 − V0) × trial mass. Apply it at the computed angle and verify.
 
-The FA rides on springs and the desk, so the IMU's response to imbalance is unknown until measured.
+The FA rides on springs and the desk, so the IMU's response to imbalance is unknown until measured. Acceptance
+(`docs/mechanical.md` §5): at 15 rev/s the 1×/rev component must not exceed the value measured with a 2 g·mm test
+mass taped at r = 31.
 
 ---
 
@@ -668,10 +702,11 @@ The FA rides on springs and the desk, so the IMU's response to imbalance is unkn
 Each stage has a gate: do not continue until the referenced bring-up step passes.
 
 **Why this order.** In the model, the FA up-stops are M2 screws in the tops of the guide pins. Their heads sit at
-r = 29, directly under the rotor ring (ring r 27–35, bottom face z 15.6; screw heads z 13.3–14.6). They can only
+r = 29–30, directly under the rotor ring (ring r 27–35, bottom face z 15.6; screw heads z 13.5–14.8). They can only
 be fitted before the rotor goes on. The floating assembly (FA) is therefore built **in place on the base**, bottom
-up, in the order of the model's exploded view: plate and spindle, rotor, hub, main board. From Stage C on, the
-antenna coax also ties the FA to the base.
+up, in the order of the model's exploded view (`docs/mechanical.md` §12): spindle stack and plate, rotor, hub, main
+board, all clamped by one M4 nut on the board top. From Stage C on, the harness and the antenna coax also tie the
+FA to the base.
 
 ### 11.1 Stage A: electronics on the bench (no mechanics)
 
@@ -684,7 +719,7 @@ antenna coax also ties the FA to the base.
 | A5 | SWD: recover, UICR, flash the bring-up image | B-7 |
 | A6 | First firmware: clocks, DC/DC, SAADC, USB CDC | B-8.1–B-8.6 |
 | A7 | Peripheral smoke tests that need no mechanics: QSPI, I2C, IMU, BQ25180, battery and press network, piezo, LED ring, **bare boost at 13 V** | B-9.1–B-9.9a |
-| A8 | Mount the actuator on the main board: bracket (2× non-magnetic M2 at r = 17, θ 60°/120°), rail, carriage with its preload and anti-lash spring, detent magnet (§7.3). Plug the motor lead into J40. Run the driver, motor and home-sensor tests on the bench. **End at PARK with all IN low and nSLEEP low** | B-9.10a–c |
+| A8 | Mount the actuator on the main board (§7.3): bond and shim the rails, fit the carriage with its FR4 link plate, zero-lash leaf and detent magnet, and screw the stepper saddle to the θ = 60° hole H4 with a brass M2 (H5 at θ = 120° stays unused). Plug the motor lead into J40. Run the driver, motor and home-sensor tests on the bench. **End at PARK with all IN low and nSLEEP low** | B-9.10a–c |
 | A9 | **MCUboot and recovery gate**, with the TC2030 removed and a battery on J2. Record which recovery route works | B-8.7 |
 
 Keep steel tools away from the main board from A8 on, because the detent magnet is fitted.
@@ -692,23 +727,24 @@ Keep steel tools away from the main board from A8 on, because the detent magnet 
 ### 11.2 Stage B: base sub-assembly
 
 1. **Feet.** The model uses three 70° arc pads at r 25–31 (DEV, to resist tipping). SPEC says point feet at r = 28.
-2. **Guide pins (model).** Bond the 3 brass Ø3.0 pins, tapped M2 at the top, into the cup ears at r = 29,
-   θ = 60°/180°/300°. Keep them square to the floor (≤ 0.05 mm over their length; check with a square or a dial
-   indicator). Keep adhesive out of the tapped hole and off the sliding length. The ear tops (z 11.4) are the
-   FA's overload stop.
-3. **Base-board supports (SPEC §8).** Two M2 bosses at r = 21, θ = 90°/270°, outside the pack, matching the
-   base PCB's H1/H2 (§2.2). The USB-C shell clamped in the cup wall is the third support. Fit M2 heat-set inserts
-   in the bosses now. Metal must stay ≥ 10 mm from the antenna in plane (§12), which rules out a metal insert and
-   screw at the θ = 90° boss: it stands on the antenna strip (§7.1, §13 #19), so follow the cup design there.
-4. **Antenna** onto its shelf along y = +26 (§7.1). Before bonding, mate the RF test pigtail to the antenna plug
-   (u.FL cycle 1) and run **B-11.2 a**. Bond the flex and run **B-11.2 b**. Lay the coax up its route and leave
-   the pigtail mated for B-11.2 c.
-5. **Battery** (§7.2): polarity check, long axis along θ = 0°/180° with the leads at θ = 180°, foam tape. Fit the
-   **breakout lead** and bring its tail out through the dev-cup port (§7.2 step 6), jumper open.
-6. **Base board** onto the two bosses with non-magnetic M2 screws through H1 and H2 (plastic at H1, next to the
-   antenna, unless the cup design moves that support; step 3). Align the USB-C mating face with the wall
-   opening: flush to +0.3 mm proud at r = 35.0, opening = receptacle + 0.3 mm ([mechanical research]). Run
-   **B-11.2 c**, then unmate the pigtail.
+2. **Guide pins (model).** Press the 3 knurled brass Ø3.0 pins (M2 tapped at the top) into the cup with Loctite
+   638: columns from the floor at θ = 300° (r = 29) and θ = 180° (r = 30, clear of the pack end), and the ear at
+   θ = 60° (r = 29), which sits above the antenna and takes a PEEK pin and PEEK cross pin (§7.1). Keep them
+   perpendicular within 0.1 mm at the top (check with a printed square). Push the Ø1.0 cross pins in from outside
+   the cup and seal the holes with epoxy. Keep adhesive out of the tapped holes and off the sliding length. The
+   column and ear tops (z 11.5) are the FA's hard stop.
+3. **Base-board supports (SPEC §8).** One M2 boss at r = 20, θ = 270°, under the base board's hole H1; a printed
+   rib under the θ = 90° edge (y 17.75–18.75, between the pack and the antenna shelf, no screw); and the USB-C
+   shell, captured in a slot in the cup wall. Heat-set the M2 × 3 brass insert into the boss now.
+4. **Antenna** onto its shelf, centred at (0, 23.5) with the cable end toward −x (§7.1). Before bonding, mate the
+   RF test pigtail to the antenna plug (u.FL cycle 1) and run **B-11.2 a**. Bond the flex and run **B-11.2 b**.
+   Lead the coax to its riser point (−14.6, 19.9), tape it, and leave the pigtail mated for B-11.2 c.
+5. **Battery** (§7.2): polarity check, foam tape, pack against the θ = 0° end stop, leads up past the board edge at
+   θ ≈ 195°. Fit the **breakout lead** and bring its tail out through the dev-cup port (§7.2 step 6), jumper open.
+6. **Base board.** Lower it with the tab about 1.5 mm short of the wall, slide it outward into the USB slot so the
+   USB-C mating face ends flush to +0.3 mm proud at r = 35.0 (opening = receptacle + 0.3 mm,
+   [mechanical research]), then fit the brass M2 screw through H1 at θ = 270°. Run **B-11.2 c**, then unmate the
+   pigtail.
 7. Plug the battery (through the breakout) into J2 and fit the jumper. The board comes up in battery mode.
    Check VSYS at the base TP (B-9.5a). With the bench harness, link the main board once more and confirm I2C to
    the BQ25180 (B-9.2).
@@ -716,87 +752,82 @@ Keep steel tools away from the main board from A8 on, because the detent magnet 
    harness, or open the breakout jumper. VSYS must be off while the final harness is plugged in at Stages C
    and D.
 
-### 11.3 Stage C: FA lower plate, spindle and rotor, in place on the base
+### 11.3 Stage C: FA lower stack, suspension and rotor, in place on the base
 
-Prerequisites: Stage B done and the base dead; the final harness with its base end in a housing and the other
-end loose (§6); the rotor finished, statically balanced, with the bearing, wave spring and retainer fitted
-(§10.1); the main board from A8 at PARK.
+Prerequisites: Stage B done and the base dead; the final harness wires with both ends loose (§6); the rotor
+finished and statically balanced, with the wave washer, cap ring and ESD strap fitted (§10.1); the main board from
+A8 at PARK.
 
-1. Bond the spindle (Ø8 × 1.0 wall, 316 or Ti; check with an N52 that it is non-magnetic) into the plate's Ø8
-   socket (1.0 deep, 0.5 mm floor over the centre boss), square to the plate. Turn its two exit slots to the
-   angles in `docs/mechanical.md`: the committed model's `SLOT_A` = 225° predates J3 at θ = 120°, J1 at
-   θ = 330° and the antenna at θ ≈ 90° (§13 #15). Fit the 0.5 mm TPU or silicone dot on the centre boss (model
-   `DOT_T`). Slide the POM lower spacer onto the spindle with its slot at the same angle as the lower exit slot.
-2. Plug the final harness's base housing into J3. Test the harness (§6 table, final-harness column) while the
-   base TPs can still be reached.
-3. Drop the 3 FA springs over the guide pins into the ear pockets. Check the spring against the model's
-   installed length first (§4.3).
-4. Hold the plate just above the base. Pass the harness's loose end and the antenna coax (plug first) up
-   through the plate's open sector centred on θ = 120°: the plate is a 3-spoke spider with spokes at
-   θ = 60°/180°/300° (SPEC §8), and both J3 (θ = 120°) and the antenna side (θ ≈ 90°) open into that sector.
-   Lower the plate onto the pins and springs.
-5. Fit the 3 non-magnetic M2 **stop screws** into the pin tops through the plate counterbores. Snug them only,
-   because the pins are bonded. The springs now hold the plate up against the screw heads.
-6. **Plate check.** The plate slides freely, returns under spring force, and stops after ≈ 0.6 mm when its bosses
-   land on the ear tops (the overload stop). A press at the centre and over each spoke must give an audible
-   switch click before the overload stop. The pre-gap between the dot and the TS-1187A plunger is 0.15 mm
-   (SPEC §8); adjust it with the dot thickness. The electrical click check is D6. If the base was left in ship
-   mode, keep these presses under 1 s: a 2 s press is a ship-mode wake.
-7. Lead the coax to the spindle, clear of the rotor gap. Feed the loose harness contacts and the coax plug into
-   the spindle's lower side slot (SPEC z ≈ 14.5–16; model z 14.4–16.3, under the lower spacer's slot) and fish
-   them out of the upper exit slot with a loop of 0.2 mm nylon line. Leave the ≥ 5 mm service loop at the base
-   end, plus the ≥ 10 mm lift loop inside the bore on the first unit (§6). Check the slot fill first (§13 #15).
-8. Slide the rotor down over the spindle until the 608 inner race seats on the lower spacer. The inner race is a
-   slip fit on the spindle. If it binds, do not force it through the outer race or the ring.
-9. Slide the spindle hub (upper spacer + flange with 3 M2 heat-set inserts at r = 6.5, θ = 90°/210°/330° to
-   match the main board's plated H1–H3) onto the spindle top, with its channel lined up with the spindle's
-   upper slot, and bring the harness and coax out through the channel. The hub is part of the ring's ESD path
-   (spindle → H1–H3 → GND, SPEC §8), so it must connect the spindle to the inserts: a brass hub, or a defined
-   conductive link in a printed one (§13 #20).
-10. Spin the rotor by hand. There is no detent magnet yet, so any ticking means a ferrous part near the track or
-    a magnet standing proud. Rubbing means a stack-up error; check the 0.15 mm drop-stop gap under the carrier
-    lip.
+1. **Press pad.** Measure the switch travel t_u on the base board (reject a switch above 0.32 mm). Bond the Ø3 × 1.0
+   silicone pad into the pocket in the spindle's solid bottom, with 0.025/0.05 mm Kapton discs under it to set the
+   per-unit pre-gap g0 = 0.38 − t_u (`docs/mechanical.md` §8).
+2. **FA lower stack (on the bench).** Check the turned 316L spindle with an N52 (it must not cling). Push it up
+   through the plate's D-recess: the bottom flange and the D-flats at θ = 90° set its angle, so the lower window
+   faces θ = 120° and the upper slot θ = 270°. Slide on the brass lower spacer (D-bore, wire window at θ = 120°).
+3. **Thread the harness and the coax** into the bore through the θ = 120° window now (§6), and keep their top ends
+   inside the bore. Insert the base-end contacts into one SHR-12V-S housing.
+4. Plug that housing into J3. Test the harness (§6 table, final-harness column) while the base TPs can still be
+   reached.
+5. Drop the 3 FA springs into the column and ear pockets. Check them against the spec first (§4.3). Lower the
+   plate over the pins, with the wires and the coax passing through the plate's open sector at θ = 120° (spokes
+   at θ = 60°/180°/300°, SPEC §8). The USB-C receptacle sits in the notch in the plate's outer ring at θ = 0°.
+6. Fit the 3 M2 **stop screws** (brass at θ 180°/300°, nylon at θ 60°) into the pin tops through the plate
+   counterbores, with no washers and a brass-compatible threadlocker. The springs now hold the plate up against the
+   screw heads.
+7. **Plate check.** The plate slides freely and returns under spring force. The centre free play equals the
+   per-unit pre-gap. A press at the centre gives an audible click (about 4–5 N), and the hard stop comes at
+   0.50 mm when the plate's under-bosses land on the column and ear tops. A press over each spoke must also click
+   before the stop. The electrical click check is D6. If the base was left in ship mode, keep these presses under
+   1 s: a 2 s press is a ship-mode wake.
+8. Lower the rotor over the spindle until the 608 inner race seats on the brass lower spacer. The wires and coax
+   inside the bore do not obstruct it. If the race binds, do not force it through the outer race or the ring.
+   Then fish the wire ends and the coax plug out of the θ = 270° upper slot. Leave the ≥ 5 mm service loop at the
+   base end, plus the ≥ 10 mm lift loop inside the bore on the first unit (§6).
+9. Spin the rotor by hand. There is no detent magnet over it yet, so any ticking means a ferrous part near the track
+   or a magnet standing proud. Rubbing means a stack-up error; check the 0.15 mm drop-stop gap under the carrier
+   lip.
 
 ### 11.4 Stage D: main board
 
 The main board is tethered as soon as the harness or the coax is connected, and J1, J40 and the module u.FL all
 face down once it is seated. Make every connection with the board held just above the hub.
 
-1. Insert the loose harness contacts into the main-side SHR-12V-S housing, pin 1 to pin 1 (§6), and do the D1
-   checks in the §6 table.
+1. Slide the brass hub down the spindle with its C-gap at θ = 270° over the wires and the coax (the D-flat at
+   θ = 90° sets its angle). Its top face will be the GND contact for the plated H1–H3 on the board bottom. Insert
+   the loose harness contacts into the main-side SHR-12V-S housing, pin 1 to pin 1 (§6), and do the D1 checks in
+   the §6 table.
 2. Hold the main board 10–20 mm above the hub, on edge or upside down, with the carriage still at PARK from A8.
    Check that the motor lead is in J40. Plug the harness into J1. Then **either**:
-   * **Normal build:** mate the antenna plug to the module's u.FL (1 cycle each); **or**
-   * **RF test build (Stage R follows):** fit the RF test pigtail instead. *Centre route* (preferred, because it
-     keeps the board's top and rim clear): feed the pigtail's receptacle end down through the main-board Ø5
-     hole, into the open top of the bore and out through the hub channel, alongside the harness and the antenna
-     coax, and mate it to the antenna plug on the bowl side. This works only if the channel has room for a third
-     cable (§13 #15). *Edge route* if it does not: mate on the bowl side, then tape
-     the pigtail radially along the board underside at θ ≈ 200° (clear of the TMAG at 270° and the actuator at
-     60–120°) and up around the board edge at r = 32. It crosses ≈ 2.4 mm above the ring's top face, which is
-     acceptable for a static measurement. Use a pigtail with a non-magnetic (silver-plated copper, not
-     copper-clad steel) centre conductor.
+   * **Normal build:** mate the antenna plug to the module's u.FL (1 cycle each). With the current placement the
+     mated plug collides with the hub (§2.4 item 8); **or**
+   * **RF test build (Stage R follows):** fit the RF test pigtail instead. Mate it to the antenna plug on the bowl
+     side, then tape the pigtail radially along the board underside at θ ≈ 200° (clear of the TMAG at 270° and the
+     actuator at 35–160°) and up around the board edge at r = 32. It crosses ≈ 2.4 mm above the ring's top face,
+     which is acceptable for a static measurement. Use a pigtail with a non-magnetic (silver-plated copper, not
+     copper-clad steel) centre conductor. The earlier centre route down the Ø5 hole is gone: the hole now carries
+     the spindle's M4 spigot.
 
    Dress the service loops and Kapton-tape the coax, and the mated pair or pigtail, to the board underside so
    nothing hangs into the rotor's swept volume: r ≤ 12.2 below z 26.0, and the carrier web at z ≤ 19 (see §2.4
    item 8).
-3. Lower the board onto the hub flange and fit 3 non-magnetic, **conductive** M2 screws (A4 or brass, not nylon)
-   through the plated H1–H3 (r = 6.5, θ 90°/210°/330°) into the hub inserts: they ground the spindle and so the
-   ring. The 2 M2 at r = 17 (H4/H5) already hold the actuator bracket (A8). Measure ring to TP4 GND and log the
-   value (no pass limit is set yet, §13 #20).
+3. Lower the board onto the hub over the M4 spigot, with H1–H3 over the hub's tapped holes. Fit the M4 × 0.5
+   brass nut with Loctite 222 and tighten it to 0.10 N·m with a pin spanner. That one nut clamps board → hub →
+   608 inner race → lower spacer → plate → spindle flange (`docs/mechanical.md` §4). Check the magnet-to-track gap
+   at the click position with feeler gauges (1.0 ± 0.1 mm) and correct it with 0.05 mm **brass** shims between hub
+   and board, never Kapton, because the hub face is the GND contact (§7.3). Measure ring to TP4 GND with the rotor
+   turning slowly and log it (pass < 10 MΩ, `docs/mechanical.md` §4) **[TVP]**.
 4. **Spin check:** the rotor turns freely in FREE (carriage parked) with no ticking. A ticking rotor in FREE means
    a ferrous part near the track, a magnet standing proud, or a carriage that is not at PARK.
 5. **First power-up on the final harness.** Keep the breakout jumper **open**, so the pack cannot feed a harness
    fault, and feed the USB-C receptacle from a 5.00 V bench supply at a 100–150 mA limit through a USB-C plug
    breakout. Check VSYS (4.4–4.6 V) across C6 or C2 on the top side (main TP1 VSYS is on the bottom and is now
-   covered, §2.4 item 7) and TP2 +3V3 (3.30 V). Confirm that USB enumerates, I2C finds 0x19
-   and 0x6A, and CHG_INT_N pulses on plug and unplug. That proves the harness signal pins. Then fit the jumper
-   (if the base was left in ship mode, the USB insertion has already woken it).
+   covered, §2.4 item 7) and TP2 +3V3 (3.30 V). Confirm that USB enumerates, I2C finds 0x19 and 0x6A, and
+   CHG_INT_N pulses on plug and unplug. That proves the harness signal pins. Then fit the jumper (if the base was
+   left in ship mode, the USB insertion has already woken it).
 6. **Click check:** press at the centre and at the rim at θ = 0°, 120° and 240°. Every press must click and pull
-   BTN_N low (B-9.5d). For ~4 N preload and the 1.6 N switch, expect ≈ 4.1–4.3 N at the centre and
-   ≈ 2.0–2.3 N at the rim ([mechanical research and verifier]); a re-specced spring (§4.3) changes these.
-   Measure with a gram gauge **[TVP]**. Rim presses that do not click mean the rim ledge is too shallow for the
-   switch travel.
+   BTN_N low (B-9.5d). For the 4.0 N preload and the 1.6 N switch, `docs/mechanical.md` §8 expects ≈ 4.6 N at the
+   centre and ≈ 1.9–2.4 N at the ring rim; the spare 4.6 N spring set raises these. Measure with a gram gauge
+   **[TVP]**. Rim presses that do not click mean the rim ledge is too shallow for the switch travel.
 
 ### 11.5 Stage R: RF acceptance, B-11.2 d/e (only if the test pigtail was fitted at D2)
 
@@ -809,12 +840,11 @@ later identical units it is optional, and B-11.3 (Stage G) is the per-unit RF ga
 2. Run B-11.2 d (wooden desk) and e (metal plate, hand on the dial), including the cable-touch test.
 3. **Swap to the module.** Power on and confirm the carriage is at PARK: the firmware's park stall is the
    reference and HOME_N low only confirms it, because on some units the DRV5032 can also assert near full click
-   (`firmware.md` §5.4). Make the base dead again
-   (ship mode or breakout jumper open) and unplug USB. Remove the 3 M2 at r = 6.5. Lift the main board straight
-   up ≈ 10 mm on the lift loop (§6), then tilt the module side (θ ≈ 215°) up, keeping the opposite edge from
-   dropping onto the ring. Unmate the pigtail with the extraction tool and pull it out (up through the Ø5 hole
-   for the centre route). Mate the antenna plug to the module (§7.1 table: plug cycle 3, module cycle 1).
-   Re-dress the coax, lower the board, refit the screws and repeat D4–D6.
+   (`firmware.md` §5.4). Make the base dead again (ship mode or breakout jumper open) and unplug USB. Remove the
+   M4 nut. Lift the main board straight up ≈ 10 mm off the spigot on the lift loop (§6), then tilt the module side
+   (θ ≈ 215°) up, keeping the opposite edge from dropping onto the ring. Unmate the pigtail with the extraction
+   tool and pull it out. Mate the antenna plug to the module (§7.1 table: plug cycle 3, module cycle 1). Re-dress
+   the coax, lower the board, refit the nut (0.10 N·m, fresh Loctite 222) and repeat D3–D6.
 4. Log the u.FL cycles.
 
 ### 11.6 Stage E: mechanics-dependent tests (top still open)
@@ -826,10 +856,12 @@ or through the breakout (B-1).
 
 ### 11.7 Stage F: close the top
 
-1. OLED bracket and panel (§7.4). Test the display (B-9.9b) on a bench supply or the PPK2 through the breakout
-   (B-1).
-2. Light box (white interior, opaque exterior, r 27–30), sealed to the PCB.
-3. Diffuser ring (opal PMMA, r 27–30) and top cover (Ø30 OLED window, cover OD r = 32.5).
+1. Light box (white interior, opaque exterior, r 27–30), bonded and sealed to the PCB with its 24 septa between
+   the LEDs.
+2. OLED bracket, fixed with 3 brass M2 × 6 countersunk screws through H1–H3 into the hub, then the panel (§7.4).
+   Test the display (B-9.9b) on a bench supply or the PPK2 through the breakout (B-1).
+3. Diffuser ring (opal PMMA, r 27–30) glued into the top cover, and the 0.7 mm cover glass bonded into its Ø33
+   recess. Snap the cover (Ø30 OLED window, cover OD r = 32.5) onto the light box.
 4. From here on, firmware updates go over MCUboot (USB CDC or BLE SMP), and SWD needs the top and OLED removed.
    **Write the serial-recovery route that passed B-8.7 into the unit log and on a label under the base**, for
    example "hold the dial through the 20 s reset and keep holding until the USB port re-enumerates" (route a)
@@ -841,17 +873,20 @@ or through the breakout (B-1).
    repeated here.
 2. Sleep and mode currents (B-10), with the PPK2 on the breakout tail.
 3. The full pass/fail table (B-14).
-4. Check that the breakout jumper is fitted, then leave the unit in ship mode or shutdown (B-9.5c).
+4. Ring to GND < 10 MΩ with the rotor turning slowly (`docs/mechanical.md` §4) **[TVP]**.
+5. Check that the breakout jumper is fitted, then leave the unit in ship mode or shutdown (B-9.5c).
 
 ## 12. Material and fastener rules (summary)
 
-* **Non-magnetic** within 10 mm of the track (r 27–31) or the TMAG5273: 316/A4 or brass screws, 316/BeCu
+* **Non-magnetic** within 10 mm of the track (r 27–31) or the TMAG5273: 316/A4 or brass screws, 302/316/BeCu
   springs, PA12/POM structure. **No carbon steel, 4xx/17-4 stainless or W-Ni-Fe weights** ([detent research]).
 * **Non-conductive** (no aluminium or copper) on any rotating part within 13 mm of the detent magnet path
-  (eddy drag).
+  (eddy drag). The one exception is the 3 mm-wide radial phosphor-bronze ESD strap, a strip rather than a loop,
+  whose eddy drag is negligible (`docs/mechanical.md` §5).
 * **No metal paint, plating or conductive tape** near the antenna; plastic only within 10 mm of it in-plane.
-* **Conductive** (A4 or brass, never nylon) for the 3 screws through the plated H1–H3: with the hub and the
-  spindle they carry the ring's ESD bleed to GND (SPEC §8).
+* **Conductive** all along the ring's ESD bleed to GND (SPEC §8): phosphor-bronze strap in silver epoxy, cap ring,
+  608, spindle, brass hub, hub face on the plated H1–H3. Shim between hub and board only with brass, never Kapton,
+  and use brass screws through H1–H3.
 * **Every screw tested with an N52 magnet** before it goes in.
 
 ## 13. Open items and [TVP] list (assembly)
@@ -859,28 +894,30 @@ or through the breakout (B-1).
 | # | Item | Status |
 |---|---|---|
 | 1 | TPS22917 CT: C7 must go CT–VSYS (SLVSDW8B) (§2.4 item 3) | **Done:** `main_power.py` has C7 = 1 nF from LSW_CT to VSYS, QOD through R4 = 100 Ω to VLED, R3 = 100 kΩ ON pull-down; the OLED switch U21 has C37 = 1 nF CT–VSYS |
-| 2 | SPEC's base-board bosses at r = 15 overlapped the battery footprint | **Done:** SPEC §8 and the base board use 2× M2 at r = 21, θ 90°/270° outside the pack (now along θ 0°/180°) plus the USB-C shell. The cup model must match (§2.2, §11.2) |
-| 3 | Antenna did not fit on the floor at x = −26 | **Superseded:** SPEC §8 moved it to a printed shelf along y = +26 (z 5.5–6, about 6 mm above the desk). That position has its own fit problem (#19). Desk sensitivity remains (B-11.2e) |
+| 2 | SPEC's base-board bosses at r = 15 overlapped the battery footprint | **Done:** SPEC §8 and the base board use one M2 hole at r = 20, θ 270° outside the pack (now along θ 0°/180°), a printed rib under the θ 90° edge and the USB-C shell (§2.2, §11.2) |
+| 3 | Antenna did not fit on the floor at x = −26 | **Done:** SPEC §8 moved it to a printed shelf centred on y = +23.5 (z 5.5–6, about 6 mm above the desk, corners at r ≤ 33). Desk sensitivity remains (B-11.2e) |
 | 4 | Coax length (§7.1) | **Done:** SPEC §5.2 and §8 specify 146153-0100 (100 mm); the -0050 is too short (§4.3) |
-| 5 | Battery-to-board swell gap 0.7 mm (§7.2) | **Done:** SPEC §8 limits the pack to ≤ 6.0 mm, which leaves 1.0 mm. RT1 is the only underside part, on a soft thermal pad |
-| 6 | FA up-stops | Defined in the model: guide pins bonded in the cup ears, M2 stop screws in counterbores. Their heads sit under the ring, which forces the in-place build order (§11) |
+| 5 | Battery-to-board swell gap 0.7 mm (§7.2) | **Done:** SPEC §8 limits the pack to ≤ 6.0 mm, which leaves 1.0 mm, and the base board is single-sided |
+| 6 | FA up-stops | Defined in the model: knurled brass guide pins pressed with Loctite 638 and locked by Ø1 cross pins (PEEK at θ 60°), M2 × 3 stop screws in counterbores. Their heads sit under the ring, which forces the in-place build order (§11). Pull-out capacity ≈ 270–390 N per pin against a very uncertain drop load: pull-test the first printed cup (`docs/mechanical.md` §8) **[TVP]** |
 | 7 | JLC LED baking and X-ray image availability (§3) | Open |
 | 8 | Harness lead part numbers and lengths, including the lift loop; 28 AWG on pins 1–4 and 8 (§6) | Open |
 | 9 | Knife-edge balance sensitivity; IMU dynamic trim response (§10) | TVP |
 | 10 | Folded-FPC fit under the glass (§7.4 mock-up) | TVP |
-| 11 | Mated module u.FL over the rotor hub: U10 is placed per SPEC (bottom, r 14.5, θ 215°, u.FL toward the centre) with its courtyard reaching r ≈ 8.5, no margin to the flange keep-out r ≤ 8.5; the earlier model showed ≈ 41 mm³ overlap (z 24.4–26.0, r 9.5–12.2) (§2.4 item 8) | **Open: re-run the clash check on the placed board before ordering** |
-| 12 | Bearing "wave-spring preload" (SPEC §8): a single 608 cannot be axially preloaded by a spring without a reaction against the stationary side, and in the model the spring only retains the outer race. The rotor weight (≈ 1.35 N) exceeds the ±0.7 N detent pull, so the balls should stay loaded anyway **[TVP]** | Restate in SPEC/model |
-| 13 | FA springs: the model's installed length (≈ 2.65 mm) does not match the spring spec (3.56 mm) and leaves only ≈ 0.2 mm to solid (§4.3) | Re-spec before buying |
-| 14 | J2 location | **Done:** SPEC §8 and the board put J2 on the base-board top at r = 17, θ = 212°, with BAT+/GND silk. It is still buried after Stage C, hence the breakout (§7.2) |
-| 15 | Spindle and hub exit slots (3.5 × 1.5–1.9 mm) are too small for the 12 leads (28 AWG on the five power leads) plus the coax, and leave no room for the RF test pigtail (§6, §11.4). The committed model's slot angle (225°) predates J3 at θ 120° and J1 at θ 330° | Widen and re-angle before printing |
+| 11 | Module and mated u.FL over the hub: U10 is placed per SPEC (bottom, r 14.5, θ 215°, u.FL toward the centre); the model puts its inner end at r 6.8, ≈ 1.5 mm into the brass hub, and the plug 0.2 mm into the rotating cap ring (§2.4 item 8, `docs/mechanical.md` §3B B1) | **Open: move U10 (inner end r ≥ 8.8, u.FL outward) or show clearance before ordering** |
+| 12 | Bearing "wave-spring preload" (SPEC §8): a single 608 cannot be axially preloaded by a spring without a reaction against the stationary side. In the model the wave washer and cap ring only form a compliant drop seat. The rotor weight (≈ 1.3 N) exceeds the ±0.7 N detent pull, so the balls should stay loaded anyway **[TVP]** | Restate in SPEC |
+| 13 | FA springs did not match the model's installed length | **Done:** re-specced to the pockets: wire 0.32, free length 4.72, 2.60 mm installed, 1.33 N each, 0.50 mm to solid at the hard stop (§4.3). Measure the rate **[TVP]** |
+| 14 | J2 location | **Done:** SPEC §8 and the board put J2 on the base-board top at r = 17, θ = 222°, mouth radially outward, with BAT+/GND silk. It is still buried after Stage C, hence the breakout (§7.2). Its height against the rotor web is item #24 |
+| 15 | Spindle and hub exit slots were too small for the harness and the coax | **Done in the model:** 5.0 mm-wide lower window at θ 120° (z 14.45–16.35) and upper slot at θ 270° (z 25.8–28.25), with a 5.0 mm C-gap in the hub (§6) |
 | 16 | Magnet pocket depth: SPEC and the model say 2.05; ≥ 2.20 is needed to set Ø2×2 ±0.05 magnets flush (§8.1) | SPEC change |
-| 17 | The model's Ø2 "ship-mode/reset access" hole under the switch is covered by the pack (SPEC: \|x\| ≤ 27.5, \|y\| ≤ 17.25 spans the centre), so it can only act as a vent | Open |
-| 18 | u.FL plug through the spindle's lower slot; RF pigtail receptacle through the Ø5 hole and hub channel (§4.3, §7.1, §11.4). The plate's Ø2.2 coax hole is gone: the coax rises through the spider's open sector | TVP on the mock-up |
-| 19 | Antenna shelf fit (§7.1): centred on y = +26 the strip's corners reach r ≈ 35.1 (cup wall r 33.4); with the corners at r ≤ 33 its inner edge is ≈ 1.75 mm from the pack, not ≥ 4 mm; the base-board boss at r 21, θ 90° (H1) stands on the strip, inside the 10 mm metal keep-out (§12) | Open (SPEC and cup design) |
-| 20 | Ring ESD bleed path (ring → conductive epoxy → 608 races → spindle → H1–H3 → GND, SPEC §8): the PA12-GF carrier insulates the ring from the outer race, a printed hub does not connect the spindle to the screws, and no pass value is set (§10.1, §11.3, §11.4) | Open (define in `docs/mechanical.md`) |
-| 21 | Base-board RT1 on the bottom: two-sided base PCBA for one 0402 part, or hand-fit; thermal-pad material and thickness (§3.1, §7.2) | Open (order decision) |
+| 17 | The earlier model's Ø2 "ship-mode/reset access" hole under the switch was covered by the pack | **Closed:** the current model has no such hole; the spindle's solid bottom carries the press pad |
+| 18 | u.FL plug through the 5.0 × 1.9 mm lower window and the 5.0 × 2.45 mm upper slot (§7.1). The RF test pigtail now leaves round the board edge only, because the Ø5 hole carries the M4 spigot (§4.3, §11.4) | TVP on a spare spindle |
+| 19 | Antenna 1.75 mm in plan from the pack instead of ≥ 4 mm, and the θ 60° guide ear 0.75 mm above it (§7.1). A ≤ 30 mm-wide pack would restore 4.0 mm (`docs/mechanical.md` §3 A1) | Measure S11 (B-11.2) |
+| 20 | Ring ESD bleed path (ring → PB strap in silver epoxy → cap ring → wave washer → 608 → spindle → brass hub → H1–H3 → GND, SPEC §8, `docs/mechanical.md` §4) (§10.1, §11.4) | **TVP:** ring to GND < 10 MΩ with the rotor turning slowly |
+| 21 | Base-board RT1 placement | **Done:** RT1 is on the top side (SPEC §8); it reads board and pack-air temperature, not the cell skin |
 | 22 | LED-cavity silk: the stock LED footprints' silk marks (D101–D148) and R42's reference lie in r 27–30 (§2.1) | Open, before ordering |
 | 23 | L20 courtyard reaches r ≈ 19.9, ≈ 7 mm in plane from the r = 27 edge of the track annulus (§2.4 item 2) | Check before ordering |
+| 24 | Other model clash items: J2 (≈ 5.5 mm tall) and its plug against the rotor web and FA ring, R42 under the top-cover skirt, the M4-nut keep-out on the main-board top, the actuator-corridor height rule (§2.4 item 10) | Check before ordering |
+| 25 | Stepper can and lead screw 3.1–4.6 mm from the track, against SPEC's 10 mm rule; free-mode cogging unknown (§7.3, `docs/mechanical.md` §3 A12) | Bench test before PCB freeze **[TVP]** |
 
 Source abbreviations used above: "[x research]" and "[x verifier]" refer to the subsystem research and its
 independent verification, which SPEC.md was built from. Where the two differ, the verifier's corrected value is
