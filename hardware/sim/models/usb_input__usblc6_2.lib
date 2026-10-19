@@ -29,20 +29,23 @@
 * Ratings (checked in tests, not in the model): VPP IEC 61000-4-2 15 kV contact (Table 1, Rev 5);
 *   VCL test currents 1 A / 5 A (8/20 us) are the highest characterised pulse currents.
 *
+* Port naming: the ground port is called VSS, not GND: ngspice treats a node named 'gnd' as global ground
+*   even inside a subcircuit, which would tie the pin to 0 whatever the netlist connects it to
+*   (verifier fix 2026-10-19; it hid every wrong-connection fault on this pin).
 * Pins: IO1 (1/6), GND (2), IO2 (3/4), VBUS (5)
 * =====================================================================================================
-.subckt USBIN_USBLC6_2 IO1 GND IO2 VBUS params: rd=0.5 rdt=0.5 vbr=6.1 cio=1.9p
+.subckt USBIN_USBLC6_2 IO1 VSS IO2 VBUS params: rd=0.5 rdt=0.5 vbr=6.1 cio=1.9p
 Dup1  IO1 VBUS USBIN_USBLC6_DS
-Ddn1  GND IO1  USBIN_USBLC6_DS
+Ddn1  VSS IO1  USBIN_USBLC6_DS
 Dup2  IO2 VBUS USBIN_USBLC6_DS
-Ddn2  GND IO2  USBIN_USBLC6_DS
+Ddn2  VSS IO2  USBIN_USBLC6_DS
 * Transil (VBUS rail -> GND) as a forward diode behind a (vbr - 0.536 V) offset: V = vbr at 1 mA, rdt above it
 * (SPICE BV breakdown did not converge under the 0.8 ns IEC edge; EG = Vf(1 mA), XTI = 0: no VBR tempco).
 * Its forward direction (GND above VBUS) is not modelled: the GND->I/O diodes carry negative strikes.
 * Vtr is a 0 V probe: i(v.x<inst>.vtr) = Transil clamp current (positive when clamping).
 Vtr   VBUS trk 0
 Dtr   trk trz USBIN_USBLC6_TR
-Vtrz  trz GND {vbr-0.536}
+Vtrz  trz VSS {vbr-0.536}
 .model USBIN_USBLC6_DS D(IS=1e-14 N=1.3 RS={rd} CJO={cio} M=0.3 VJ=0.7)
 .model USBIN_USBLC6_TR D(IS=1e-12 N=1 RS={rdt} CJO=0 EG=0.536 XTI=0)
 .ends USBIN_USBLC6_2

@@ -22,22 +22,25 @@
 * NOT modelled: the USB regulator's dynamics, a positive-going VBUS-pin clamp (none is specified; the
 *   tests compare the VBUS node with the 5.8 V abs max instead),
 *   the PHY drivers / pull-ups (the tests look at transients with the PHY idle), temperature effects.
+* Port naming: the ground port is called VSS, not GND: ngspice treats a node named 'gnd' as global ground
+*   even inside a subcircuit, which would tie the pin to 0 whatever the netlist connects it to
+*   (verifier fix 2026-10-19; it hid every wrong-connection fault on this pin).
 * Pins: VBUS, DP, DM, GND
 * =====================================================================================================
-.subckt USBIN_NRF52840_USB VBUS DP DM GND params: ivbus=2.4m vusb=3.3 cpad=3p resd=3
-Bvbus VBUS GND I=ivbus*0.5*(1+tanh((v(VBUS,GND)-4.0)/0.05))
-Rvbus VBUS GND 10Meg
+.subckt USBIN_NRF52840_USB VBUS DP DM VSS params: ivbus=2.4m vusb=3.3 cpad=3p resd=3
+Bvbus VBUS VSS I=ivbus*0.5*(1+tanh((v(VBUS,VSS)-4.0)/0.05))
+Rvbus VBUS VSS 10Meg
 * VUSB33 rail (internal regulator output + CDECUSB)
-Vusb  vreg GND {vusb}
+Vusb  vreg VSS {vusb}
 Rusb  vreg vusb33 0.1
-Cdec  vusb33 GND 4.7u
+Cdec  vusb33 VSS 4.7u
 * pad capacitance and assumed ESD clamp diodes
-Cdp   DP GND {cpad}
-Cdm   DM GND {cpad}
+Cdp   DP VSS {cpad}
+Cdm   DM VSS {cpad}
 Dpu   DP vusb33 USBIN_NRF_ESD
-Dpd   GND DP    USBIN_NRF_ESD
+Dpd   VSS DP    USBIN_NRF_ESD
 Dmu   DM vusb33 USBIN_NRF_ESD
-Dmd   GND DM    USBIN_NRF_ESD
-Dvbd  GND VBUS  USBIN_NRF_ESD
+Dmd   VSS DM    USBIN_NRF_ESD
+Dvbd  VSS VBUS  USBIN_NRF_ESD
 .model USBIN_NRF_ESD D(IS=1e-15 N=1 RS={resd} CJO=0)
 .ends USBIN_NRF52840_USB

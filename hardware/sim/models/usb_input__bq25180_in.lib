@@ -20,14 +20,17 @@
 * NOT modelled: VIN_OVP (5.5/5.7/5.9 V, Table 7.5) and VINDPM loops, input-FET soft start, SYS/BAT
 *   side, the positive-going internal clamp (IN is rated 25 V, Table 7.1; the tests compare the IN
 *   node voltage with that), pin capacitance (negligible next to C1).
+* Port naming: the ground port is called VSS, not GND: ngspice treats a node named 'gnd' as global ground
+*   even inside a subcircuit, which would tie the pin to 0 whatever the netlist connects it to
+*   (verifier fix 2026-10-19; it hid every wrong-connection fault on this pin).
 * Pins: IN, GND
 * =====================================================================================================
-.subckt USBIN_BQ25180_IN IN GND params: iq=0.75m iin=0 resd=3
+.subckt USBIN_BQ25180_IN IN VSS params: iq=0.75m iin=0 resd=3
 * smooth enable above UVLO (3.0 V), ~50 mV wide, so DC sweeps stay continuous
-Bin IN GND I=(iq+iin)*0.5*(1+tanh((v(IN,GND)-3.0)/0.05))
-Rleak IN GND 10Meg
+Bin IN VSS I=(iq+iin)*0.5*(1+tanh((v(IN,VSS)-3.0)/0.05))
+Rleak IN VSS 10Meg
 * Vesd: 0 V probe, i(v.x<inst>.vesd) = current through the assumed clamp (positive = conducting)
-Vesd GND esda 0
+Vesd VSS esda 0
 Desd esda IN USBIN_BQ_ESD
 .model USBIN_BQ_ESD D(IS=1e-15 N=1 RS={resd} CJO=0)
 .ends USBIN_BQ25180_IN
