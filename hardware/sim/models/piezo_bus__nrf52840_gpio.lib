@@ -24,7 +24,9 @@
 *   * input leakage (not specified in PS v1.1), internal pull-up/down (RPU/RPD 11-16 kohm, unused here);
 *   * real saturation behaviour: level-1 with VT = 0.5 V saturates at ~3.8x the 0.4 V current, which is
 *     conservative (high) for peak-current checks; edge-rate control (tRF/tHRF) is set by the ramp of the
-*     onp/onn control sources (5 ns ~ tHRF,25pF, 13 ns ~ tRF,25pF);
+*     onp/onn control sources, which is NOT the output edge. Calibrated (10-90 % into 25 pF + CPAD, typ pin):
+*     an 11 ns ramp gives 5.0 ns for high drive = tHRF,25pF (a 5 ns ramp gives 3.6 ns, too fast); standard
+*     drive is current-limited at 15-16 ns for any ramp (tRF,25pF = 13 ns typ), so 13 ns is used;
 *   * temperature: the PS min/max drive figures already cover the operating range, so the corners are
 *     applied directly (TEMP = TNOM in all decks).
 * =====================================================================================================

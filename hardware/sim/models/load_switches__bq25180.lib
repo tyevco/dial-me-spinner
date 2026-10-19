@@ -1,0 +1,42 @@
+* =====================================================================================================
+* load_switches__bq25180.lib  --  TI BQ25180 power path, as the VSYS source seen by the main-board load switches
+* =====================================================================================================
+* Part      : Texas Instruments BQ25180YBGR (base board U1, DSBGA-8)
+* Datasheet : https://www.ti.com/lit/ds/symlink/bq25180.pdf  SLUSE99C (Sept 2021, revised Jan 2023)
+* Register settings used (docs/architecture.md 6.5, docs/firmware.md 12.x): SYS_REG 0x40 = 4.5 V on USB,
+*   TMR_ILIM ILIM code 500 mA (475 mA typ), CHARGECTRL1 BATOCP 1.5 A, BUVLO 3.0 V.
+* Two sub-circuits, chosen by the test:
+*   LSW_BQ25180_BAT  battery only (no VBUS): cell source vbat (the battery terminal voltage before the event)
+*                    -> rpack (cell + PCM + leads, NOT a BQ25180 parameter; given by the test)
+*                    -> BATFET RON_BAT (Table 7.5: 55 mOhm typ, 90 mOhm max) -> SYS.  Fully on, linear.
+*   LSW_BQ25180_USB  VBUS present: input FET from IN to SYS regulated to min(VSYS_REG, VBUS) with output
+*                    resistance RON_IN (Table 7.5: 270 mOhm typ, 470 mOhm max; also used in regulation, which
+*                    makes the modelled droop pessimistic) and current limit ILIM (500 mA code: 450 / 475 /
+*                    498 mA min/typ/max) through the XSPICE "ilimit" block (no reverse current: sink limit 1 mA).
+*                    VSYS_REG accuracy +-2 % (Table 7.5 VSYS_REG_ACCURACY) -> param vsysreg.
+*                    Battery supplement (Table 7.5 VBSUP1 = 40 mV: battery feeds SYS when VSYS < VBAT - 40 mV):
+*                    diode with ~40 mV at ~10 mA (IS 3.4e-16, N 0.05) in series with RON_BAT and rpack.
+* NOT modelled: BATOCP / BUVLO / ILIM-interrupt / thermal trips (the tests compare currents and voltages against
+*   those thresholds instead), input UVLO/OVP, VINDPM, regulation-loop dynamics, the charge current (assumed to
+*   give way instantly to the system load, DPPM), the 25 Ohm SYS pull-down (ship/shutdown only).
+* Pins: SYS GND.
+* =====================================================================================================
+
+.subckt LSW_BQ25180_BAT SYS GND params: vbat=3.7 rpack=0.25 ronbat=55m
+V_BAT    VCELL GND {vbat}
+R_PACK   VCELL BAT {rpack}
+R_BATFET BAT SYS {ronbat}
+.ends LSW_BQ25180_BAT
+
+.subckt LSW_BQ25180_USB SYS GND params: vbus=5.0 vsysreg=4.5 ronin=0.27 ilim=0.475 vbat=3.7 rpack=0.25 ronbat=55m
+V_BUS    VBUS GND {vbus}
+V_REF    VREG GND {min(vsysreg, vbus)}
+a_INFET  VREG VBUS GND SYS lsw_bq_infet
+.model lsw_bq_infet ilimit(in_offset=0 gain=1 r_out_source={ronin} r_out_sink=1e3 i_limit_source={ilim}
++        i_limit_sink=1e-3 v_pwr_range=0.01 i_source_range=1e-2 i_sink_range=1e-4 r_out_domain=1e-3)
+V_BAT    VCELL GND {vbat}
+R_PACK   VCELL BAT {rpack}
+D_SUP    BAT BSUP lsw_bq_sup
+.model lsw_bq_sup d (is=3.4e-16 n=0.05)
+R_BATFET BSUP SYS {ronbat}
+.ends LSW_BQ25180_USB

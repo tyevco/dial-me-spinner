@@ -1,0 +1,28 @@
+* =====================================================================================================
+* load_switches__b5819w.lib  --  Changjiang (CJ) B5819W SL, 40 V 1 A Schottky, SOD-123 (D21, boost rectifier)
+* =====================================================================================================
+* Part      : Jiangsu Changjiang Electronics B5819W (marking SL), LCSC C8598
+* Datasheet : "B5817W-5819W SCHOTTKY BARRIER DIODE", CJ, rev D, Mar 2015
+*             https://atta.szlcsc.com/upload/public/pdf/source/20170217/1487301580783.pdf
+*             (series datasheet; same document as the LCSC C2910056 listing)
+* Modelled (fit to the page-2 typical curves, Ta = 25 C unless noted):
+*   Forward: IS = 4 uA, N = 1.0, RS = 0.1 Ohm -> 0.26 V @ 0.1 A, 0.42 V @ 1 A ("Forward Characteristics",
+*            25 C curve 0.25 V / 0.42 V); limit table VF <= 0.6 V @ 1 A.
+*   Reverse: saturation IS = 4 uA reproduces "Reverse Characteristics" 25 C ~4 uA at VR = 1 V; the VR slope
+*            (~8 uA @ 10 V, ~12 uA @ 20 V, ~40 uA @ 40 V) is a parallel conductance GLEAK = 0.45 uA/V at 25 C.
+*            Temperature: XTI = 2, EG = 0.45 eV fitted to 25 C -> 75 C (x12: ~50 uA @ 1 V) and 100 C (x100,
+*            ~0.4 mA @ 1 V; the fit gives about x40, low by 2.5x at 100 C, within 30 % at 75 C); GLEAK scales
+*            with the same factor through the TEMPER-dependent B-source.  Limit table IR <= 1 mA @ 40 V.
+*   Capacitance: CJO 180 pF, VJ 0.35 V, M 0.5 -> about 60 pF at 4 V ("Capacitance Characteristics";
+*            limit CD <= 120 pF @ 4 V).
+* NOT modelled: reverse breakdown (V(BR) >= 40 V, never reached here), self-heating, reverse recovery
+*   (Schottky, negligible), part-to-part spread (curves are typical; the 1 mA max IR is 25x the typical).
+* Use: XD21 anode cathode LSW_B5819W
+* =====================================================================================================
+
+.subckt LSW_B5819W A K
+D1      A K lsw_b5819w_d
+* reverse-leakage slope, scaled with temperature like IS (x = 2*ln(T/Tnom) + EG/Vk*(1/Tnom - 1/T))
+B_GLK   K A I = 0.45u * V(K,A) * exp(2*ln((TEMPER+273.15)/300.15) + 0.45/8.617e-5*(1/300.15 - 1/(TEMPER+273.15)))
+.model lsw_b5819w_d d (is=4u n=1.0 rs=0.1 xti=2 eg=0.45 cjo=180p vj=0.35 m=0.5 bv=45 ibv=1m tnom=27)
+.ends LSW_B5819W

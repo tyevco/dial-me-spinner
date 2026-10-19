@@ -12,6 +12,7 @@ What is checked: the DI high level against VIH (0.55 x VDD datasheet, 0.6 x VDD 
 VIL across VSYS = 3.0 ... 4.59 V; the pulse widths the LED can see (worst case over any receiver threshold
 between VIL and VIH) against the T0H / T1H / T0L / T1L windows; abs-max at DI and at the P0.06 pad; the same for
 the U43 option; tolerance extremes, temperature, load extremes; and fault injection.
+0.7 x VDD (the pre-V6 WS2812B threshold) is reported as information only: it is not the fitted part's limit.
 """
 
 from __future__ import annotations
@@ -110,7 +111,7 @@ LV_TPD = [(2.5, 9.5e-9), (3.3, 8.0e-9), (5.0, 6.5e-9)]                          
 LV_RUP, LV_RDN, LV_CO, LV_CI = 100.0, 50.0, 2.5e-12, 10e-12                              # 6.5 (see the lib)
 LV_TEDGE = 1e-9                       # assumption (not in the DS), absorbed by the tpd calibration
 LV_DTDV = 20e-9                       # s/V max input transition rate, 6.3
-LV_TD_MIN = 50e-12                    # smallest internal delay the model's delay lines take (see the lib)
+LV_TD_MIN = 1e-12                     # smallest internal delay of the model (XSPICE d_buffer, see the lib)
 
 
 def interp(tab, x):
@@ -529,6 +530,8 @@ def test_r27_high_level_margin_per_supply(check, corner_sweep):
               SRC_PS_GPIO + " VOH,SD + " + SRC_PCN)
         check(f"(info) DC high - 0.7 VDD legacy pre-V6 threshold, {lab}", v - WS_VIH_LEGACY * vsys, None, None, "V",
               "legacy WS2812B VIH 0.7 VDD - not the fitted V6 part's limit")
+        check(f"(info) VLED - LED rated VDD min, {lab}", vsys - WS_VDD_MIN, None, None, "V",
+              SRC_WS + " p.2 VDD +3.3 ... +5.3 V (LED supply, not the data line)")
 
 
 def test_low_level_and_abs_max(check, corner_sweep):
@@ -646,8 +649,12 @@ def test_lv1t34_model_tpd_matches_ds(check):
 
 @pytest.fixture(scope="module")
 def u43_sweep():
+    """U43 fitted / R43 removed: every VSYS at mid threshold (levels), plus threshold x tpd-skew x drive corners
+    at the lowest and highest VLED (pulse widths)."""
     jobs = []
     for _, vsys in SUPPLY:
+        jobs.append((u43_design(), dict(vsys=vsys, vdd_k=-1, mode="SD", skew="slow_rise", lv=lv_params(vsys))))
+    for vsys in (SUPPLY[0][1], VSYS_MAX):
         for vth in ("vil", "vih"):
             for skew in ("rise_late", "fall_late"):
                 for mode, dskew in (("SD", "slow_rise"), ("HD", "strong")):
@@ -693,7 +700,7 @@ def test_u43_input_conditions(check):
         deck.print_op(f"v({d.node('LED_DIN_R')})")
         hi = deck.run()["op_0"]
         check(f"U43 A high - VIH(VCC={vsys:.2f} V)", hi - lv_vih(vsys), 0.0, None, "V", SRC_LV + " 6.5 VIH")
-        check(f"U43 A high <= VI max", hi, None, 5.5, "V", SRC_LV + " 6.3 VI")
+        check(f"U43 A high <= VI max (VCC={vsys:.2f} V)", hi, None, 5.5, "V", SRC_LV + " 6.3 VI")
     v, r = worst(rs, "dtdv_r", max)
     check(f"U43 A rise rate ({label(r)})", v, None, LV_DTDV, "s/V", SRC_LV + " 6.3 dt/dv")
     v, r = worst(rs, "dtdv_f", max)
@@ -780,6 +787,7 @@ def test_monte_carlo(check):
         deck.lines = [ln if not ln.startswith("VVDD") else f"VVDD {d.node('+3V3')} 0 DC {vdd:.6g}"
                       for ln in deck.lines]
         meta["vdd"] = vdd
+        meta["skew"] = f"MC IOH {ioh * 1e3:.2f} mA IOL {iol * 1e3:.2f} mA"
         return analyse(run_checked(deck), meta)
 
     with ThreadPoolExecutor(max_workers=max(2, os.cpu_count() or 2)) as ex:

@@ -34,7 +34,9 @@
 *   - Dead time / shoot-through, gate charge, the charge pump ramp, the analog current-limit loop
 *     dynamics, thermal shutdown (TSD 150 C min is checked by calculation in the tests, not modelled),
 *     rDS(on) dependence on VM / VCC below the VM = 5 V, VCC = 3 V test condition (Figure 6-7 shows it
-*     roughly doubles at VM = VCC = 2 V; the tests use the max column to cover it).
+*     roughly doubles at VM = VCC = 2 V). The tests use the 330 mOhm max; even a doubled 0.58 Ohm would
+*     move the coil current (20 Ohm coil) by < 1.5 %.
+*   - Input pin capacitance (1 pF here) is not in the datasheet.
 * =====================================================================================================
 
 .model d_drv8837_body D(IS=1e-12 N=1.2 RS=0.05 CJO=50p TT=10n BV=20)

@@ -19,7 +19,8 @@
 *                  Turn-on delay: VOUT starts when (VIN - V(CT)) exceeds VDEL = I_CT x tON_k - 0.9 VIN, so
 *                     that VOUT reaches 90 % of VIN at tON = tON_k x CT (Table 7.6 "tON", CT >= 100 pF:
 *                     3.6 / 3.8 / 4.0 us/pF at 1.8 / 3.6 / 5.0 V; equation 2).
-*                  Resulting 10-90 % rise at 3.6 V / 1 nF: 1.5 ms (Table 7.6 tR: 1.6 us/pF -> 1.6 ms).
+*                  In the full OLED circuit at VSYS 3.7 V with C37 = 1 nF the model gives 10-90 % rise 1.61 ms
+*                  (Table 7.6 tR 1.6 us/pF) and 90 % at 4.0 ms after ON (tON 3.8-4.0 us/pF).
 *   Pass element   VOUT follows min(ramp target, VIN) through RON (default 0.09 ohm = Table 7.5 RON typ
 *                  at VIN 3.6 V, 25 C; max 0.14 ohm at -40..85 C, the test passes the corner).
 *                  Current flows only VIN -> VOUT: reverse current blocking (9.4) is treated as ideal.

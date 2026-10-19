@@ -14,13 +14,20 @@
 *            1050 mA setting 995..1100 mA, IIN max 1.1 A: Tables 7.1 / 7.4 / 7.5).  The tests use
 *            iin = 0 for plug-in transients: the input FET is still off while the device qualifies
 *            the source, and no load is the least-damped (worst) case for ringing.
+*   ESD      ASSUMED pin clamp from GND (negative excursions): generic diode, RS = resd (default 3 ohm,
+*            typical TLP slope of an HBM-2 kV-class on-chip clamp). TI does not specify the structure;
+*            the tests compare the current through it with the HBM rating (Table 7.2, +-2500 V).
 * NOT modelled: VIN_OVP (5.5/5.7/5.9 V, Table 7.5) and VINDPM loops, input-FET soft start, SYS/BAT
-*   side, the IN pin's internal ESD structure (not specified; the tests compare the IN node voltage
-*   with the -0.3 / 25 V absolute maximum of Table 7.1), pin capacitance (negligible next to C1).
+*   side, the positive-going internal clamp (IN is rated 25 V, Table 7.1; the tests compare the IN
+*   node voltage with that), pin capacitance (negligible next to C1).
 * Pins: IN, GND
 * =====================================================================================================
-.subckt USBIN_BQ25180_IN IN GND params: iq=0.75m iin=0
+.subckt USBIN_BQ25180_IN IN GND params: iq=0.75m iin=0 resd=3
 * smooth enable above UVLO (3.0 V), ~50 mV wide, so DC sweeps stay continuous
 Bin IN GND I=(iq+iin)*0.5*(1+tanh((v(IN,GND)-3.0)/0.05))
 Rleak IN GND 10Meg
+* Vesd: 0 V probe, i(v.x<inst>.vesd) = current through the assumed clamp (positive = conducting)
+Vesd GND esda 0
+Desd esda IN USBIN_BQ_ESD
+.model USBIN_BQ_ESD D(IS=1e-15 N=1 RS={resd} CJO=0)
 .ends USBIN_BQ25180_IN

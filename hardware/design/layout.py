@@ -58,10 +58,22 @@ def find(comps, pred):
     return sorted([r for r, c in comps.items() if pred(c)], key=lambda r: (re.sub(r"\d", "", r), refnum(r)))
 
 
+_LIB_FP_CACHE = {}
+
+
+def _lib_fp(fp):
+    """Library copy of a footprint, loaded once (FootprintLoad parses the whole .pretty and leaks ~30 MB a call)."""
+    key = fp.GetFPIDAsString()
+    if key not in _LIB_FP_CACHE:
+        path = fp_lib_path(fp)
+        _LIB_FP_CACHE[key] = pcbnew.FootprintLoad(*path) if path else None
+    return _LIB_FP_CACHE[key]
+
+
 def local_map(fp):
     """Affine map (footprint-local mm -> board mm) solved from the pads, so flips/rotations are exact."""
     import numpy as np
-    ref = pcbnew.FootprintLoad(*fp_lib_path(fp)) if fp_lib_path(fp) else None
+    ref = _lib_fp(fp)
     if ref is None:
         return None
     lib_pads, brd_pads = list(ref.Pads()), list(fp.Pads())
@@ -187,7 +199,7 @@ def main_post_fixed(bb, comps, fixed):
             fp.SetPosition(pcbnew.VECTOR2I(pcbgen.MM(tx), pcbgen.MM(ty)))
         elif "TMAG5273" in m:
             # Hall element: 0.40 mm toward pin 3, 0.12 mm toward the pin 1-3 edge (TI fig. 6-2) -> on R_t = 29.0
-            pads = {p.GetNumber(): p for p in pcbnew.FootprintLoad(*fp_lib_path(fp)).Pads()}
+            pads = {p.GetNumber(): p for p in _lib_fp(fp).Pads()}
             p1, p3 = pads["1"].GetPosition(), pads["3"].GetPosition()
             ux, uy = pcbnew.ToMM(p3.x - p1.x), pcbnew.ToMM(p3.y - p1.y)
             ul = math.hypot(ux, uy)

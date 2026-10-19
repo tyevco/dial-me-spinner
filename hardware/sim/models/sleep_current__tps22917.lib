@@ -1,0 +1,25 @@
+* =====================================================================================================
+* sleep_current__tps22917.lib -- TPS22917 load switch, OFF state only (ON <= VIL), DC model
+*
+* Part      : Texas Instruments TPS22917DBVR (main board U2 = VLED switch, U21 = OLED boost-input switch)
+* Datasheet : https://www.ti.com/lit/ds/symlink/tps22917.pdf  (SLVSDW8B, September 2017, revised December 2021)
+*
+* Modelled (OFF state, ON pin driven low):
+*   ISD   VIN shutdown current 10 nA typ / 100 nA max (Table 7.5 ISD,VIN, "Disabled, VOUT = GND", -40..85 C).
+*         The test condition grounds VOUT, so the current is assumed to flow VIN -> VOUT (worst case for a
+*         floating VOUT such as OLED_VIN, where it can charge the node).
+*   RPD   smart ON pull-down 750 kohm typ while VON <= VIL (Table 7.5 RPD)
+*   RQOD  quick-output-discharge 150 ohm from QOD to GND while disabled (Table 7.5 QOD). On U21 QOD is
+*         unconnected in the schematic, so the test ties it to a dummy node.
+*   MAXC = 0 typical, 1 datasheet maximum (ISD only).
+*
+* NOT modelled: the ON state (RON, IQ 0.5 uA, slew/CT), reverse-current blocking (only matters for
+*   VOUT > VIN), temperature dependence beyond the -40..85 C max (no typical curve used).
+*   The test checks that ON really sits below VIL in sleep before relying on this model.
+* =====================================================================================================
+.subckt SC_TPS22917_OFF vin on gnd vout qod params: MAXC=0
+.param isd = {MAXC > 0.5 ? 100n : 10n}
+Isd vin vout DC {isd}
+Rpd on gnd 750k
+Rqod qod gnd 150
+.ends SC_TPS22917_OFF

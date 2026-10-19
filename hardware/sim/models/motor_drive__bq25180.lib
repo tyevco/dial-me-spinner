@@ -12,7 +12,7 @@
 *     Table 7.5 VSYS_REG_ACCURACY) through the input FET RON_IN = 270 mOhm typ / 470 mOhm max from
 *     vbus, input current limited to ilim (ILIM = 500 mA setting: 450 / 475 / 498 mA, Table 7.5).
 *     The input path can only source current. The regulation loop is a 20 mOhm source (rreg, an
-*     assumed load regulation); min/max are smoothed with a 1 mA corner for convergence.
+*     assumed load regulation); min/max are smoothed with a 20 mA corner for convergence.
 *   - Supplement mode (section 8.3.3): with usb = 1, the battery feeds SYS when V(SYS) < V(BAT) - VBSUP1
 *     (40 mV typ), unregulated, through RON_BAT.
 *   - Charging (usb = 1, param ichg): a SYS -> BAT sink of ichg, cut back linearly by DPPM when SYS
@@ -33,16 +33,18 @@
 * battery-only BATFET (usb = 0): bidirectional resistor; with usb = 1 it is open (1 GOhm)
 Rbatfet BAT SYS {usb > 0.5 ? 1e9 : ron_bat}
 * USB input path: source only, limited by the regulation target, the input-FET drop and ILIM
-* smooth min/max with a 1 mA corner keep Newton iterations well behaved:
-*   smin(a,b) = (a + b - sqrt((a-b)^2 + 1e-6))/2,  smax0(a) = (a + sqrt(a^2 + 1e-6))/2   (amps, as node volts)
+* smooth min/max with a 20 mA corner keep Newton iterations well behaved, written in the cancellation-free form
+*   smin(a,b) = min(a,b) - e2/(2*(sqrt(d^2+e2) + |d|)),  smax0(x) = max(x,0) + e2/(2*(sqrt(x^2+e2) + |x|)),
+*   d = a - b, e2 = (20 mA)^2 (currents carried as node volts); the supplement diode uses e2 = (100 mA)^2, i.e. a
+*   9 mV knee at 90 mOhm, still well inside the 40 mV / 20 mV VBSUP1 / VBSUP2 hysteresis
 Bx1 x1 GND V = ({vsysreg} - V(SYS,GND))/{rreg}
 Bx2 x2 GND V = ({vbus} - V(SYS,GND))/{ron_in}
-Bm1 m1 GND V = 0.5*(V(x1) + V(x2) - sqrt((V(x1) - V(x2))**2 + 1e-6))
-Bm2 m2 GND V = 0.5*({ilim} + V(m1) - sqrt(({ilim} - V(m1))**2 + 1e-6))
-Bin GND SYS I = {usb}*0.5*(V(m2) + sqrt(V(m2)**2 + 1e-6))
+Bm1 m1 GND V = min(V(x1), V(x2)) - 4e-4/(2*(sqrt((V(x1) - V(x2))**2 + 4e-4) + abs(V(x1) - V(x2))))
+Bm2 m2 GND V = min({ilim}, V(m1)) - 4e-4/(2*(sqrt(({ilim} - V(m1))**2 + 4e-4) + abs({ilim} - V(m1))))
+Bin GND SYS I = {usb}*(max(V(m2), 0) + 4e-4/(2*(sqrt(V(m2)**2 + 4e-4) + abs(V(m2)))))
 * supplement: ideal-diode BAT -> SYS below V(BAT) - VBSUP1 (usb = 1 only)
 Bxs xs GND V = (V(BAT,GND) - {vbsup1} - V(SYS,GND))/{ron_bat}
-Bsup BAT SYS I = {usb}*0.5*(V(xs) + sqrt(V(xs)**2 + 1e-6))
+Bsup BAT SYS I = {usb}*(max(V(xs), 0) + 1e-2/(2*(sqrt(V(xs)**2 + 1e-2) + abs(V(xs)))))
 * charging sink SYS -> BAT, reduced by DPPM as SYS approaches VBAT + VDPPM
 Bchg SYS BAT I = {usb} * {ichg} * 0.5*(1 + tanh((V(SYS,GND) - V(BAT,GND) - {vdppm} - 0.05)/0.02))
 .ends BQ25180_PATH
