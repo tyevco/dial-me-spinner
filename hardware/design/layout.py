@@ -774,8 +774,9 @@ def thermal_points(b):
 
 
 def prune_dangling(path, rounds=6):
-    """Delete the unlocked wiring that KiCad's DRC flags as dangling (track_dangling / via_dangling), keeping a
-    deletion only if the board stays fully connected."""
+    """Delete the wiring that KiCad's DRC flags as dangling (track_dangling / via_dangling), keeping a deletion only
+    if the board stays fully connected.  Locked BGA escape stubs count too: they are locked only so the router keeps
+    them, and one the router bypassed (it reached the ball directly) is a dead stub."""
     removed = 0
     for _ in range(rounds):
         rpt, _ = drc(path)
@@ -799,7 +800,7 @@ def prune_dangling(path, rounds=6):
         for kind, x, y, layer, length in spots:
             p = pcbnew.VECTOR2I(pcbgen.MM(x), pcbgen.MM(y))
             for t in b.GetTracks():
-                if t.IsLocked() or t in doomed:
+                if t in doomed:
                     continue
                 if kind == "via_dangling" and t.Type() == pcbnew.PCB_VIA_T and (t.GetStart() - p).EuclideanNorm() < 2000:
                     doomed.append(t)
