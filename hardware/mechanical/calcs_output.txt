@@ -277,40 +277,48 @@ plate under-boss - cup stop face             +0.50    +0.00
 
 Main-board BOTTOM parts (z from the PCB; rotor clearance is exact, the rest sampled at 0.12 mm).
 Only parts with any clearance < 1.0 mm are listed; negative = interference.
-ref       value            r            z              rotor  hub/spacer  actuator@click        actuator@free         harness/coax 
---------  ---------------  -----------  -------------  -----  ----------  --------------------  --------------------  -------------
-U10       MDBT50Q-U1MV2    r 6.8-22.9   z 26.90-29.10  +0.90  -1.47       +13.70 slider_nut     +8.41 link_plate      +1.62 harness
-U10_uFL   mated U.FL plug  r 6.7-10.3   z 25.80-28.30  -0.20  -1.45       +17.59 slider_nut     +11.89 link_plate     +4.76 harness
-U41       DRV8837DSGR      r 15.8-18.5  z 28.30-29.10  +4.31  +7.34       +5.73 stepper_endtab  +0.80 link_plate      +13.36 coax  
-J1_plug   mated plug       r 11.9-16.5  z 26.15-29.10  +0.15  +3.42       +11.27 saddle         +11.27 saddle         +8.73 coax   
-J40       MOTOR            r 23.8-28.2  z 26.15-29.10  +0.55  +15.32      +0.35 slider_nut      +0.85 stepper_endtab  +10.99 coax  
-J40_plug  mated plug       r 28.1-31.2  z 26.15-29.10  +0.55  +19.58      +3.11 stepper_endtab  +3.11 stepper_endtab  +11.89 coax  
-U40       DRV8837DSGR      r 17.6-20.4  z 28.30-29.10  +5.86  +9.09       +1.12 link_plate      +0.83 link_plate      +13.20 coax  
-Parts below 0.3 mm (action needed): U10, U10_uFL, J1_plug
+ref       value          r            z              rotor  hub/spacer  actuator@click        actuator@free         harness/coax 
+--------  -------------  -----------  -------------  -----  ----------  --------------------  --------------------  -------------
+C11       100n           r 9.2-10.2   z 28.55-29.10  +2.55  +0.70       +20.96 saddle         +20.96 saddle         +0.30 harness
+C13       12p C0G        r 9.3-9.9    z 28.55-29.10  +2.55  +0.79       +12.61 slider_nut     +6.91 link_plate      +8.68 harness
+C14       12p C0G        r 9.2-10.3   z 28.55-29.10  +2.55  +0.71       +10.84 slider_nut     +5.45 link_plate      +8.61 harness
+U10       MDBT50Q-U1MV2  r 9.5-25.6   z 26.90-29.10  +0.90  +1.05       +14.81 slider_nut     +8.58 link_plate      +0.25 coax   
+U12       USBLC6-2SC6    r 10.2-12.3  z 27.65-29.10  +1.65  +1.67       +22.37 saddle         +20.00 link_plate     +0.13 coax   
+C12       4.7u/16V       r 11.4-12.4  z 28.20-29.10  +2.20  +2.89       +22.70 saddle         +22.70 saddle         +0.70 harness
+R12       4.7            r 9.2-10.4   z 28.70-29.10  +2.70  +0.74       +20.44 saddle         +20.44 saddle         +0.45 harness
+J40       MOTOR          r 23.8-28.2  z 26.15-29.10  +0.55  +15.32      +0.35 slider_nut      +0.85 stepper_endtab  +10.99 coax  
+J40_plug  mated plug     r 28.1-31.2  z 26.15-29.10  +0.55  +19.58      +3.11 stepper_endtab  +3.11 stepper_endtab  +11.89 coax  
+Action needed: < 0.3 mm to a moving item (rotor, actuator), or any overlap with the hub or a wire (same body:
+contact is acceptable; a wire's own connector is tested without its last 3 mm of approach).
+Parts needing action: none
 
-Base-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap).
-ref      value           r            height       rotor rest  rotor pressed  plate rest  plate pressed
--------  --------------  -----------  -----------  ----------  -------------  ----------  -------------
-J1       TYPE-C-31-M-12  r 27.7-35.3  top z 14.36  +1.24       +0.74          -           -            
-R4       1M              r 5.6-6.8    top z 11.50  +6.30       +5.87          +1.30       +0.80        
-R3       1k              r 3.4-3.9    top z 11.50  +7.17       +6.69          +1.30       +0.80        
-RT1      10k B3435       r 7.4-8.6    top z 11.50  +5.65       +5.17          +1.30       +0.80        
-J2       BATT            r 13.8-21.9  top z 16.60  +0.40       -0.10          -           -            
-J2_plug  mated plug      r 21.4-26.3  top z 16.60  +0.40       -0.10          -3.80       -4.30        
+Base-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap),
+wires (harness, coax, battery leads; at rest and pressed; sampled).
+ref      value           r            height       rotor rest  rotor pressed  plate rest  plate pressed  wires rest      wires pressed 
+-------  --------------  -----------  -----------  ----------  -------------  ----------  -------------  --------------  --------------
+SW1      TS-1187A        r 0.0-4.1    top z 12.60  +6.06       +5.60          -           -              +1.90 harness   +1.40 harness 
+R3       1k              r 3.4-3.9    top z 11.50  +7.17       +6.69          +1.30       +0.80          +3.17 harness   +2.69 harness 
+RT1      10k B3435       r 7.4-8.6    top z 11.50  +5.65       +5.17          +1.30       +0.80          +7.37 harness   +7.14 harness 
+J3       LINK            r 12.9-18.5  top z 14.05  +2.95       +2.45          -           -              +0.47 coax      +0.22 coax    
+J3_plug  mated plug      r 9.9-14.7   top z 14.05  +2.95       +2.45          -           -              +0.57 coax      +0.24 coax    
+J1       TYPE-C-31-M-12  r 27.7-35.3  top z 14.36  +1.24       +0.74          -           -              +22.60 harness  +22.33 harness
 SW1 is handled by the pre-gap (section 7).  Rule from SPEC: parts under a spoke/hub <= 1.0 mm tall (gap 1.7 rest, 1.2 pressed).
+Wires pressed: the harness/coax end in the spindle slot moves down 0.50, the free span to its base anchor (J3 plug / antenna riser) sags linearly.
+Base parts needing action (rotor/plate < 0.3 mm, wire overlap): none
+Battery leads under the FA spider: min gap to the plate pressed +1.40 mm at r 30.2, theta 196, z 10.00
 
 Main-board TOP parts under the OLED bracket rim/spokes (z 31.8-32.8) and the glass (z 33.0):
-ref  value         height         under                clearance                     
----  ------------  -------------  -------------------  ------------------------------
-D21  B5819W        top z 32.05    rim/spoke            pocketed: +0.20, rim left 0.55
-J20  OLED_ZIF30    top z 32.70    glass                +0.30                         
-C3   10u           top z 31.60    rim/spoke            +0.20                         
-C32  4.7u/25V Ta   top z 32.50    rim/spoke            pocket cut through            
-U20  TPS61040DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
-U21  TPS22917DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
-C38  4.7u/25V      top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
-R42  100k          r 30.44-31.05  cover skirt r>=30.6  -0.45 (radial)                
-U2   TPS22917DBVR  top z 32.15    rim/spoke            pocketed: +0.20, rim left 0.45
+ref  value         height       under      clearance                     
+---  ------------  -----------  ---------  ------------------------------
+D21  B5819W        top z 32.05  rim/spoke  pocketed: +0.20, rim left 0.55
+U2   TPS22917DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+U21  TPS22917DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+C3   10u           top z 31.60  rim/spoke  +0.20                         
+U20  TPS61040DBVR  top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+C32  4.7u/25V Ta   top z 32.50  rim/spoke  pocket cut through            
+C35  4.7u/25V      top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+C38  4.7u/25V      top z 32.15  rim/spoke  pocketed: +0.20, rim left 0.45
+J20  OLED_ZIF30    top z 32.70  glass      +0.30                         
 The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller than 0.95 mm.
 
 ==============================================================================
@@ -323,8 +331,8 @@ The bracket is pocketed (0.3 mm all round, 0.2 above) over every top part taller
   The 12 wires pass the 1.9-tall slot as a 2 x 6 ribbon (4.5 x 1.5).  SHR-12V-S housings (~14 x 3) cannot pass:
   route pre-crimped single wires (contacts only) and insert them into the housings afterwards.
   harness path (J3 plug -> J1 plug, as modelled) 43 mm -> cut 12 wires to 58 mm (+15 slack)
-  coax path (antenna feed -> u.FL) 63 mm; 146153-0100 has 100 mm -> 37 mm to stow (one gentle loop in the base, theta 100-150, away from the antenna)
-  battery leads path 20 mm
+  coax path (antenna feed -> u.FL) 79 mm; 146153-0100 has 100 mm -> 21 mm to stow (one gentle loop in the base, theta 100-150, away from the antenna)
+  battery leads path 21 mm
   window 0.7 mm chem.-strengthened glass  Ø30 simply supported,  4.4 N centre: deflection 0.025 mm (gap to OLED glass 0.6 mm)
   window 0.7 mm chem.-strengthened glass  Ø30 simply supported, 20.0 N centre: deflection 0.112 mm (gap to OLED glass 0.6 mm)
   window 1.0 mm PC                        Ø30 simply supported,  4.4 N centre: deflection 0.206 mm (gap to OLED glass 0.6 mm)
