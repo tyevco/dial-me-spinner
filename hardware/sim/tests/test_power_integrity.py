@@ -386,9 +386,11 @@ class System:
     # ------------------------------------------------------------------ deck
     def deck(self, title: str, loads: Loads, vbat: float | None = 3.7, vbus: float | None = None,
              ilim=BQ_ILIM500[0], vsysreg=BQ_VSYSREG, logic: bool = False, scale: dict | None = None,
-             led_ich_scale: float = 1.0, scale_base: dict | None = None, bq_extra: dict | None = None):
+             led_ich_scale: float = 1.0, scale_base: dict | None = None, bq_extra: dict | None = None,
+             vguess: float | None = None):
         """scale: {ref: factor} for MAIN-board parts, scale_base: the same for BASE-board parts.
-        bq_extra: BQ25180_PP parameter overrides (e.g. a deeply discharged pack: no supplement, precharge)."""
+        bq_extra: BQ25180_PP parameter overrides (e.g. a deeply discharged pack: no supplement, precharge).
+        vguess: initial guess for VSYS in the .nodeset only (e.g. VBAT + VDPPM when USB runs in DPPM)."""
         c, M, B = self.c, self.main, self.base
         typ = c.fet == "typ"
         d = Deck(title)
@@ -489,6 +491,7 @@ class System:
 
         # ---- initial guess for the operating point (the behavioural min/max sources need one)
         led_up = loads.led_on_at is None
+        v = vguess if vguess is not None else v
         ns = {self.m("VSYS"): v, self.b("VSYS"): v, "hv1": v, "bq_sys": v, self.m("+3V3"): min(v, vset) - 0.01,
               self.m("VLED"): v if led_up else 0.0, self.mpin("U2", "CT"): 0.0 if led_up else v,
               self.m("OLED_VIN"): v if loads.oled_icc > 0 else 0.0,
