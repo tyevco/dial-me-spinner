@@ -1,0 +1,19 @@
+# The hardware toolchain is Linux-side: kicad-cli, pcbnew, ngspice, OpenSCAD and
+# the hardware/mechanical/*.sh scripts run on Linux (natively, in CI, or under WSL
+# on Windows).  Git for Windows installs with core.autocrlf=true, which would check
+# the scripts out with CRLF; bash then fails with:
+#   /usr/bin/env: 'bash\r': No such file or directory
+# Normalize to LF in the repository and in the working tree on every platform.
+* text=auto eol=lf
+
+# Belt and braces for the files where CRLF actually breaks execution.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.scad  text eol=lf
+
+# Generated binaries: never touch these.
+*.stl   binary
+*.png   binary
+*.pdf   binary
+*.jar   binary
+*.zip   binary
