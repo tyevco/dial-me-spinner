@@ -14,9 +14,18 @@ Angles:
   * VSYS ripple     2 kHz LED PWM at the hardware worst-case LED current (load extreme on VSYS)
   * accuracy        firmware constant, raw gain (production window), uncalibrated (bring-up), one-point calibrated
                     at -10/25/60 °C (TCR, CEG, VOS, C5 insulation resistance), SHIP threshold vs BQ25180 VBATPOR
-                    (also 15/35 °C, the band where the 3.48 V rule holds), AIN leakage sensitivity
+                    (also 15/35 °C, the band where the old 3.48 V rule holds), AIN leakage sensitivity
   * aging           (verifier) calibrated reading and SHIP rule at 25 °C after R1/R2 datasheet drift (±0.5 %) and
                     C5 IR loss to its endurance bound
+  * firmware rules  the strict xfails keep the old values (SHIP 3.48 V, ±10 mV, raw gain ±3 %, bring-up ±2 %) as the
+                    evidence; the *_with_fw_rule guards apply firmware.md §12.4 / §16 test 8 and bringup.md B-8.5:
+                    every threshold that protects a datasheet limit compares the true value with
+                    VBAT_est = 0.979 x calibrated reading (VREAD_GAIN, rule R1'), SHIP when VBAT_est < 3.465 V (a
+                    reading below 3.465 / 0.979 = 3.5393 V), the documented calibrated drift for a fresh unit at
+                    15-35 °C and over -10...60 °C and an aged unit at 25 °C and at -10 / 60 °C (VSENSE-1/4),
+                    calibration reference from a DMM at TP1 or with the board under 5 mA (VSENSE-5), ±5.5 % raw-gain
+                    and uncalibrated windows (VSENSE-2/3); test_read_margin_covers_over_read_with_fw_rule checks
+                    0.979 x reading <= true value at every documented VBAT_est / VSYS_est threshold and corner
   * settling        after power-up, all R/C corners, X7R temperature
   * sleep current   VSYS 3.7 / 4.2 V, all corners
   * faults          C5 left off (x2), R1/R2 swapped, R1 decade typo, R2 left off, C5 wrong value, R1 bridged
@@ -78,7 +87,33 @@ def ir_eol(c):
 
 
 V_CAL = 3.800          # firmware.md §12.4 / §16 test 8: production one-point calibration at 3.800 V
-V_SHIP = 3.48          # firmware.md §12.4: SHIP entry below 3.48 V
+V_SHIP_OLD = 3.48      # pre-VSENSE-1 firmware.md §12.4 SHIP entry (evidence of the strict xfails; 15/25/35 °C cases)
+VREAD_GAIN = 0.979     # firmware.md §12.4 (VSENSE-1/4/5, rule R1'): every threshold that protects a datasheet limit
+                       # compares the true value with VBAT_est = VREAD_GAIN x calibrated reading (VSYS_est likewise), so
+                       # it covers an over-read of up to 1 - VREAD_GAIN = 2.1 % of the reading (2.145 % of the true
+                       # value). The calibrated error is a gain error that grows with VSYS, which the former flat
+                       # 75 mV (VREAD_MARGIN, VBAT_est = reading - 75 mV) covered only up to a true 3.72 V. A threshold
+                       # T on VBAT_est is a reading of T / VREAD_GAIN.
+VBAT_EST_SHIP = 3.465  # firmware.md §12.4 low-battery policy: SHIP when VBAT_est < 3.465 V (VBATPOR max 3.46 V + 5 mV)
+V_SHIP = VBAT_EST_SHIP / VREAD_GAIN   # 3.5393 V: the SHIP threshold as a calibrated reading
+CAL_ACC_OLD = 0.010    # pre-VSENSE-1 firmware.md §12.4 '±10 mV calibrated ADC error' (kept as the 25 °C check, where it
+                       # still holds; stricter than CAL_ACC_FRESH)
+# firmware.md §12.4 (VSENSE-1/4): documented calibrated drift of the reading at the SHIP point, (high, low) in V. The
+# decided figures were +48/-54 (fresh, -10...60 °C) and +72/-78 mV (aged, -10/60 °C); at the 3.54 V SHIP reading of
+# the flat 75 mV rule the model gave 54.03 mV low and 72.44 / 78.30 mV. Re-derived at the R1' SHIP reading (3.5393 V),
+# worst over both calibration references: fresh 15-35 °C ±23.65 mV; fresh -10...60 °C +47.78 / -54.02 mV; aged 25 °C
+# +29.58 / -35.86 mV; aged -10 / 60 °C +72.43 / -78.28 mV, so the whole-mV values below still hold (none can be
+# tightened). The error grows with VSYS (about 2.0-2.1 % of the reading at the aged -10/60 °C corner), which
+# VREAD_GAIN covers; test_read_margin_covers_over_read_with_fw_rule checks it threshold by threshold.
+CAL_ACC_FRESH = 0.024              # fresh unit at 15-35 °C: about ±24 mV
+CAL_DRIFT_FRESH = (0.048, 0.055)   # fresh unit over -10...60 °C
+CAL_DRIFT_AGED = (0.030, 0.036)    # aged unit (R1/R2 drift, C5 IR loss) at 25 °C
+CAL_DRIFT_AGED_T = (0.073, 0.079)  # aged unit at -10 / 60 °C (temperature and ageing combined)
+I_CAL_MAX = 5e-3       # firmware.md §12.4 / §16 test 8 (VSENSE-5): no DMM at TP1 -> board under 5 mA while calibrating
+RAW_GAIN_WIN_OLD = 0.03   # pre-VSENSE-2 firmware.md §16 test 8 raw-gain window ±3 %
+RAW_GAIN_WIN = 0.055      # firmware.md §16 test 8: raw gain within ±5.5 % (VSENSE-2)
+UNCAL_WIN_OLD = 0.02      # pre-VSENSE-3 bringup.md B-8.5 uncalibrated window ±2 %
+UNCAL_WIN = 0.055         # bringup.md B-8.5: uncalibrated vs DMM at TP1 within ±5.5 % (VSENSE-3)
 VBATPOR_MAX = 3.46     # BQ25180 DS SLUSE99C §7.5 VBATPOR 3.08 / 3.21 / 3.46 V (min/typ/max)
 FW_RATIO = 3.2         # firmware.md §3.1 DTS vsys-sense full-ohms 3200000 / output-ohms 1000000
 T_FIRST_SAMPLE = 1.0   # firmware.md §2.2: power_thread runs on a 1 s tick -> first battery sample
@@ -86,11 +121,49 @@ T_FW_MIN_INTERVAL = 1.0  # firmware.md §12.4: "Sample at most about 1 Hz"
 I_LED_MAX = 0.73       # architecture.md §8.4: LED ring hardware worst case, full white, C variant
 R_SRC_BAT = 0.25       # firmware.md §12.4: VOCV ≈ Vmeas + I_est x 0.25 Ω (cell + BATFET + path)
 F_LED_PWM = 2e3        # architecture.md §6.4 / WS2812C-2020-V6: 2 kHz PWM
+# VSENSE-5: the VSYS really at the divider while firmware stores 3.800 V. DMM at TP1 = exact. Board under 5 mA: VSYS
+# sits below the supply setpoint by I x path resistance; the docs give no resistance for the battery-emulator path, so
+# the documented cell + BATFET + path figure (R_SRC_BAT, 0.25 Ω) stands in for it (1.25 mV, stores a high gain).
+CAL_REFS = {"DMM-at-TP1": V_CAL, "board-under-5mA": round(V_CAL - I_CAL_MAX * R_SRC_BAT, 6)}
+SRC_VSENSE_RULE = (f"firmware rule firmware.md §12.4 (VSENSE-1/4/5, R1'): SHIP when VBAT_est = {VREAD_GAIN:g} x "
+                   f"reading < {VBAT_EST_SHIP} V (a reading below {V_SHIP:.4f} V); calibration reference from a DMM at "
+                   "TP1 or with the board under 5 mA")
+
+_PI2 = "firmware.md §6.3 (PI-2) instantaneous lit-channel table row, looked up with VBAT_est (row <= true VBAT)"
+# Every VBAT_est / VSYS_est threshold firmware.md compares with a true value to protect a datasheet limit: VBAT_est =
+# VREAD_GAIN x reading must not exceed the true value at that threshold, at any corner. id, threshold (true value, V),
+# source, strict-xfail reason (None: the guard must pass).
+# Retired strict xfails 'DESIGN ISSUE (firmware rule insufficient)' of the flat 75 mV rule (VBAT_est = reading - 75 mV):
+# OLED-BST-2-3.75, PI-2-row-3.80 and PI-2-row-3.90, where an aged board (R1/R2 ±0.5 %, C5 IR 250 MΩ) at −10 / 60 °C,
+# calibrated with the board under 5 mA, reads 75.66 / 76.98 / 79.63 mV high, so VBAT_est exceeded the true value by
+# +0.66 / +1.98 / +4.63 mV. Under R1' the same corners give VBAT_est − true = −4.68 / −4.43 / −3.94 mV.
+READ_THRESHOLDS = (
+    ("NEW-1-OLED_VCC_EN-3.21", 3.21, "firmware.md §6.3 / §7.2 / §13.3 (NEW-1, OLED-V1): OLED_VCC_EN at TMR_ILIM 0xC9 "
+                                     "only with VBAT_est >= 3.21 V", None),
+    ("SHIP-3.465", VBAT_EST_SHIP, "firmware.md §12.4: SHIP when VBAT_est < 3.465 V (VBATPOR max 3.46 V)", None),
+    ("PI-2-row-3.48", 3.48, _PI2 + "; also the on-USB row (NF-1)", None),
+    ("PI-2-row-3.53", 3.53, _PI2, None),
+    ("MD-2-move-3.54", 3.54, "firmware.md §5.8 (MD-2): non-park moves only with VSYS_est (idle) >= 3.54 V", None),
+    ("PI-2-row-3.60", 3.60, _PI2 + "; also the §6.3 derating 'VBAT < 3.60 V'", None),
+    ("PI-2-row-3.65", 3.65, _PI2 + "; also the §6.3 derating re-enable 'VBAT >= 3.65 V'", None),
+    ("PI-2-row-3.70", 3.70, _PI2, None),
+    ("OLED-BST-2-3.75", 3.75, "firmware.md §12.4 / §7.4 (OLED-BST-2): OLED C7 <= 08h below VBAT_est 3.75 V (the PI-2 "
+                              "table assumes it)", None),
+    ("PI-2-row-3.80", 3.80, _PI2, None),
+    ("PI-2-row-3.90", 3.90, _PI2 + " (>= 3.90 V: full ring)", None),
+    ("PI-3-B-variant-3.92", 3.92, "firmware.md §6.1 / §6.3 (PI-3): the WS2812B variant's 1.0 A instantaneous cap only "
+                                  "from VBAT_est >= 3.92 V", None),
+)
 
 TEMPS = (-10.0, 25.0, 60.0)
-V_POINTS = (3.0, 3.3, 3.48, 3.7, 3.8, 4.2, 4.41, 4.5, 4.59, 5.0, 5.5)
-# 3.0/3.7/4.2 battery corners; 4.41/4.5/4.59 = SYS_REG 4.5 V ±2 % on USB (BQ25180 DS SLUSE99C §7.5 VSYS_REG_ACCURACY);
-# 4.5/5.0/5.5 = VBUS corners with SYS_REG_CTRL = 111 pass-through (VSYS = VIN, SLUSE99C §8.3)
+V_POINTS = tuple(sorted({3.0, 3.3, V_SHIP_OLD, V_SHIP, 3.7, CAL_REFS["board-under-5mA"], 3.8, 4.2, 4.41, 4.5, 4.59, 5.0,
+                         5.5} | {c[1] for c in READ_THRESHOLDS}))
+# 3.0/3.7/4.2 battery corners; 3.48 / 3.5393 old / current SHIP threshold (reading); READ_THRESHOLDS true values
+# (3.21 ... 3.92 V; 3.465 V = SHIP VBAT_est); 3.79875 = VSENSE-5 loaded calibration point;
+# 4.41/4.5/4.59 = SYS_REG 4.5 V ±2 % on USB (BQ25180 DS SLUSE99C §7.5 VSYS_REG_ACCURACY): 4.5 V is the POR default and
+# the only alternative firmware.md §13.1 allows (it sets 4.4 V, 0x20), so these are the upper USB points;
+# 4.5/5.0/5.5 = VBUS corners with SYS_REG_CTRL = 111 pass-through (VSYS = VIN, SLUSE99C §8.3): firmware never sets it,
+# kept as the hardware bound of the input-range check
 
 ADC_VARIANTS = [dict(EG=eg, CEG=s * CEG_TYP, VOS=v) for eg in (-EG16, EG16) for s in (-1, 1)
                 for v in (-VOS_LSB12, VOS_LSB12)]
@@ -125,7 +198,7 @@ def _divider(d, scale=None, tcr=None, ir=None):
 
 
 def _tag(v):
-    return "v" + f"{v:.2f}".replace(".", "p")
+    return "v" + f"{v:.5f}".replace(".", "p")
 
 
 def _run(deck):
@@ -180,9 +253,10 @@ def _corners(temp):
 
 
 @functools.lru_cache(maxsize=None)
-def _calibrated_errors(temp):
+def _calibrated_errors(temp, v_cal_true=V_CAL):
     """Error (V) of the one-point-calibrated reading at `temp` for every corner: {vsys: [err, ...]}.
-    Calibration: 25 °C, 3.800 V, same part (R corner, ADC variant); the C5 IR may differ between the two times."""
+    Calibration: 25 °C, 3.800 V stored, same part (R corner, ADC variant); the C5 IR may differ between the two times.
+    v_cal_true is the VSYS really at the divider during calibration (VSENSE-5, CAL_REFS): V_CAL with the DMM at TP1."""
     cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
     errs = {v: [] for v in V_POINTS}
     for row in _corners(temp):
@@ -190,7 +264,7 @@ def _calibrated_errors(temp):
         # used to force the same IR at both times, which hid the 2.4 mV IR term at the calibration temperature).
         ir_cals = [k[1] for k in cal if k[0] == row["si"]]
         for ir_cal in ir_cals:
-            ccal = cal[(row["si"], ir_cal)][V_CAL]["codes"]
+            ccal = cal[(row["si"], ir_cal)][v_cal_true]["codes"]
             for v in V_POINTS:
                 for i, code in enumerate(row["res"][v]["codes"]):
                     errs[v].append(V_CAL * code / ccal[i] - v)
@@ -199,14 +273,17 @@ def _calibrated_errors(temp):
 
 DRIFT_R = 0.005   # UNI-ROYAL thick-film DS V.3 §11, ±0.5 %/1 % parts: Humidity (steady state, 240 h 40 °C 90-95 % RH)
                   # and Rapid change of temperature: ΔR ±(0.5 % + 0.05 Ω). Used as the post-calibration drift bound.
-AGED_POINTS = (3.3, V_SHIP, 3.7, 4.2)
+AGED_POINTS = tuple(sorted({3.3, V_SHIP_OLD, V_SHIP, 3.7, 4.2} | {c[1] for c in READ_THRESHOLDS}))
 
 
 @functools.lru_cache(maxsize=None)
-def _aged_errors():
-    """Error (V) of the one-point-calibrated reading at 25 °C after the part has aged: calibration on the fresh board
-    (every R1/R2 tolerance corner, ADC variant, C5 IR bound/open), then in use R1 and R2 drift by DRIFT_R in opposite
-    directions (both signs) and the C5 IR is anywhere from open to the endurance bound (ir_eol, 250 MΩ)."""
+def _aged_errors(v_cal_true=V_CAL, temp=25.0):
+    """Error (V) of the one-point-calibrated reading at `temp` (25 °C unless given) after the part has aged: calibration
+    on the fresh board at 25 °C (every R1/R2 tolerance corner, ADC variant, C5 IR bound/open), then in use R1 and R2
+    drift by DRIFT_R in opposite directions (both signs) and the C5 IR is anywhere from open to the endurance bound
+    (ir_eol, 250 MΩ).
+    v_cal_true: the VSYS really at the divider while 3.800 V is stored (VSENSE-5, CAL_REFS). temp: read-out
+    temperature (TCR corners as in _corners; the CEG of every ADC variant applies through .temp)."""
     d = spicelib.Design("main")
     c5 = d.value("C5")
     cal = {(r["si"], r["ir"]): r["res"] for r in _corners(25.0)}
@@ -214,13 +291,14 @@ def _aged_errors():
     for si, sc in enumerate(d.extremes(["R1", "R2"])):
         for s in (-1, 1):
             aged = dict(sc, R1=sc["R1"] * (1 + s * DRIFT_R), R2=sc["R2"] * (1 - s * DRIFT_R))
-            for ir in (ir_eol(c5) if d.fitted("C5") else None, ir_min(c5), None):
-                res = _dc(d, 25.0, aged, None, ir, points=AGED_POINTS + (V_CAL,))
-                for ir_cal in [k[1] for k in cal if k[0] == si]:
-                    ccal = cal[(si, ir_cal)][V_CAL]["codes"]
-                    for v in AGED_POINTS:
-                        for i, code in enumerate(res[v]["codes"]):
-                            errs[v].append(V_CAL * code / ccal[i] - v)
+            for tcr in _tcr_corners(temp):
+                for ir in (ir_eol(c5) if d.fitted("C5") else None, ir_min(c5), None):
+                    res = _dc(d, temp, aged, tcr, ir, points=AGED_POINTS + (V_CAL,))
+                    for ir_cal in [k[1] for k in cal if k[0] == si]:
+                        ccal = cal[(si, ir_cal)][v_cal_true]["codes"]
+                        for v in AGED_POINTS:
+                            for i, code in enumerate(res[v]["codes"]):
+                                errs[v].append(V_CAL * code / ccal[i] - v)
     return errs
 
 
@@ -332,13 +410,15 @@ def _ripple_half_pp(d, scale, vsys=3.7):
 def test_divider_matches_firmware_constant(main, check):
     """The divider ratio in the schematic is the one the firmware converts with (DTS full-ohms/output-ohms)."""
     assert main.node("VSYS_SENSE") == _ain(main), "VSYS_SENSE no longer reaches the MCU's AIN0 pad (P0.02)"
-    res = _dc(main, 25.0, points=(3.7, 4.5), variants=[dict(EG=0.0, CEG=0.0, VOS=0.0)])
+    res = _dc(main, 25.0, points=(3.7, 4.4, 4.5), variants=[dict(EG=0.0, CEG=0.0, VOS=0.0)])
     check("VSYS / VSENSE (nominal, unloaded)", 3.7 / res[3.7]["vs"], FW_RATIO * (1 - 1e-4), FW_RATIO * (1 + 1e-4),
           "", "firmware.md §3.1 DTS vsys-sense full-ohms 3.2 MΩ / output-ohms 1 MΩ")
     check("code at VSYS 3.70 V (ideal SAADC)", res[3.7]["codes"][0], 1316 - 0.5, 1316 + 0.5, "LSB",
           "firmware.md §12.4 example: 3.70 V gives code 1316")
+    check("code at VSYS 4.40 V (ideal SAADC)", res[4.4]["codes"][0], 1564 - 0.5, 1564 + 0.5, "LSB",
+          "firmware.md §12.4 example: 4.40 V gives code 1564")
     check("code at VSYS 4.50 V (ideal SAADC)", res[4.5]["codes"][0], 1600 - 0.5, 1600 + 0.5, "LSB",
-          "firmware.md §12.4 example: 4.50 V gives code 1600")
+          "firmware.md §12.4 VSYS = code x 2.8125 mV: 4.50 V (SYS_REG POR default) gives code 1600")
 
 
 # ================================================================ input range
@@ -492,85 +572,258 @@ def test_fault_c5_missing_detected_by_ripple(main, check):
 
 
 # ================================================================ static accuracy
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: production test 8 raw-gain window ±3 % is narrower than "
-                   "EG1/6 ±3 % plus the ±1 % divider and VOS; good boards can fail it")
+def _raw_gain_dev(v_cal_true=V_CAL):
+    """Worst |raw gain - 1| over the 25 °C corners: firmware stores 3.800 V, the divider sees v_cal_true (CAL_REFS)."""
+    return max(abs(V_CAL / (code * LSB12 * FW_RATIO) - 1) for row in _corners(25.0)
+               for code in row["res"][v_cal_true]["codes"])
+
+
+def _uncal_err():
+    """Worst |uncalibrated reading / VSYS - 1| at 3.0 / 3.7 / 4.5 V over the 25 °C corners (DMM at TP1 = VSYS)."""
+    return max(abs(code * LSB12 * FW_RATIO / v - 1) for row in _corners(25.0) for v in (3.0, 3.7, 4.5)
+               for code in row["res"][v]["codes"])
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (old-rule evidence for VSENSE-2): the pre-VSENSE-2 production "
+                   "test 8 raw-gain window ±3 % is narrower than EG1/6 ±3 % plus the ±1 % divider and VOS; good "
+                   "boards can fail it. Window now ±5.5 %: test_raw_gain_production_window_with_fw_rule")
 def test_raw_gain_production_window(check):
-    """firmware.md §16 test 8: raw gain (3.800 V / uncalibrated reading) within ±3 %."""
-    dev = 0.0
-    for row in _corners(25.0):
-        for code in row["res"][V_CAL]["codes"]:
-            dev = max(dev, abs(V_CAL / (code * LSB12 * FW_RATIO) - 1))
-    check("raw gain deviation at 3.800 V, all corners (25 °C)", dev, None, 0.03, "",
-          "firmware.md §16 test 8 'raw gain within ±3 %'")
+    """Pre-VSENSE-2 firmware.md §16 test 8: raw gain (3.800 V / uncalibrated reading) within ±3 %."""
+    check("raw gain deviation at 3.800 V, all corners (25 °C)", _raw_gain_dev(), None, RAW_GAIN_WIN_OLD, "",
+          "pre-VSENSE-2 firmware.md §16 test 8 'raw gain within ±3 %'")
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: bring-up B-8.5 uncalibrated ±2 % ignores the SAADC "
-                   "EG1/6 ±3 % gain error")
+def test_raw_gain_production_window_with_fw_rule(check):
+    """Guard for VSENSE-2 (firmware.md §16 test 8: raw gain within ±5.5 %), same corners as the strict xfail
+    test_raw_gain_production_window, for both calibration references VSENSE-5 allows (CAL_REFS): every good board
+    (R1/R2 tolerance extremes, EG1/6 ±3 %, CEG, VOS ±8 LSB12, C5 IR bound / open) must pass the window."""
+    for name, vc in CAL_REFS.items():
+        check(f"raw gain deviation at 3.800 V, all corners (25 °C), calibration reference {name}", _raw_gain_dev(vc),
+              None, RAW_GAIN_WIN, "", "firmware rule firmware.md §16 test 8 'Raw gain within ±5.5 %' (VSENSE-2); "
+              "reference DMM at TP1 or board under 5 mA (VSENSE-5)")
+
+
+@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (old-rule evidence for VSENSE-3): the pre-VSENSE-3 bring-up "
+                   "B-8.5 uncalibrated ±2 % ignores the SAADC EG1/6 ±3 % gain error. Window now ±5.5 %: "
+                   "test_uncalibrated_error_bringup_with_fw_rule")
 def test_uncalibrated_error_bringup(check):
-    """bringup.md B-8.5: uncalibrated reading vs DMM at 3.0 / 3.7 / 4.5 V within ±2 %."""
-    worst = 0.0
-    for row in _corners(25.0):
-        for v in (3.0, 3.7, 4.5):
-            for code in row["res"][v]["codes"]:
-                worst = max(worst, abs(code * LSB12 * FW_RATIO / v - 1))
-    check("uncalibrated |error| at 3.0 / 3.7 / 4.5 V, all corners (25 °C)", worst, None, 0.02, "",
-          "bringup.md B-8.5 'within ±2 % (two 1 % resistors)'")
+    """Pre-VSENSE-3 bringup.md B-8.5: uncalibrated reading vs DMM at 3.0 / 3.7 / 4.5 V within ±2 %."""
+    check("uncalibrated |error| at 3.0 / 3.7 / 4.5 V, all corners (25 °C)", _uncal_err(), None, UNCAL_WIN_OLD, "",
+          "pre-VSENSE-3 bringup.md B-8.5 'within ±2 % (two 1 % resistors)'")
+
+
+def test_uncalibrated_error_bringup_with_fw_rule(check):
+    """Guard for VSENSE-3 (bringup.md B-8.5: uncalibrated reading vs DMM at TP1, 3.0 / 3.7 / 4.5 V, within ±5.5 %), same
+    corners as the strict xfail test_uncalibrated_error_bringup."""
+    check("uncalibrated |error| at 3.0 / 3.7 / 4.5 V, all corners (25 °C)", _uncal_err(), None, UNCAL_WIN, "",
+          "firmware rule bringup.md B-8.5 'within ±5.5 % (SAADC gain error EG1/6 ±3 %, divider ±1.4 %, offset)' "
+          "(VSENSE-3)")
 
 
 def test_calibrated_accuracy_25c(check):
-    """After the one-point calibration at 3.800 V, at the calibration temperature."""
+    """After the one-point calibration at 3.800 V, at the calibration temperature (DMM at TP1; the 3.5393 V SHIP reading
+    also with the board-under-5mA calibration reference of VSENSE-5). The ±10 mV bound is the pre-VSENSE-1 figure: it
+    still holds at 25 °C and is stricter than the ±24 mV firmware.md §12.4 now gives for 15-35 °C
+    (test_calibrated_accuracy_fresh_15_35c_with_fw_rule), so it stays."""
     errs = _calibrated_errors(25.0)
-    worst = max(abs(e) for v in (3.3, 3.48, 3.7, 4.2, 4.5) for e in errs[v])
+    worst = max(abs(e) for v in (3.3, V_SHIP_OLD, V_SHIP, 3.7, 4.2, 4.5) for e in errs[v])
     check("calibrated |error| over 3.3 ... 4.5 V, 25 °C", worst, None, 0.020, "V",
           "bringup.md B-8.5 'within ±20 mV over 3.3–4.5 V' after calibration")
-    check("calibrated |error| at 3.48 V (SHIP threshold), 25 °C", max(abs(e) for e in errs[V_SHIP]), None, 0.010,
-          "V", "firmware.md §12.4 '±10 mV calibrated ADC error'")
+    check("calibrated |error| at 3.48 V (pre-VSENSE-1 SHIP threshold), 25 °C", max(abs(e) for e in errs[V_SHIP_OLD]),
+          None, CAL_ACC_OLD, "V", "pre-VSENSE-1 firmware.md §12.4 'about ±10 mV' (fresh unit, 25 °C)")
+    for name, vc in CAL_REFS.items():
+        check(f"calibrated |error| at {V_SHIP:.4f} V (SHIP threshold reading), 25 °C, calibration reference {name}",
+              max(abs(e) for e in _calibrated_errors(25.0, vc)[V_SHIP]), None, CAL_ACC_OLD, "V",
+              f"pre-VSENSE-1 firmware.md §12.4 'about ±10 mV' (fresh unit, 25 °C); {SRC_VSENSE_RULE}")
 
 
-_TEMP_XFAIL = pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: away from the 25 °C calibration the divider "
-                                "TCR (±100 ppm/°C) and SAADC gain drift (CEG 0.02 %/°C) exceed the firmware's "
-                                "±10 mV / 20 mV SHIP margin")
+@pytest.mark.parametrize("temp", [15.0, 25.0, 35.0])
+def test_calibrated_accuracy_fresh_15_35c_with_fw_rule(temp, check):
+    """Guard for VSENSE-1/5 (firmware.md §12.4: the calibrated reading is within about ±24 mV at 15-35 °C on a fresh
+    unit), at the SHIP reading, both calibration references. Same fresh corners as test_ship_threshold_above_vbatpor at
+    15 / 25 / 35 °C (TCR, CEG, VOS, C5 IR at its 25 °C bound, at its endurance bound above 25 °C)."""
+    for name, vc in CAL_REFS.items():
+        errs = _calibrated_errors(temp, vc)[V_SHIP]
+        check(f"calibrated |error| at {V_SHIP:.4f} V, {temp:g} °C, fresh unit, calibration reference {name}",
+              max(abs(e) for e in errs), None, CAL_ACC_FRESH, "V",
+              f"firmware.md §12.4 'about ±24 mV at 15–35 °C on a fresh unit' (VSENSE-1); {SRC_VSENSE_RULE}")
+
+
+_TEMP_XFAIL = pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (old-rule evidence for VSENSE-1): away from the "
+                                "25 °C calibration the divider TCR (±100 ppm/°C) and SAADC gain drift (CEG 0.02 %/°C) "
+                                "exceed the pre-VSENSE-1 firmware's ±10 mV / 20 mV margin of the 3.48 V SHIP "
+                                "threshold. Rule now SHIP below a 3.5393 V reading (VBAT_est = 0.979 x reading < "
+                                "3.465 V, R1'): test_ship_threshold_above_vbatpor_with_fw_rule")
 
 
 @pytest.mark.parametrize("temp", [pytest.param(-10.0, marks=_TEMP_XFAIL), pytest.param(60.0, marks=_TEMP_XFAIL)])
 def test_calibrated_accuracy_over_temperature(temp, check):
-    errs = _calibrated_errors(temp)[V_SHIP]
-    check(f"calibrated |error| at 3.48 V, {temp:g} °C (TCR, CEG, VOS, C5 IR)", max(abs(e) for e in errs), None, 0.010,
-          "V", "firmware.md §12.4 '±10 mV calibrated ADC error'")
+    errs = _calibrated_errors(temp)[V_SHIP_OLD]
+    check(f"calibrated |error| at 3.48 V, {temp:g} °C (TCR, CEG, VOS, C5 IR)", max(abs(e) for e in errs), None,
+          CAL_ACC_OLD, "V", "pre-VSENSE-1 firmware.md §12.4 '±10 mV calibrated ADC error'")
 
 
 @pytest.mark.parametrize("temp", [pytest.param(-10.0, marks=_TEMP_XFAIL), 15.0, 25.0, 35.0,
                                   pytest.param(60.0, marks=_TEMP_XFAIL)])
 def test_ship_threshold_above_vbatpor(temp, check):
-    """When the firmware reads 3.48 V and ships, the true VBAT must still be at or above VBATPOR max (3.46 V),
-    so a button press can wake the charger. 15 / 35 °C bound the band in which the 3.48 V rule is safe."""
-    over_read = max(_calibrated_errors(temp)[V_SHIP])
-    check(f"true VBAT at a 3.48 V reading, {temp:g} °C", V_SHIP - over_read, VBATPOR_MAX, None, "V",
-          "BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V (firmware.md §12.4 SHIP rule)")
+    """When the firmware reads 3.48 V (the pre-VSENSE-1 SHIP threshold) and ships, the true VBAT must still be at or
+    above VBATPOR max (3.46 V), so a button press can wake the charger. 15 / 35 °C bound the band in which the old
+    3.48 V rule is safe; -10 / 60 °C are the strict-xfail evidence for VSENSE-1."""
+    over_read = max(_calibrated_errors(temp)[V_SHIP_OLD])
+    check(f"true VBAT at a 3.48 V reading, {temp:g} °C", V_SHIP_OLD - over_read, VBATPOR_MAX, None, "V",
+          "BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V (pre-VSENSE-1 firmware.md §12.4 SHIP 3.48 V)")
 
 
-_AGING_XFAIL = pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: after the one-point calibration, the "
-                                 "datasheet drift bound of the thick-film R1/R2 (±0.5 % humidity / temperature "
-                                 "cycling) and the aged C5 IR (250 MΩ) exceed the ±10 mV / 20 mV SHIP margin even "
-                                 "at 25 °C")
+_DRIFT_SRC = ("drift: UNI-ROYAL DS V.3 §11 Humidity (steady state) ±(0.5 %+0.05 Ω); IR: Samsung MLCC catalog 2015 "
+              "endurance 25 MΩ·µF")
+
+
+def _drift_checks(check, errs, budget, what, src):
+    """Over-read against the documented high figure and |error| against the low figure (budget = (high, low); the
+    high figure is the smaller one, so |error| <= low also bounds the under-read)."""
+    check(f"calibrated over-read at {V_SHIP:.4f} V, {what}", max(errs), None, budget[0], "V", src)
+    check(f"calibrated |error| at {V_SHIP:.4f} V, {what}", max(abs(e) for e in errs), None, budget[1], "V", src)
+
+
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
+def test_calibrated_accuracy_over_temperature_with_fw_rule(temp, check):
+    """Guard for VSENSE-1/5: same corners as test_calibrated_accuracy_over_temperature at the 3.5393 V SHIP reading, with
+    the calibration references firmware.md §12.4 allows (CAL_REFS), against the calibrated drift firmware.md §12.4
+    documents for a fresh unit over −10…60 °C (CAL_DRIFT_FRESH)."""
+    for name, vc in CAL_REFS.items():
+        _drift_checks(check, _calibrated_errors(temp, vc)[V_SHIP], CAL_DRIFT_FRESH,
+                      f"{temp:g} °C (TCR, CEG, VOS, C5 IR), fresh unit, calibration reference {name}",
+                      f"firmware.md §12.4 fresh unit over −10…60 °C: reading up to {CAL_DRIFT_FRESH[0] * 1e3:.0f} mV "
+                      f"high / {CAL_DRIFT_FRESH[1] * 1e3:.0f} mV low (VSENSE-1/4); {SRC_VSENSE_RULE}")
+
+
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
+def test_ship_threshold_above_vbatpor_with_fw_rule(temp, check):
+    """Guard for VSENSE-1/5: when the firmware reads 3.5393 V (firmware.md §12.4: SHIP when VBAT_est = 0.979 x reading
+    < 3.465 V, R1') and ships, the true VBAT must still be at or above VBATPOR max (3.46 V). Same corners as the
+    strict xfails of test_ship_threshold_above_vbatpor, for both calibration references VSENSE-5 allows (CAL_REFS)."""
+    for name, vc in CAL_REFS.items():
+        over_read = max(_calibrated_errors(temp, vc)[V_SHIP])
+        check(f"true VBAT at a {V_SHIP:.4f} V reading, {temp:g} °C, calibration reference {name}", V_SHIP - over_read,
+              VBATPOR_MAX, None, "V", f"BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; {SRC_VSENSE_RULE}")
+
+
+_AGING_XFAIL = pytest.mark.xfail(strict=True, reason="DESIGN ISSUE (old-rule evidence for VSENSE-4): after the "
+                                 "one-point calibration, the datasheet drift bound of the thick-film R1/R2 (±0.5 % "
+                                 "humidity / temperature cycling) and the aged C5 IR (250 MΩ) exceed the pre-VSENSE-1 "
+                                 "±10 mV / 20 mV margin of the 3.48 V SHIP threshold even at 25 °C. Rule now SHIP "
+                                 "below a 3.5393 V reading (VBAT_est = 0.979 x reading < 3.465 V, R1'): "
+                                 "test_ship_threshold_after_aging_with_fw_rule")
 
 
 @_AGING_XFAIL
 def test_calibrated_accuracy_after_aging(check):
     """Verifier addition (aging angle): calibrated fresh at 25 °C, read later at 25 °C after R1/R2 drift and C5 IR loss."""
-    worst = max(abs(e) for e in _aged_errors()[V_SHIP])
-    check("calibrated |error| at 3.48 V, 25 °C, after R1/R2 ±0.5 % drift and C5 IR 250 MΩ", worst, None, 0.010, "V",
-          "firmware.md §12.4 '±10 mV calibrated ADC error'; drift: UNI-ROYAL DS V.3 §11 Humidity (steady state) "
-          "±(0.5 %+0.05 Ω); IR: Samsung MLCC catalog 2015 endurance 25 MΩ·µF")
+    worst = max(abs(e) for e in _aged_errors()[V_SHIP_OLD])
+    check("calibrated |error| at 3.48 V, 25 °C, after R1/R2 ±0.5 % drift and C5 IR 250 MΩ", worst, None, CAL_ACC_OLD,
+          "V", f"pre-VSENSE-1 firmware.md §12.4 '±10 mV calibrated ADC error'; {_DRIFT_SRC}")
 
 
 @_AGING_XFAIL
 def test_ship_threshold_after_aging(check):
-    """Verifier addition: true VBAT at a 3.48 V reading at 25 °C on an aged board (see test above)."""
-    over_read = max(_aged_errors()[V_SHIP])
-    check("true VBAT at a 3.48 V reading, 25 °C, aged R1/R2 and C5", V_SHIP - over_read, VBATPOR_MAX, None, "V",
+    """Verifier addition: true VBAT at a 3.48 V reading (pre-VSENSE-1 SHIP) at 25 °C on an aged board (see above)."""
+    over_read = max(_aged_errors()[V_SHIP_OLD])
+    check("true VBAT at a 3.48 V reading, 25 °C, aged R1/R2 and C5", V_SHIP_OLD - over_read, VBATPOR_MAX, None, "V",
           "BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; drift: UNI-ROYAL DS V.3 §11 Humidity (steady state) "
           "±(0.5 %+0.05 Ω)")
+
+
+def test_calibrated_accuracy_after_aging_with_fw_rule(check):
+    """Guard for VSENSE-4/5: same aged corners as test_calibrated_accuracy_after_aging (25 °C, R1/R2 ±0.5 % drift, C5 IR
+    to 250 MΩ) at the 3.5393 V SHIP reading, both calibration references, against the drift firmware.md §12.4 documents
+    for an aged unit at 25 °C (CAL_DRIFT_AGED)."""
+    for name, vc in CAL_REFS.items():
+        _drift_checks(check, _aged_errors(vc)[V_SHIP], CAL_DRIFT_AGED,
+                      f"25 °C, aged R1/R2 and C5, calibration reference {name}",
+                      f"firmware.md §12.4 aged unit at 25 °C: reading up to {CAL_DRIFT_AGED[0] * 1e3:.0f} mV high / "
+                      f"{CAL_DRIFT_AGED[1] * 1e3:.0f} mV low (VSENSE-4); {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+def test_ship_threshold_after_aging_with_fw_rule(check):
+    """Guard for VSENSE-4/5: true VBAT at a 3.5393 V reading (firmware.md §12.4 SHIP) at 25 °C on an aged board, same
+    corners as test_ship_threshold_after_aging, both calibration references."""
+    for name, vc in CAL_REFS.items():
+        over_read = max(_aged_errors(vc)[V_SHIP])
+        check(f"true VBAT at a {V_SHIP:.4f} V reading, 25 °C, aged R1/R2 and C5, calibration reference {name}",
+              V_SHIP - over_read, VBATPOR_MAX, None, "V",
+              f"BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
+def test_calibrated_accuracy_aged_over_temperature_with_fw_rule(temp, check):
+    """Guard for VSENSE-1/4/5: the corners of test_ship_threshold_aged_over_temperature_with_fw_rule (aged board read
+    at −10 / 60 °C) at the 3.5393 V SHIP reading, both calibration references, against the drift firmware.md §12.4
+    documents for an aged unit away from 25 °C (CAL_DRIFT_AGED_T)."""
+    for name, vc in CAL_REFS.items():
+        _drift_checks(check, _aged_errors(vc, temp)[V_SHIP], CAL_DRIFT_AGED_T,
+                      f"{temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+                      f"firmware.md §12.4 aged unit at −10 / 60 °C: reading up to {CAL_DRIFT_AGED_T[0] * 1e3:.0f} mV "
+                      f"high / {CAL_DRIFT_AGED_T[1] * 1e3:.0f} mV low (VSENSE-1/4); {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+@pytest.mark.parametrize("temp", [-10.0, 60.0])
+def test_ship_threshold_aged_over_temperature_with_fw_rule(temp, check):
+    """Worst corner of the VSENSE-1/4/5 rule (verifier extension of the two guards above): an aged board (the corners
+    of test_ship_threshold_after_aging) read at −10 / 60 °C (TCR and CEG corners of test_ship_threshold_above_vbatpor),
+    calibrated fresh at 25 °C with either reference. firmware.md §12.4 says the reading drifts 'over −10…60 °C and
+    with ageing'; nothing keeps a unit from being both. (Strict xfail until the SHIP rule moved from a 3.53 V reading
+    to VBAT_est = reading − 75 mV < 3.465 V: the true VBAT at a 3.53 V reading was 3.4589 / 3.4577 V. Since R1' the
+    SHIP reading is 3.465 / 0.979 = 3.5393 V.)"""
+    for name, vc in CAL_REFS.items():
+        errs = _aged_errors(vc, temp)[V_SHIP]
+        check(f"calibrated |error| at {V_SHIP:.4f} V, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+              max(abs(e) for e in errs), None, None, "V", f"info: {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+        check(f"true VBAT at a {V_SHIP:.4f} V reading, {temp:g} °C, aged R1/R2 and C5, calibration reference {name}",
+              V_SHIP - max(errs), VBATPOR_MAX, None, "V",
+              f"BQ25180 DS SLUSE99C §7.5 VBATPOR max 3.46 V; {SRC_VSENSE_RULE}; {_DRIFT_SRC}")
+
+
+def _worst_est(v):
+    """Worst (highest) VBAT_est = VREAD_GAIN x calibrated reading (V) at a true VSYS v over every corner of this file:
+    fresh unit at −10 / 15 / 25 / 35 / 60 °C (_calibrated_errors), aged unit at −10 / 25 / 60 °C (_aged_errors), each
+    with every R1/R2 tolerance / drift, TCR, ADC (EG, CEG, VOS) and C5 IR corner, both calibration references.
+    Returns (VBAT_est, over-read of that reading, corner, number of corner values)."""
+    worst, n = (-math.inf, 0.0, ""), 0
+    for name, vc in CAL_REFS.items():
+        sets = [(f"fresh unit, {t:g} °C", _calibrated_errors(t, vc)) for t in (-10.0, 15.0, 25.0, 35.0, 60.0)]
+        sets += [(f"aged unit, {t:g} °C", _aged_errors(vc, t)) for t in (-10.0, 25.0, 60.0)]
+        for corner, errs in sets:
+            for e in errs[v]:
+                n += 1
+                est = VREAD_GAIN * (v + e)
+                if est > worst[0]:
+                    worst = (est, e, f"{corner}, calibration reference {name}")
+    return worst + (n,)
+
+
+@pytest.mark.parametrize("cid,v_est,src", [
+    pytest.param(*c[:3], marks=[pytest.mark.xfail(strict=True, reason=c[3])] if c[3] else [], id=c[0])
+    for c in READ_THRESHOLDS])
+def test_read_margin_covers_over_read_with_fw_rule(cid, v_est, src, check):
+    """Guard for the VSENSE-1/4/5 reading rule R1' (firmware.md §12.4: every threshold that protects a datasheet limit
+    compares the true value with VBAT_est = 0.979 x calibrated reading). For a threshold X this holds exactly when no
+    unit gives VBAT_est > X at a true X: the reading is monotonic in VSYS, so VBAT_est >= X (a reading >= X / 0.979)
+    then means a true value >= X. VBAT_est at the true threshold value at every fresh and aged corner of this file,
+    both calibration references (_worst_est); the highest must not exceed X. (Under the former flat rule, VBAT_est =
+    reading − 75 mV, the 3.75 / 3.80 / 3.90 V thresholds were strict xfails: see READ_THRESHOLDS.)"""
+    est, over, corner, n = _worst_est(v_est)
+    check(f"info: worst calibrated over-read at a true {v_est:.3f} V", over, None, None, "V",
+          f"info: worst corner {corner}")
+    check(f"info: worst over-read at a true {v_est:.3f} V as a fraction of the reading (R1' covers "
+          f"{1 - VREAD_GAIN:.3f})", over / (v_est + over), None, None, "", f"info: worst corner {corner}")
+    check(f"info: threshold VBAT_est {v_est:.3f} V as a calibrated reading (VBAT_est / {VREAD_GAIN:g})",
+          v_est / VREAD_GAIN, None, None, "V", "info: firmware.md §12.4 (R1')")
+    check(f"info: margin left at VBAT_est {v_est:.3f} V (true value − worst VBAT_est at that true value)", v_est - est,
+          None, None, "V", f"info: worst corner {corner}")
+    check(f"worst VBAT_est = {VREAD_GAIN:g} x reading at a true {v_est:.3f} V ({cid}), {n} corner values",
+          est, None, v_est, "V",
+          f"firmware rule firmware.md §12.4 (VSENSE-1/4/5, R1'): VBAT_est = {VREAD_GAIN:g} x calibrated reading must "
+          f"not exceed the true value; threshold: {src}; worst corner {corner}")
 
 
 def test_pin_leakage_sensitivity(main, check):
@@ -580,8 +833,9 @@ def test_pin_leakage_sensitivity(main, check):
     per_na = (base - leak) * FW_RATIO
     check("info: VSYS reading shift per nA of AIN0 leakage", per_na, None, None, "V",
           f"informational: {PS} has no AIN leakage spec")
-    check("info: AIN0 leakage that alone uses the ±10 mV budget", 0.010 / per_na * 1e-9, None, None, "A",
-          "informational (firmware.md §12.4 ±10 mV); measure at 60 °C on the first boards")
+    check("info: AIN0 leakage that alone uses the ±10 mV budget", CAL_ACC_OLD / per_na * 1e-9, None, None, "A",
+          "informational (the pre-VSENSE-1 firmware.md §12.4 ±10 mV, which still holds at 25 °C on a fresh unit); "
+          "measure at 60 °C on the first boards")
 
 
 # ================================================================ settling after power-up

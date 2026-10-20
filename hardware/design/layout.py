@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the dial-me-spinner PCBs (main + base) from the KiCad netlists.
 
-usage: python3 hardware/design/layout.py [--board main|base] [--route] [--passes N]
+usage: python3 hardware/design/layout.py [--board main|base] [--route] [--minutes N]
 
 The script places mechanically constrained parts explicitly (SPEC §8): LED ring,
 Hall sensors, module, connectors, switch. It then greedily clusters every other
@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HW = os.path.dirname(HERE)
@@ -27,6 +28,7 @@ import pcbnew  # noqa: E402
 
 import pcbgen  # noqa: E402
 import silk  # noqa: E402
+import finish_route  # noqa: E402
 from placer import Placer  # noqa: E402
 
 CX, CY = 100.0, 100.0          # board centre in KiCad page coordinates (mm)
@@ -174,8 +176,11 @@ def main_fixed(comps):
     put(lambda c: "SM12B" in mpn(c) or "BM12B" in mpn(c) or c["value"] == "LINK", J1_MAIN_R, 330.0, 0.0, "B")
     put(lambda c: "AFC01" in mpn(c) or "FH12" in mpn(c) or "0.5K-HX" in mpn(c) or "ZIF" in c["value"].upper(),
         9.5, 270.0, 0.0, "F")
-    put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 12.0, 150.0, 0.0, "F")
+    # SWD pads beside the module's SWDIO/SWDCLK/NRESET/SWO pins, clear of the module, J20 and J11 courtyards
+    put(lambda c: "TC2030" in fp_name(c).upper() or "TAG-CONNECT" in fp_name(c).upper(), 20.8, 238.5, 0.0, "F")
     put(lambda c: "PKMCS" in mpn(c), 22.0, 22.0, 22.0, "B")
+    # NFC coil tail pads on the top, right above the module's NFC1/NFC2 pins (the coil sits in the top cover)
+    put(lambda c: c["value"] == "NFC_COIL", 21.5, 222.0, 222.0 - 90.0, "F")
     put(lambda c: "SM04B" in mpn(c) or "BM04B" in mpn(c), 25.5, 132.0, 132.0 - 90.0, "B")
     return P
 
@@ -221,8 +226,12 @@ def main_anchor_sides(comps):
     sides = {}
     for ref, c in comps.items():
         m = mpn(c)
-        if any(k in m for k in ("W25Q", "SC-20S", "32.768")):
-            sides[ref] = ("B", (16.0, 165.0))
+        if "W25Q" in m:
+            # on the module's QSPI side (pads 41-46, P0.17-P0.23 face θ ≈ 250°), just outside its courtyard
+            sides[ref] = ("B", (18.5, 249.0))
+        elif any(k in m for k in ("SC-20S", "32.768")):
+            # beside the module's inner corner near XL1/XL2 (the inner end itself is at the hub, r 8.8)
+            sides[ref] = ("B", (11.5, 172.0))
         elif any(k in m for k in ("RT9080", "TPS22917", "TPS22918")):
             sides[ref] = ("F", (16.0, 30.0))
         elif any(k in m for k in ("TPS61040", "AO3401", "2N7002", "SWPA3015", "B5819")):
@@ -272,9 +281,60 @@ def main_keepouts():
     return [("B", actuator), ("*", spindle_screws), ("B", tmag_zone), ("B", corridor, low_profile)]
 
 
+HUB_FLANGE_R = 8.5  # brass hub flange clamped against the board bottom (docs/mechanical.md, z 25.0-29.1)
+NUT_R = 4.6         # M4 nut on the board top (SPEC §8)
+CENTRE_HOLE_R = 2.5
+
+
+def clamp_keepouts(board):
+    """No tracks or vias where metal is clamped against the board: under the brass hub flange on the bottom
+    (r ≤ 8.5, + 0.3) and under the M4 nut on the top (r ≤ 4.6); and none on any layer within the copper-to-edge
+    clearance of the centre hole (Freerouting does not see the inner board edge). Pads (the GND spindle holes H1-H3)
+    and the GND pour stay allowed: the hub is GND."""
+    have = {z.GetZoneName() for z in board.Zones() if z.GetIsRuleArea()}
+    shim = types.SimpleNamespace(board=board)
+    circle = lambda r: [pol(r, a) for a in range(0, 360, 5)]  # noqa: E731
+    added = 0
+    for name, layers, r in (("HUB_FLANGE_NO_TRACKS", [pcbnew.B_Cu], HUB_FLANGE_R + 0.3),
+                            ("M4_NUT_NO_TRACKS", [pcbnew.F_Cu], NUT_R),
+                            ("CENTRE_HOLE_NO_TRACKS", [pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu],
+                             CENTRE_HOLE_R + 0.35)):
+        if name not in have:
+            pcbgen.BoardBuilder.keepout(shim, layers, circle(r), pads=False, pours=False, name=name)
+            added += 1
+    return added
+
+
+def enforce_keepouts(path):
+    """Remove every track and via that enters a no-track / no-via rule area (they are re-routed afterwards)."""
+    b = pcbnew.LoadBoard(path)
+    zones = [z for z in b.Zones() if z.GetIsRuleArea() and (z.GetDoNotAllowTracks() or z.GetDoNotAllowVias())]
+    gone = []
+    for t in list(b.GetTracks()):
+        via = t.Type() == pcbnew.PCB_VIA_T
+        for z in zones:
+            if via:
+                if z.GetDoNotAllowVias() and any(z.IsOnLayer(lay) for lay in (pcbnew.F_Cu, pcbnew.B_Cu)) and \
+                        z.Outline().Collide(t.GetPosition(), t.GetWidth(pcbnew.F_Cu) // 2):
+                    break
+            elif z.GetDoNotAllowTracks() and z.IsOnLayer(t.GetLayer()):
+                a, c = t.GetStart(), t.GetEnd()
+                n = max(1, int((c - a).EuclideanNorm() / pcbgen.MM(0.05)))
+                if any(z.Outline().Collide(pcbnew.VECTOR2I(a.x + (c.x - a.x) * k // n, a.y + (c.y - a.y) * k // n),
+                                           t.GetWidth() // 2) for k in range(n + 1)):
+                    break
+        else:
+            continue
+        gone.append(t.GetNetname())
+        b.Delete(t)
+    pcbnew.SaveBoard(path, b)
+    return gone
+
+
 def build_main(bb, comps, nets):
     bb.circle(pcbnew.Edge_Cuts, CX, CY, MAIN_R, 0.1)
     bb.edge_band_keepout(bb.circle_pts(CX, CY, MAIN_R, 180))
+    clamp_keepouts(bb.board)
     bb.circle(pcbnew.Edge_Cuts, CX, CY, 2.5, 0.1)  # Ø5 harness hole
     for i, th in enumerate((90, 210, 330)):   # plated GND spindle holes come from the schematic (H1-H3)
         ref = f"H{i + 1}"
@@ -305,7 +365,8 @@ def build_main(bb, comps, nets):
     x, y = pol(24.0, 90)
     bb.text(pcbnew.B_Fab, "ACTUATOR / CARRIAGE CORRIDOR", x, y, 0.8, mirror=True)
     # silkscreen
-    bb.text(pcbnew.F_SilkS, "dial-me-spinner main rA", CX, CY + 23.0, 1.0)
+    # bottom silk, above the hub flange: the top silk inside the LED-cap ring is full of references
+    bb.text(pcbnew.B_SilkS, "dial-me-spinner main rA", CX, CY - 11.0, 1.0, mirror=True)
     x, y = pol(30.6, 90)
     bb.text(pcbnew.B_SilkS, "DETENT", x, y, 0.8, mirror=True)
     for th, label in ((0, "θ0 USB"), (270, "ENC")):
@@ -320,6 +381,11 @@ def add_fiducials(bb, placer, spots):
         fp = bb.board_only("Fiducial:Fiducial_1mm_Mask2mm", f"FID{i}", x, y, side)
         if not placer.place_near(fp, x, y, side, max_r=6, rotations=(0,)):
             print("WARN: no room for fiducial", fp.GetReference())
+        # the router does not see the fiducial's 0.6 mm pad clearance or its 2 mm mask opening: keep tracks and vias
+        # out of r 1.35 mm on its side (pad r 0.5 + 0.6 clearance + track margin; the mask opening is r 1.0)
+        px, py = pcbnew.ToMM(fp.GetPosition().x), pcbnew.ToMM(fp.GetPosition().y)
+        bb.keepout([pcbnew.B_Cu if side == "B" else pcbnew.F_Cu], bb.circle_pts(px, py, 1.35, 24), pads=False,
+                   pours=False, name=f"FID{i}_KEEPCLEAR")
 
 
 def pours_main(bb):
@@ -553,9 +619,11 @@ def base_keepouts():
 J2_POS = (17.0, 222.0)   # battery connector (r, θ)
 BOSS_R = 20.0            # M2 boss at θ 270: Ø4.5 boss clears the pack (|y| ≤ 17.25); 1.9 mm FR4 to the edge
 ANT_Y_INNER = 19.0       # antenna inner edge (device y), hardware/mechanical/dial_spinner.scad ANT_YC - ANT_W/2
-ANT_B_CLEAR = 3.6        # with the 3.5 mm height gap: ≥ 5 mm from B.Cu copper
+ANT_B_CLEAR = 3.6        # B.Cu pour: with the 3.5 mm height gap, ≥ 5 mm from the antenna
+ANT_B_TRACK_CLEAR = 1.5  # thin B.Cu tracks/vias may come closer (≈ 3.8 mm): they hardly load a ground-plane-free antenna
 ANT_F_POUR_CLEAR = 2.0   # top pour held back from over the antenna
 BQ_POS = (19.5, 255.0)   # charger (r, θ)
+PIN_ANCHOR_MM = 3.0  # sheets: R40 within 3 mm of P0.06, U12 within 3 mm of the module's D+/D-
 BGA_CLEAR_MM = 1.6  # free radius around the BQ25180 so its escape stubs and first vias have room
 
 
@@ -578,12 +646,21 @@ def build_base(bb, comps, nets):
     # 2.4 GHz antenna under the θ 90 edge (inner edge at y = ANT_Y_INNER, z ≈ 6): bottom copper (z 9.5) stays
     # ≥ 5 mm away; top copper (z 11.1) is ≥ 5 mm above it anyway, so only the top pour is held back
     seg = lambda y0: [(px, py) for px, py in bb.circle_pts(CX, CY, BASE_R + 1.0, 96) if py < CY - y0] or []  # noqa: E731
-    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu], {}),
+    # 4-layer base: In1 = GND plane (as on the main board), In2 = signals/power. The planes and pours keep the same
+    # clearance from the antenna as B.Cu; In2 tracks the same as B.Cu tracks
+    inner = [pcbnew.In1_Cu, pcbnew.In2_Cu]
+    for y0, layers, kw in ((ANT_Y_INNER - ANT_B_CLEAR, [pcbnew.B_Cu] + inner, dict(tracks=False, vias=False, pads=False)),
+                           (ANT_Y_INNER - ANT_B_TRACK_CLEAR, [pcbnew.B_Cu, pcbnew.In2_Cu], dict(pours=False)),
                            (ANT_Y_INNER - ANT_F_POUR_CLEAR, [pcbnew.F_Cu], dict(tracks=False, vias=False, pads=False))):
         half = math.sqrt((BASE_R + 1.0) ** 2 - y0 ** 2)
         pts = [(CX - half, CY - y0)] + sorted(seg(y0), key=lambda q: -math.atan2(CY - q[1], q[0] - CX)) + \
               [(CX + half, CY - y0)]
-        bb.keepout(layers, pts, name="ANTENNA_KEEPOUT_" + ("B" if layers == [pcbnew.B_Cu] else "F_POUR"), **kw)
+        kind = "TRACKS" if kw.get("pours") is False else "POUR"
+        side = "F" if layers == [pcbnew.F_Cu] else "INNER_B"
+        bb.keepout(layers, pts, name=f"ANTENNA_KEEPOUT_{side}_{kind}", **kw)
+    # GND plane on In1 (layer type "power", so Freerouting drops GND to it through vias instead of routing it)
+    bb.zone("GND", [pcbnew.In1_Cu], [(CX + 34.4, CY - 6.3), (CX + 34.4, CY + 6.3)] +
+            bb.circle_pts(CX, CY, BASE_R - 0.3, 96, 20, 340), priority=0, name="GND_PLANE")
     bb.text(pcbnew.F_SilkS, "dial-me-spinner base rA", CX - 2.0, CY + 15.5, 0.8)
 
 
@@ -597,11 +674,24 @@ def pours_base(bb):
 BOARDS = {
     "main": dict(layers=4, fixed=main_fixed, anchors=main_anchor_sides, inside=main_inside,
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
+                 light_power=("+3V3", "VBUS", "+13V_OLED"),  # +3V3 < 0.1 A, VBUS sense 2.4 mA, +13V_OLED < 30 mA
+                 gnd_fanout=True,  # every GND SMD pad gets a via to the In1 plane before routing; GND is not routed
+                 # finer signal rules around the module's LGA (JLC 4-layer minimum 0.09/0.09 mm, 0.15 mm drill)
+                 rules=dict(track=0.12, clearance=0.10, via=0.40, via_drill=0.20),
                  post_fixed=main_post_fixed,
+                 # LED data series R at the driving pin (P0.06), not at the first LED 30 mm away
+                 pin_anchors={"R40": ("U10", "LED_DIN_MCU"), "U12": ("U10", "USB_DM"),
+                              # VSYS_SENSE is a 690 kΩ node: the divider and its filter cap at the AIN0 pin
+                              "R2": ("U10", "VSYS_SENSE"), "C5": ("U10", "VSYS_SENSE"), "R1": ("U10", "VSYS_SENSE"),
+                              # VSL / IREF networks at the OLED connector pins
+                              "R22": ("J20", "OLED_VSL"), "R21": ("J20", "OLED_IREF"),
+                              # spare test pads at their pins
+                              "TP10": ("U10", "TP_SPARE1"), "TP11": ("U10", "TP_SPARE2"),
+                              "TP12": ("U10", "TP_SPARE3"), "TP13": ("U10", "TP_SPARE4")},
                  fiducials=[("F", 23.5, 45), ("F", 23.5, 165), ("F", 23.5, 285),
                             ("B", 23.5, 0), ("B", 23.0, 140), ("B", 23.0, 250)]),
-    "base": dict(layers=2, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
-                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.4,
+    "base": dict(layers=4, fixed=base_fixed, anchors=base_anchor_sides, inside=base_inside,
+                 keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.3,
                  post_fixed=base_post_fixed, post_place=base_post_place,
                  fiducials=[("F", 19.5, 45), ("F", 19.5, 170), ("F", 19.5, 300)]),
 }
@@ -651,13 +741,19 @@ def generate(board, pours=True):
     netpath = os.path.join(pdir, project_name(board) + ".net")
     comps, nets = pcbgen.load_netlist(netpath)
     bb = pcbgen.BoardBuilder(cfg["layers"], {LIB: os.path.join(pdir, "lib", LIB + ".pretty")})
-    bb.rules(track=0.15, clearance=0.13, via=0.45, via_drill=0.25, edge=0.3)
+    rules = cfg.get("rules", dict(track=0.15, clearance=0.13, via=0.45, via_drill=0.25))
+    bb.rules(edge=0.3, **rules)
     bb.set_origin(CX, CY)
     power = [n for n in nets if n in ("VSYS", "VLED", "VBUS", "VBAT", "+3V3", "GND", "+13V_OLED", "OLED_VIN")
              or n.endswith("/VSYS")]
     pt = cfg["power_track"]
-    bb.netclass("Power", [n for n in power if n != "GND"], track=pt, clearance=0.13, via=0.5, via_drill=0.25)
-    bb.netclass("Ground", ["GND"], track=pt, clearance=0.13, via=0.5, via_drill=0.25)
+    light = [n for n in power if n in cfg.get("light_power", ())]  # low-current rails: 0.2 mm eases the dense areas
+    clr = rules["clearance"]
+    bb.netclass("Power", [n for n in power if n != "GND" and n not in light], track=pt, clearance=clr, via=0.5,
+                via_drill=0.25)
+    if light:
+        bb.netclass("Supply", light, track=0.2, clearance=clr, via=rules["via"], via_drill=rules["via_drill"])
+    bb.netclass("Ground", ["GND"], track=pt, clearance=clr, via=0.5, via_drill=0.25)
     fixed = cfg["fixed"](comps)
     bb.place_from_netlist(comps, nets, fixed, default=(CX, CY, 0.0, "F"))
     cfg["build"](bb, comps, nets)
@@ -671,6 +767,25 @@ def generate(board, pours=True):
     for fp in bb.board.GetFootprints():  # mounting holes added by the board builder
         if fp.GetReference().startswith("H"):
             placer.mark(fp)
+    # parts that must sit at a specific IC pin (series terminations at the driver, ESD arrays at the pins), placed
+    # before everything else: within PIN_ANCHOR_MM on the IC's side, else on the other side over the pad (one via),
+    # else as close as possible on the IC's side (a module's own courtyard can keep its side > 3 mm away)
+    for ref, (ic, net) in cfg.get("pin_anchors", {}).items():
+        if ref in bb.footprints and ic in bb.footprints:
+            pads = [p for p in bb.footprints[ic].Pads() if p.GetNetname().split("/")[-1] == net]
+            if pads:
+                px, py = pcbnew.ToMM(pads[0].GetPosition().x), pcbnew.ToMM(pads[0].GetPosition().y)
+                side = Placer.side(bb.footprints[ic])
+                other = "F" if side == "B" else "B"
+                fp = bb.footprints[ref]
+                if not (placer.place_near(fp, px, py, side, max_r=PIN_ANCHOR_MM) or
+                        placer.place_near(fp, px, py, other, max_r=PIN_ANCHOR_MM)):
+                    if placer.place_near(fp, px, py, side, max_r=6):
+                        print(f"WARN: {ref} is more than {PIN_ANCHOR_MM} mm from {ic} {net}")
+                    else:  # left to the normal clustering below
+                        print("WARN: could not place", ref, "at", ic, net)
+                        continue
+                fixed[ref] = None
     # anchors: explicit side/region parts first, placed near their region centre
     anchor_cfg = cfg["anchors"](comps)
     anchors = [bb.footprints[r] for r in fixed if r in bb.footprints]
@@ -741,11 +856,13 @@ def thermal_points(b):
 
 
 def prune_dangling(path, rounds=6):
-    """Delete the unlocked wiring that KiCad's DRC flags as dangling (track_dangling / via_dangling), keeping a
-    deletion only if the board stays fully connected."""
+    """Delete the wiring that KiCad's DRC flags as dangling (track_dangling / via_dangling), keeping a deletion only
+    if the board stays fully connected.  Locked BGA escape stubs count too: they are locked only so the router keeps
+    them, and one the router bypassed (it reached the ball directly) is a dead stub."""
     removed = 0
     for _ in range(rounds):
-        rpt, _ = drc(path)
+        rpt, before = drc(path)
+        before = before.get("[unconnected_items]", 0)
         spots = []
         kind = None
         for line in open(rpt, encoding="utf-8"):
@@ -766,7 +883,7 @@ def prune_dangling(path, rounds=6):
         for kind, x, y, layer, length in spots:
             p = pcbnew.VECTOR2I(pcbgen.MM(x), pcbgen.MM(y))
             for t in b.GetTracks():
-                if t.IsLocked() or t in doomed:
+                if t in doomed:
                     continue
                 if kind == "via_dangling" and t.Type() == pcbnew.PCB_VIA_T and (t.GetStart() - p).EuclideanNorm() < 2000:
                     doomed.append(t)
@@ -782,7 +899,7 @@ def prune_dangling(path, rounds=6):
         pcbnew.SaveBoard(path, b)
         pcbgen.refill(path)
         _, after = drc(path)
-        if after.get("[unconnected_items]", 0):
+        if after.get("[unconnected_items]", 0) > before:
             shutil.copyfile(backup, path)  # that piece was load-bearing after all: keep the board as it was
             os.remove(backup)
             break
@@ -794,6 +911,7 @@ def prune_dangling(path, rounds=6):
 def finish(board, path):
     """Post-route clean-up (needs the pours): duplicate/dangling/overlaid wiring, GND stitching, silk, refill."""
     b = pcbnew.LoadBoard(path)
+    finish_route.anchor_all(b)  # T-joints and off-centre via joints get real anchors before stubs are trimmed
     dups, trimmed = pcbgen.dedupe_tracks(b), pcbgen.trim_dangling(b)
     pcbnew.SaveBoard(path, b)
     b = pcbgen.refill(path)
@@ -821,7 +939,9 @@ def set_layer_types(path, layers):
         return
     with open(path, encoding="utf-8") as f:
         s = f.read()
-    s = re.sub(r'\(1 "In1\.Cu" signal\)', '(1 "In1.Cu" power)', s)
+    s, n = re.subn(r'\((\d+) "In1\.Cu" signal\)', r'(\1 "In1.Cu" power)', s)  # KiCad 9 numbers In1 as layer 4
+    if not n:
+        raise RuntimeError("In1.Cu layer entry not found: the GND plane would be routed as a signal layer")
     with open(path, "w", encoding="utf-8") as f:
         f.write(s)
 
@@ -844,29 +964,219 @@ def drc(path, warnings=None):
     return rpt, counts
 
 
-def route(path, passes=12, timeout=3600):
+def _sexpr_end(s, i):
+    """Index just past the s-expression that opens at s[i] == "("."""
+    depth = 0
+    for k in range(i, len(s)):
+        if s[k] == "(":
+            depth += 1
+        elif s[k] == ")":
+            depth -= 1
+            if not depth:
+                return k + 1
+    raise ValueError("unbalanced s-expression")
+
+
+def dsn_plane_as_layer_rule(dsn, net="GND", layer="In1.Cu"):
+    """Freerouting 2.1 does not route against a (plane ...) on a power layer: it places no vias through the plane,
+    so GND pads and every layer change stay unrouted (base board: 34 connections for 500 passes).  The DSN therefore
+    gives In1 as a signal layer without the plane, and every class except the plane net's own is kept off it
+    (circuit use_layer).  GND may still run on In1; KiCad refills the plane around everything after the route."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    s, n = re.subn(r"(\(layer %s\s*\(type )power\)" % re.escape(layer), r"\1signal)", s)
+    if not n:
+        return
+    while (i := s.find(f"(plane {net} ")) >= 0:
+        s = s[:i] + s[_sexpr_end(s, i):]
+    others = [m for m in re.findall(r"\(layer (\S+)\s*\(type", s) if m != layer]
+    out, pos = [], 0
+    for m in re.finditer(r"\(class (\S+)", s):
+        start = m.start()
+        end = _sexpr_end(s, start)
+        block = s[start:end]
+        nets = re.findall(r'"[^"]*"|[^\s()]+', block[:block.index("(", 1)])[2:]
+        if nets != [net]:
+            c = block.index("(circuit") + len("(circuit")
+            block = block[:c] + f"\n        (use_layer {' '.join(others)})" + block[c:]
+        out += [s[pos:start], block]
+        pos = end
+    out.append(s[pos:])
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write("".join(out))
+
+
+def dsn_drop_net(dsn, net="GND"):
+    """Leave a net out of the routing: its pins become no-net obstacles, and its pre-placed copper (the locked GND
+    fan-out vias and tracks) is handed over as keepouts so the router still keeps clear of it.  Used where the net
+    reaches an inner plane through fan-out vias placed before routing (Freerouting cannot route against a plane,
+    and wiring every GND pad as a trace swamps the main board)."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    m = re.search(r"\(net %s\s" % re.escape(net), s)
+    if not m:
+        return
+    s = s[:m.start()] + s[_sexpr_end(s, m.start()):]
+    # classes: drop the net from its class; a class left with no nets goes
+    out, pos = [], 0
+    for m in re.finditer(r"\(class (\S+)", s):
+        if m.start() < pos:
+            continue
+        end = _sexpr_end(s, m.start())
+        block = s[m.start():end]
+        head, rest = block[:block.index("(", 1)], block[block.index("(", 1):]
+        names = re.findall(r'"[^"]*"|[^\s()]+', head)[2:]
+        if net in names:
+            names = [n for n in names if n != net]
+            block = (f"(class {m.group(1)} {' '.join(names)}\n      " + rest) if names else ""
+        out += [s[pos:m.start()], block]
+        pos = end
+    out.append(s[pos:])
+    s = "".join(out)
+    # pre-placed copper of the net -> keepouts in the structure
+    layers = re.findall(r"\(layer (\S+)\s*\(type", s)
+    keep = []
+    for m in list(re.finditer(r"\(wire \(path (\S+) ([0-9.]+) ([^)]*)\)\s*\(net %s\)[^\n]*" % re.escape(net), s))[::-1]:
+        keep.append(f'    (keepout "" (path {m.group(1)} {m.group(2)} {m.group(3)}))')
+        s = s[:m.start()] + s[m.end():]
+    for m in list(re.finditer(r'\(via "([^"]+)"\s+([-0-9.]+) ([-0-9.]+)\s*\(net %s\)[^\n]*' % re.escape(net), s))[::-1]:
+        dia = re.search(r"Via\[[0-9]+-[0-9]+\]_([0-9.]+):", m.group(1))
+        d = float(dia.group(1)) if dia else 500.0
+        keep += [f'    (keepout "" (circle {lay} {d:g} {m.group(2)} {m.group(3)}))' for lay in layers]
+        s = s[:m.start()] + s[m.end():]
+    st = s.find("(structure")
+    end = _sexpr_end(s, st)
+    s = s[:end - 1] + "\n".join(keep) + "\n  )" + s[end:]
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write(s)
+
+
+def dsn_clearance_margin(dsn, margin_um=10):
+    """Freerouting approximates rotated pads (the 48 ring LEDs sit at 7.5° steps) with octagons and lands a few µm
+    inside KiCad's clearance; route with the plain clearances raised by margin_um so the result passes KiCad's DRC."""
+    with open(dsn, encoding="utf-8") as f:
+        s = f.read()
+    s = re.sub(r"\(clearance ([0-9.]+)\)", lambda m: f"(clearance {float(m.group(1)) + margin_um:g})", s)
+    with open(dsn, "w", encoding="utf-8") as f:
+        f.write(s)
+
+
+def route(path, minutes=30, threads=1, optimizer_passes=20, drop_nets=()):
+    """Freerouting batch run; its log goes next to the board (*.freerouting.log) so progress can be followed.
+    Freerouting 2.1 ignores the pass limit in batch mode (-mp and router.max_passes never reach the batch loop), so
+    the run is bounded by its job timeout, after which it writes the best board so far.  The post-route optimizer
+    is capped (its default of 100 passes takes hours on the 4-layer main board)."""
     jar = FREEROUTING or os.path.join(os.environ.get("SCRATCH", "/tmp"), "freerouting.jar")
     if not os.path.exists(jar):
         raise SystemExit(f"Freerouting jar not found ({jar}); set FREEROUTING_JAR")
     dsn = path.replace(".kicad_pcb", ".dsn")
     ses = path.replace(".kicad_pcb", ".ses")
+    if os.path.exists(ses):
+        os.remove(ses)
     pcbgen.export_dsn(path, dsn)
-    subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mp", str(passes), "--gui.enabled=false"],
-                   timeout=timeout, capture_output=True)
-    if not os.path.exists(ses):
-        raise RuntimeError("Freerouting produced no session file")
+    dsn_plane_as_layer_rule(dsn)
+    for n in drop_nets:
+        dsn_drop_net(dsn, n)
+    dsn_clearance_margin(dsn)
+    with open(path.replace(".kicad_pcb", ".freerouting.log"), "w") as log:
+        subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses, "-mt", str(threads),
+                        f"--router.job_timeout={minutes // 60:02d}:{minutes % 60:02d}:00",
+                        f"--router.optimizer.max_passes={optimizer_passes}", "--gui.enabled=false"],
+                       timeout=(minutes + 60) * 60, stdout=log, stderr=subprocess.STDOUT)
+    if not os.path.exists(ses):  # Freerouting 2.1 sometimes dies on an internal error; keep the board as it was
+        print(f"WARN: Freerouting produced no session file (see {path.replace('.kicad_pcb', '.freerouting.log')})")
+        return False
     pcbgen.import_ses(path, ses, path)
     for f in (dsn, ses):
         os.remove(f)
+    return True
+
+
+def gnd_plane_fixup(path):
+    """GND pads with no path to the In1 plane (no via, through-hole pad or track to one) get a fan-out via."""
+    b = pcbnew.LoadBoard(path)
+    net = b.FindNet("GND")
+    if net is None:
+        return 0, []
+    lonely = []
+    for cl in finish_route.net_clusters(b, net.GetNetCode(), (pcbnew.In1_Cu,)):
+        on_plane = any(isinstance(it, pcbnew.PAD) and it.GetAttribute() == pcbnew.PAD_ATTRIB_PTH or
+                       not isinstance(it, pcbnew.PAD) and it.Type() == pcbnew.PCB_VIA_T for it in cl)
+        if not on_plane:
+            lonely += [it for it in cl if isinstance(it, pcbnew.PAD)]
+    done, left = pcbgen.fanout_vias(b, "GND", pads=lonely) if lonely else (0, [])
+    if left:  # a signal-size via reaches tighter spots
+        more, left = pcbgen.fanout_vias(b, "GND", pads=left, via=0.4, drill=0.2, track=0.2, max_dist=3.0)
+        done += more
+    pcbnew.SaveBoard(path, b)
+    pcbgen.refill(path)
+    return done, left
+
+
+def remove_vias_in_pads(path):
+    """Delete every via whose ring lands on an SMD or connector pad (an open via in a pad wicks the solder away; the
+    TC2030 pogo pins need flat pads). The pads it served are fanned out or routed again afterwards."""
+    b = pcbnew.LoadBoard(path)
+    pads = [p for fp in b.GetFootprints() for p in fp.Pads()
+            if p.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN)]
+    gone = []
+    for v in list(b.GetTracks()):
+        if v.Type() != pcbnew.PCB_VIA_T:
+            continue
+        hit = next((p for p in pads if p.HitTest(v.GetPosition(), v.GetWidth(pcbnew.F_Cu) // 2)), None)
+        if hit is not None:
+            gone.append(f"{v.GetNetname().split('/')[-1]}@{hit.GetParentFootprint().GetReference()}.{hit.GetNumber()}")
+            b.Delete(v)
+    pcbnew.SaveBoard(path, b)
+    return gone
+
+
+def complete_routing(board, out):
+    """After Freerouting: copper inside no-track rule areas goes, GND pads off the plane get a via, then the grid router
+    (finish_route) joins what is left."""
+    b = pcbnew.LoadBoard(out)
+    # a board that was already finished: its outer GND pours and bare stitching vias would block the router
+    # (add_pours and finish() put them back afterwards)
+    pours = [z for z in b.Zones() if not z.GetIsRuleArea() and z.GetNetname() == "GND"
+             and (z.IsOnLayer(pcbnew.F_Cu) or z.IsOnLayer(pcbnew.B_Cu))]
+    gnd_ends = {(p.x, p.y) for t in b.GetTracks() if t.GetNetname() == "GND" and t.Type() != pcbnew.PCB_VIA_T
+                for p in (t.GetStart(), t.GetEnd())}
+    bare = [t for t in b.GetTracks() if t.Type() == pcbnew.PCB_VIA_T and t.GetNetname() == "GND" and not t.IsLocked()
+            and (t.GetPosition().x, t.GetPosition().y) not in gnd_ends]
+    for z in pours:
+        b.Delete(z)
+    for v in bare:
+        b.Delete(v)
+    if pours or bare:
+        print(f"[{board}] removed {len(pours)} outer GND pours and {len(bare)} stitching vias before routing")
+    if board == "main":
+        clamp_keepouts(b)
+    pcbnew.SaveBoard(out, b)
+    gone = enforce_keepouts(out)
+    if gone:
+        print(f"[{board}] removed {len(gone)} tracks/vias inside keep-outs: {sorted(set(gone))}")
+    gone = remove_vias_in_pads(out)
+    if gone:
+        print(f"[{board}] removed {len(gone)} vias sitting on SMD/connector pads: {gone}")
+    done, left = gnd_plane_fixup(out)
+    if done or left:
+        print(f"[{board}] GND plane fix-up: {done} pads given a via, {len(left)} without room")
+    left = finish_route.finish(out, log=lambda m: print(f"[{board}] {m}", flush=True))
+    print(f"[{board}] finish_route: {left} unconnected")
+    return left
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--board", choices=sorted(BOARDS))
     ap.add_argument("--route", action="store_true")
-    ap.add_argument("--passes", type=int, default=12)
+    ap.add_argument("--minutes", type=int, default=30, help="Freerouting time budget for the first attempt")
     ap.add_argument("--attempts", type=int, default=3, help="re-run Freerouting on the routed board while connections remain")
     ap.add_argument("--finish", action="store_true", help="only clean up an already routed board (no re-placement)")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue routing the board as it is (no re-placement, no new fan-out), then finish it")
+    ap.add_argument("--complete", action="store_true",
+                    help="only complete the routed board with the grid router (no Freerouting), then finish it")
     a = ap.parse_args()
     for board in BOARDS:
         if a.board and board != a.board:
@@ -878,16 +1188,44 @@ def main():
             rpt, counts = drc(out, warn)
             print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
             continue
-        out = generate(board, pours=not a.route)
-        print(f"[{board}] placed ->", out)
+        if a.complete:
+            out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            for _ in range(3):  # the clean-up can open a joint the router made; route again until it holds
+                complete_routing(board, out)
+                add_pours(board, out)
+                finish(board, out)
+                _, counts = drc(out)
+                if not counts.get("[unconnected_items]", 0):
+                    break
+            warn = {}
+            rpt, counts = drc(out, warn)
+            print(f"[{board}] DRC errors:", counts or "none", "| warnings:", warn or "none", "->", rpt)
+            continue
+        if a.resume:
+            out = os.path.join(project_dir(board), project_name(board) + ".kicad_pcb")
+            a.route = True
+        else:
+            out = generate(board, pours=not a.route)
+            print(f"[{board}] placed ->", out)
         if a.route:
+            drop = ("GND",) if BOARDS[board].get("gnd_fanout") else ()
+            if BOARDS[board].get("gnd_fanout") and not a.resume:
+                b = pcbnew.LoadBoard(out)
+                done, left = pcbgen.fanout_vias(b, "GND")
+                pcbnew.SaveBoard(out, b)
+                pcbgen.refill(out)
+                print(f"[{board}] GND fan-out: {done} pads, {len(left)} without room:",
+                      [(p.GetParentFootprint().GetReference(), p.GetNumber()) for p in left])
+                drop = ("GND",)
             for attempt in range(a.attempts):
-                route(out, a.passes + 10 * attempt)
+                route(out, a.minutes * (attempt + 1), drop_nets=drop)
                 _, counts = drc(out)
                 left = counts.get("[unconnected_items]", 0)
                 print(f"[{board}] route attempt {attempt + 1}: {left} unconnected")
                 if not left:
                     break
+            if left:
+                complete_routing(board, out)
             add_pours(board, out)
             finish(board, out)
             print(f"[{board}] routed")

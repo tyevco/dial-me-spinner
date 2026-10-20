@@ -12,6 +12,7 @@ replaced by behavioural models from hardware/sim/models/ (each model file cites 
     deck.tran("10n", "5u")
     deck.meas("tran vmax MAX v(n_led_din)")
     res = deck.run()            # {"vmax": 3.29}
+    res = deck.run(fallback=True)   # opt-in: retry with looser numerics on 'Timestep too small' or a hang
 
 Fault injection (to prove that a test really detects the failure it guards against):
     d.override("R40", "22")     # change a value
@@ -46,6 +47,13 @@ _SI = {"f": 1e-15, "p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "k":
 
 # default tolerances when the value string does not give one
 DEFAULT_TOL = {"R": 0.01, "C": 0.10, "L": 0.20}
+
+# Deck.run(): default timeout, and the opt-in numerical fallback (Deck.run(fallback=True)). The ladder is the one
+# test_load_switches.run() uses: reltol 1e-3, then also Gear + rshunt 1e12, 90 s per attempt (normal decks finish in a
+# few seconds), retried only on 'Timestep too small' or a hang.
+DEFAULT_TIMEOUT = 300
+FALLBACK_ATTEMPT_TIMEOUT = 90
+NUMERIC_FALLBACKS = (("option reltol=1e-3",), ("option reltol=1e-3", "option method=gear", "option rshunt=1e12"))
 
 
 def parse_value(s: str) -> float:
@@ -243,10 +251,13 @@ class Deck:
         return self
 
     def include(self, lib: str):
+        """Inline a model file. ngspice treats a node called 'gnd' as global ground even inside a .subckt, which
+        would silently tie a subcircuit's ground PORT to node 0 whatever the caller connects it to. So in every
+        subcircuit that has a 'gnd' port, that name is made local before the file goes into the deck."""
         path = lib if os.path.isabs(lib) else os.path.join(MODELS, lib)
         if not os.path.exists(path):
             raise FileNotFoundError(path)
-        self.lines.insert(0, f".include {path}")
+        self.lines.insert(0, f"* ---- {os.path.basename(path)}\n" + localize_gnd_ports(open(path).read()))
         return self
 
     def param(self, **kw):
@@ -301,7 +312,42 @@ class Deck:
         out += ["quit", ".endc", ".end"]
         return "\n".join(out) + "\n"
 
-    def run(self, timeout: int = 300, keep: str | None = None) -> dict:
+    def run(self, timeout: int | None = None, keep: str | None = None, fallback: bool = False) -> dict:
+        """Run the deck in ngspice batch mode and parse the measures / printed values / waves.
+
+        timeout: seconds before subprocess.TimeoutExpired (default 300; with fallback, per attempt, default 90).
+        fallback (opt-in, default off): numerical fallback for decks whose models can stall ngspice's step control at
+            a switching instant. Only a 'Timestep too small' in the log or a hang (timeout) triggers a retry, first
+            with reltol 1e-3, then with reltol 1e-3 + Gear integration + rshunt 1e12 (NUMERIC_FALLBACKS, the same
+            ladder as test_load_switches.run()). Any other error, and anything the last attempt reports, is returned
+            unchanged for the caller's checks (so a fallback never hides an error); a hang of every attempt raises the
+            last TimeoutExpired. The result then carries '_fallback': the option lines added ([] = first attempt).
+            self.options is left as it was.
+        """
+        if not fallback:
+            return self._run_once(DEFAULT_TIMEOUT if timeout is None else timeout, keep)
+        per_attempt = FALLBACK_ATTEMPT_TIMEOUT if timeout is None else timeout
+        saved = list(self.options)
+        res, hang = None, None
+        try:
+            for extra in ((),) + NUMERIC_FALLBACKS:
+                keys = {_option_key(o) for o in extra}
+                self.options = [o for o in saved if _option_key(o) not in keys] + list(extra)
+                try:
+                    res = self._run_once(per_attempt, keep)
+                except subprocess.TimeoutExpired as exc:
+                    res, hang = None, exc
+                    continue
+                res["_fallback"] = list(extra)
+                if not any(re.search(r"(?i)timestep too small", e) for e in res["_errors"]):
+                    break
+        finally:
+            self.options = saved
+        if res is None:
+            raise hang
+        return res
+
+    def _run_once(self, timeout: int, keep: str | None) -> dict:
         if NGSPICE is None:
             raise RuntimeError("ngspice not found (apt install ngspice)")
         work = tempfile.mkdtemp(prefix="spice_")
@@ -340,6 +386,28 @@ class Deck:
             return res
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+
+def _option_key(line: str) -> str:
+    """'option reltol=1e-4' -> 'reltol'; 'option noacct' -> 'noacct' (which option a Deck.options line sets)."""
+    tok = line.split(None, 1)
+    return (tok[1] if len(tok) > 1 else tok[0]).split("=")[0].strip().lower()
+
+
+def localize_gnd_ports(text: str) -> str:
+    """Rename a subcircuit's 'gnd' port (and its uses inside that subcircuit) to a local node name."""
+    out, inside, rename = [], False, False
+    for line in text.splitlines():
+        low = line.strip().lower()
+        if low.startswith(".subckt"):
+            head = re.split(r"\s+params:", line, maxsplit=1, flags=re.I)[0]
+            inside, rename = True, bool(re.search(r"(?i)(?<![\w.])gnd(?![\w.])", " ".join(head.split()[2:])))
+        if inside and rename and not low.startswith("*"):
+            line = re.sub(r"(?i)(?<![\w.])gnd(?![\w.])", "gnd_port", line)
+        if low.startswith(".ends"):
+            inside, rename = False, False
+        out.append(line)
+    return "\n".join(out)
 
 
 def eng(x: float, unit: str = "") -> str:

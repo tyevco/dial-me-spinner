@@ -31,7 +31,7 @@ def build(d):
     d.sheet(*SHEET)
 
     d.group("Board-to-board link (to base board through the spindle)",
-            "JST SH 12-way SIDE-entry on the bottom at r = 17.5 (a vertical header would hit the rotor hub);\n"
+            "JST SH 12-way SIDE-entry on the bottom at r = 19.5, θ 330° (a vertical header would hit the rotor hub);\n"
             "the harness lies flat under the board into the spindle bore. Identical pinout on the base board (SPEC §2)")
     d.add("J1", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
           "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
@@ -44,8 +44,10 @@ def build(d):
     d.add("U1", "dial_spinner:RT9080-33GJ5", "RT9080-33GJ5", "Package_TO_SOT_SMD:SOT-23-5",
           pins={"VIN": "VSYS", "EN": "VSYS", "GND": "GND", "VOUT": "+3V3", "NC": None},
           fields={"MPN": "RT9080-33GJ5", "Manufacturer": "Richtek", "LCSC": "C841192"})
-    d.add("C2", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
-          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
+    # VSYS caps are 25 V parts: a 10 V 0603 keeps only ~28 % at 5 V, and VSYS must absorb the stepper's coast energy
+    # on USB with the BATFET off (hardware/sim test_motor_drive, MD-5)
+    d.add("C2", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
+          fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
     d.add("C3", "Device:C", "10u", C0603, pins={"1": "+3V3", "2": "GND"},
           fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
     d.add("C4", "Device:C", "100n", C0402, pins={"1": "+3V3", "2": "GND"},
@@ -63,15 +65,17 @@ def build(d):
     d.add("U2", "Power_Management:TPS22917DBV", "TPS22917DBVR", "Package_TO_SOT_SMD:SOT-23-6",
           pins={"VIN": "VSYS", "GND": "GND", "ON": "LED_PWR_EN", "CT": "LSW_CT", "QOD": "LSW_QOD", "VOUT": "VLED"},
           fields={"MPN": "TPS22917DBVR", "Manufacturer": "Texas Instruments", "LCSC": "C2681320"})
-    d.add("C6", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
-          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
+    d.add("C6", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
+          fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
     d.add("C7", "Device:C", "1n/50V", C0402, pins={"1": "LSW_CT", "2": "VSYS"},
           fields={"MPN": "0402B102K500NT", "Manufacturer": "FH", "LCSC": "C1523"})
     d.add("R3", "Device:R", "100k", R0402, pins={"1": "LED_PWR_EN", "2": "GND"},
           fields={"MPN": "0402WGF1003TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25741"})
-    d.add("R4", "Device:R", "100", R0402, pins={"1": "VLED", "2": "LSW_QOD"},
-          fields={"MPN": "0402WGF1000TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25076"},
-          description="QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); ~4 ms with 44 uF")
+    d.add("R4", "Device:R", "68", R0402, pins={"1": "VLED", "2": "LSW_QOD"},
+          fields={"MPN": "RC0402FR-0768RL", "Manufacturer": "YAGEO", "LCSC": "C163455"},
+          description="QOD discharge resistor (TPS22917 option 1: external R between VOUT and QOD); VLED to 10 % "
+                      "in about 24 ms (26.6 ms worst corner, C8/C9 +20 %, DC bias), inside the firmware's 30 ms "
+                      "(hardware/sim test_u2_qod_discharge_tolerance_extremes)")
     d.add("C8", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},
           fields={"MPN": "CL21A226MAQNNNE", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C45783"})
     d.add("C9", "Device:C", "22u", C0805, pins={"1": "VLED", "2": "GND"},

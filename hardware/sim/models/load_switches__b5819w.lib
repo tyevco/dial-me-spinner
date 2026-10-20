@@ -10,9 +10,11 @@
 *            25 C curve 0.25 V / 0.42 V); limit table VF <= 0.6 V @ 1 A.
 *   Reverse: saturation IS = 4 uA reproduces "Reverse Characteristics" 25 C ~4 uA at VR = 1 V; the VR slope
 *            (~8 uA @ 10 V, ~12 uA @ 20 V, ~40 uA @ 40 V) is a parallel conductance GLEAK = 0.45 uA/V at 25 C.
-*            Temperature: XTI = 2, EG = 0.45 eV fitted to 25 C -> 75 C (x12: ~50 uA @ 1 V) and 100 C (x100,
-*            ~0.4 mA @ 1 V; the fit gives about x40, low by 2.5x at 100 C, within 30 % at 75 C); GLEAK scales
-*            with the same factor through the TEMPER-dependent B-source.  Limit table IR <= 1 mA @ 40 V.
+*            Temperature: XTI = 2, EG = 0.45 eV; GLEAK scales with the same factor through the TEMPER-dependent
+*            B-source.  Resulting model vs the typical curves: 25 C 3.9 / 7.5 / 19 uA at VR 1 / 10 / 40 V (curve
+*            ~4 / 8 / 40 uA: soft breakdown above 20 V not modelled); 60 C 31 / 59 uA at 1 / 10 V; 75 C 66 /
+*            126 uA (curve ~50 / 80 uA, model 30-60 % high); 100 C 0.21 / 0.40 mA (curve ~0.4 / 0.7 mA, model
+*            ~50 % low).  Limit table IR <= 1 mA @ 40 V (25x the typical).
 *   Capacitance: CJO 180 pF, VJ 0.35 V, M 0.5 -> about 60 pF at 4 V ("Capacitance Characteristics";
 *            limit CD <= 120 pF @ 4 V).
 * NOT modelled: reverse breakdown (V(BR) >= 40 V, never reached here), self-heating, reverse recovery

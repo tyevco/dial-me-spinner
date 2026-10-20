@@ -2816,7 +2816,7 @@
 		)
 		(uuid "73b580d2-0d3a-5119-97fd-d5de44a71392")
 	)
-	(text "OLED_VCC_EN low (also through MCU reset, R25) -> U21 off: VCC floats, boost draws 0 uA.                                                                                             \nWithout it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\nU21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp, ~10 mA inrush into ~16 uF; QOD open.\n(Replaces the AO3401A/2N7002 disconnect, which had no real dV/dt control - review SCH-1.)\nLAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track."
+	(text "OLED_VCC_EN low (also through MCU reset, R25) -> U21 off: VCC floats, boost draws 0 uA.                                                                                             \nWithout it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\nU21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp. Inrush is set by the TPS61040 soft start\n(it starts at its 1.5 V UVLO while U21 ramps): ~0.3 A for ~2 ms, 0.4 A peak.\nQOD tied to OLED_VIN: when off, OLED_VIN is held at ~0 V (150 R) so the boost (EN = VIN) stays off;\notherwise D21 leakage from the panel's VCI->VCC ESD path floats it up and the boost hiccups in sleep.\n(Replaces the AO3401A/2N7002 disconnect, which had no real dV/dt control - review SCH-1.)\nLAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track."
 		(exclude_from_sim no)
 		(at 15.24 166.37 0)
 		(effects
@@ -2830,7 +2830,7 @@
 	)
 	(rectangle
 		(start 12.7 160.02)
-		(end 198.12 261.62)
+		(end 198.12 267.97)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -2852,7 +2852,7 @@
 		)
 		(uuid "c3ca058e-2042-5157-9144-23e7fa6aa1e6")
 	)
-	(text "VOUT = 1.233 V x (1 + 499k / 52.3k) = 13.00 V (0.5 % / 0.1 % divider); CFF C40 33 pF across R26 (tune 22-100 pF).                                     \nEN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.92 A (peak need 0.49 A).\nLAYOUT: tight CIN-L-SW-GND and SW-D-COUT-GND loops; R26/R27/C40 at the FB pin, away from SW."
+	(text "VOUT = 1.233 V x (1 + 499k / 52.3k) = 13.00 V (0.5 % / 0.1 % divider); CFF C40 33 pF across R26 (tune 22-100 pF).                                     \nEN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.72 A rated (0.92 A typ; peak need 0.49 A).\nLAYOUT: tight CIN-L-SW-GND and SW-D-COUT-GND loops; R26/R27/C40 at the FB pin, away from SW."
 		(exclude_from_sim no)
 		(at 205.74 166.37 0)
 		(effects
@@ -7190,7 +7190,7 @@
 	)
 	(symbol
 		(lib_id "Power_Management:TPS22917DBV")
-		(at 43.18 195.58 0)
+		(at 43.18 200.66 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7198,7 +7198,7 @@
 		(dnp no)
 		(uuid "d298b958-746e-5c17-af83-364da18633eb")
 		(property "Reference" "U21"
-			(at 33.02 187.2 0)
+			(at 33.02 192.28 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7207,7 +7207,7 @@
 			)
 		)
 		(property "Value" "TPS22917DBVR"
-			(at 33.02 189.5 0)
+			(at 33.02 194.58 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7216,7 +7216,7 @@
 			)
 		)
 		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7225,7 +7225,7 @@
 			)
 		)
 		(property "Datasheet" "http://www.ti.com/lit/ds/symlink/tps22917.pdf"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7234,7 +7234,7 @@
 			)
 		)
 		(property "Description" "1V to 5.5V, 2A, 80mΩ Ultra-Low Leakage Load Switch, SOT23-6"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7243,7 +7243,7 @@
 			)
 		)
 		(property "MPN" "TPS22917DBVR"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7252,7 +7252,7 @@
 			)
 		)
 		(property "Manufacturer" "Texas Instruments"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7261,7 +7261,7 @@
 			)
 		)
 		(property "LCSC" "C2681320"
-			(at 43.18 195.58 0)
+			(at 43.18 200.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7297,7 +7297,7 @@
 		)
 	)
 	(wire
-		(pts (xy 33.02 193.04) (xy 30.48 193.04))
+		(pts (xy 33.02 198.12) (xy 30.48 198.12))
 		(stroke
 			(width 0)
 			(type default)
@@ -7306,7 +7306,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 30.48 193.04 90)
+		(at 30.48 198.12 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7314,7 +7314,7 @@
 		(dnp no)
 		(uuid "ac1def11-deca-5a7a-ad4f-a6a1a0b5ac69")
 		(property "Reference" "#PWR04035"
-			(at 30.48 193.04 0)
+			(at 30.48 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7323,7 +7323,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 27.18 193.04 90)
+			(at 27.18 198.12 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7332,7 +7332,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 30.48 193.04 0)
+			(at 30.48 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7341,7 +7341,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 30.48 193.04 0)
+			(at 30.48 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7350,7 +7350,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 30.48 193.04 0)
+			(at 30.48 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7371,7 +7371,7 @@
 		)
 	)
 	(wire
-		(pts (xy 33.02 195.58) (xy 30.48 195.58))
+		(pts (xy 33.02 200.66) (xy 30.48 200.66))
 		(stroke
 			(width 0)
 			(type default)
@@ -7379,7 +7379,7 @@
 		(uuid "847c9271-9068-59db-9008-ccab134626ab")
 	)
 	(label "OLED_LSW_CT"
-		(at 30.48 195.58 180)
+		(at 30.48 200.66 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7389,7 +7389,7 @@
 		(uuid "0099c57e-3569-5cfa-95e9-b47691a5320c")
 	)
 	(wire
-		(pts (xy 33.02 198.12) (xy 30.48 198.12))
+		(pts (xy 33.02 203.2) (xy 30.48 203.2))
 		(stroke
 			(width 0)
 			(type default)
@@ -7398,7 +7398,7 @@
 	)
 	(global_label "OLED_VCC_EN"
 		(shape input)
-		(at 30.48 198.12 180)
+		(at 30.48 203.2 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -7408,7 +7408,7 @@
 		)
 		(uuid "f624cb91-8778-588a-be67-0d19c3587d4a")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 30.48 198.12 180)
+			(at 30.48 203.2 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7419,7 +7419,7 @@
 		)
 	)
 	(wire
-		(pts (xy 43.18 203.2) (xy 43.18 205.74))
+		(pts (xy 43.18 208.28) (xy 43.18 210.82))
 		(stroke
 			(width 0)
 			(type default)
@@ -7428,7 +7428,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 43.18 205.74 0)
+		(at 43.18 210.82 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7436,7 +7436,7 @@
 		(dnp no)
 		(uuid "409bfe92-ce96-534e-8218-c3092881185a")
 		(property "Reference" "#PWR04036"
-			(at 43.18 205.74 0)
+			(at 43.18 210.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7445,7 +7445,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 43.18 209.04 0)
+			(at 43.18 214.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7454,7 +7454,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 43.18 205.74 0)
+			(at 43.18 210.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7463,7 +7463,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 43.18 205.74 0)
+			(at 43.18 210.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7472,7 +7472,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 43.18 205.74 0)
+			(at 43.18 210.82 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7493,7 +7493,7 @@
 		)
 	)
 	(wire
-		(pts (xy 53.34 193.04) (xy 55.88 193.04))
+		(pts (xy 53.34 198.12) (xy 55.88 198.12))
 		(stroke
 			(width 0)
 			(type default)
@@ -7502,7 +7502,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 55.88 193.04 270)
+		(at 55.88 198.12 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7510,7 +7510,7 @@
 		(dnp no)
 		(uuid "1a082a31-ecbe-5cbf-a510-79d815dcc50a")
 		(property "Reference" "#PWR04037"
-			(at 55.88 193.04 0)
+			(at 55.88 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7519,7 +7519,7 @@
 			)
 		)
 		(property "Value" "OLED_VIN"
-			(at 59.18 193.04 90)
+			(at 59.18 198.12 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7528,7 +7528,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 55.88 193.04 0)
+			(at 55.88 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7537,7 +7537,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 55.88 193.04 0)
+			(at 55.88 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7546,7 +7546,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 55.88 193.04 0)
+			(at 55.88 198.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7566,13 +7566,83 @@
 			)
 		)
 	)
-	(no_connect
-		(at 53.34 195.58)
-		(uuid "8435abb9-1892-5fcd-8b5f-d29f3148818c")
+	(wire
+		(pts (xy 53.34 200.66) (xy 55.88 200.66))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a669fc0e-22c7-5f2d-b702-385ac5e3d38f")
+	)
+	(symbol
+		(lib_id "power:VCC")
+		(at 55.88 200.66 270)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "f346aec7-028d-556a-afb7-2f12fbb68602")
+		(property "Reference" "#PWR04038"
+			(at 55.88 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "OLED_VIN"
+			(at 59.18 200.66 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 55.88 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 55.88 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 55.88 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "1e639d74-3806-52e2-af96-165d434da70e")
+		)
+		(instances
+			(project "dial-me-spinner-main"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
+					(reference "#PWR04038")
+					(unit 1)
+				)
+			)
+		)
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 93.98 187.96 90)
+		(at 93.98 193.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7580,7 +7650,7 @@
 		(dnp no)
 		(uuid "821325fd-5e13-52f2-ad4a-8458845d8690")
 		(property "Reference" "C37"
-			(at 93.98 184.328 90)
+			(at 93.98 189.408 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7588,7 +7658,7 @@
 			)
 		)
 		(property "Value" "1n/50V"
-			(at 93.98 191.592 90)
+			(at 93.98 196.672 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7596,7 +7666,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7605,7 +7675,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7614,7 +7684,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7623,7 +7693,7 @@
 			)
 		)
 		(property "MPN" "0402B102K500NT"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7632,7 +7702,7 @@
 			)
 		)
 		(property "Manufacturer" "FH"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7641,7 +7711,7 @@
 			)
 		)
 		(property "LCSC" "C1523"
-			(at 93.98 187.96 0)
+			(at 93.98 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7665,7 +7735,7 @@
 		)
 	)
 	(wire
-		(pts (xy 90.17 187.96) (xy 87.63 187.96))
+		(pts (xy 90.17 193.04) (xy 87.63 193.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -7673,7 +7743,7 @@
 		(uuid "6074556c-4393-53bf-bb59-063c5b30949a")
 	)
 	(label "OLED_LSW_CT"
-		(at 87.63 187.96 180)
+		(at 87.63 193.04 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7683,7 +7753,7 @@
 		(uuid "7bbdfd8d-a8b2-5916-9e69-81e0e18b62ed")
 	)
 	(wire
-		(pts (xy 97.79 187.96) (xy 100.33 187.96))
+		(pts (xy 97.79 193.04) (xy 100.33 193.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -7692,15 +7762,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 100.33 187.96 270)
+		(at 100.33 193.04 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "27cf6177-cebf-58b9-a9f0-a5d59e7639d6")
-		(property "Reference" "#PWR04038"
-			(at 100.33 187.96 0)
+		(property "Reference" "#PWR04039"
+			(at 100.33 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7709,7 +7779,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 103.63 187.96 90)
+			(at 103.63 193.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7718,7 +7788,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 100.33 187.96 0)
+			(at 100.33 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7727,7 +7797,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 100.33 187.96 0)
+			(at 100.33 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7736,7 +7806,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 100.33 187.96 0)
+			(at 100.33 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7750,7 +7820,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04038")
+					(reference "#PWR04039")
 					(unit 1)
 				)
 			)
@@ -7758,7 +7828,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 124.46 187.96 90)
+		(at 124.46 193.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -7766,15 +7836,15 @@
 		(dnp no)
 		(uuid "3c496fe0-33a8-5d2a-bc4e-f5a09a2a9bd3")
 		(property "Reference" "C41"
-			(at 124.46 184.328 90)
+			(at 124.46 189.408 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Value" "10u"
-			(at 124.46 191.592 90)
+		(property "Value" "10u/25V"
+			(at 124.46 196.672 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7782,7 +7852,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
-			(at 124.46 187.96 0)
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7791,7 +7861,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 124.46 187.96 0)
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7800,7 +7870,7 @@
 			)
 		)
 		(property "Description" "U21 VIN bypass"
-			(at 124.46 187.96 0)
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7808,8 +7878,8 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10A106KP8NNNC"
-			(at 124.46 187.96 0)
+		(property "MPN" "CL10A106MA8NRNC"
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7818,7 +7888,7 @@
 			)
 		)
 		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 124.46 187.96 0)
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7826,8 +7896,8 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C19702"
-			(at 124.46 187.96 0)
+		(property "LCSC" "C96446"
+			(at 124.46 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7851,7 +7921,7 @@
 		)
 	)
 	(wire
-		(pts (xy 120.65 187.96) (xy 118.11 187.96))
+		(pts (xy 120.65 193.04) (xy 118.11 193.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -7860,15 +7930,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 118.11 187.96 90)
+		(at 118.11 193.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "245de1e4-75ad-5b43-9253-4762fde0dabe")
-		(property "Reference" "#PWR04039"
-			(at 118.11 187.96 0)
+		(property "Reference" "#PWR04040"
+			(at 118.11 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7877,7 +7947,7 @@
 			)
 		)
 		(property "Value" "VSYS"
-			(at 114.81 187.96 90)
+			(at 114.81 193.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7886,7 +7956,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 118.11 187.96 0)
+			(at 118.11 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7895,7 +7965,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 118.11 187.96 0)
+			(at 118.11 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7904,7 +7974,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 118.11 187.96 0)
+			(at 118.11 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7918,14 +7988,14 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04039")
+					(reference "#PWR04040")
 					(unit 1)
 				)
 			)
 		)
 	)
 	(wire
-		(pts (xy 128.27 187.96) (xy 130.81 187.96))
+		(pts (xy 128.27 193.04) (xy 130.81 193.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -7934,15 +8004,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 130.81 187.96 90)
+		(at 130.81 193.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "13abdc31-591f-517a-97a2-b4255205a329")
-		(property "Reference" "#PWR04040"
-			(at 130.81 187.96 0)
+		(property "Reference" "#PWR04041"
+			(at 130.81 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7951,7 +8021,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 134.11 187.96 90)
+			(at 134.11 193.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7960,7 +8030,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 130.81 187.96 0)
+			(at 130.81 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7969,7 +8039,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 130.81 187.96 0)
+			(at 130.81 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7978,7 +8048,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 130.81 187.96 0)
+			(at 130.81 193.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7992,7 +8062,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04040")
+					(reference "#PWR04041")
 					(unit 1)
 				)
 			)
@@ -8000,7 +8070,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 144.78 198.12 0)
+		(at 144.78 203.2 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8008,7 +8078,7 @@
 		(dnp no)
 		(uuid "1e200a3a-9af7-5458-b77c-5d5e900995ee")
 		(property "Reference" "C38"
-			(at 148.082 196.85 0)
+			(at 148.082 201.93 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8017,7 +8087,7 @@
 			)
 		)
 		(property "Value" "4.7u/25V"
-			(at 148.082 199.39 0)
+			(at 148.082 204.47 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8026,7 +8096,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8035,7 +8105,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8044,7 +8114,7 @@
 			)
 		)
 		(property "Description" "Boost input capacitor (place at U20 VIN/GND)"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8053,7 +8123,7 @@
 			)
 		)
 		(property "MPN" "CL21A475KAQNNNE"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8062,7 +8132,7 @@
 			)
 		)
 		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8071,7 +8141,7 @@
 			)
 		)
 		(property "LCSC" "C1779"
-			(at 144.78 198.12 0)
+			(at 144.78 203.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8095,7 +8165,7 @@
 		)
 	)
 	(wire
-		(pts (xy 144.78 194.31) (xy 144.78 191.77))
+		(pts (xy 144.78 199.39) (xy 144.78 196.85))
 		(stroke
 			(width 0)
 			(type default)
@@ -8104,15 +8174,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 144.78 191.77 180)
+		(at 144.78 196.85 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "7d8e9409-3381-5e6f-a5a8-d5361ff2e763")
-		(property "Reference" "#PWR04041"
-			(at 144.78 191.77 0)
+		(property "Reference" "#PWR04042"
+			(at 144.78 196.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8121,7 +8191,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 144.78 188.47 0)
+			(at 144.78 193.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8130,7 +8200,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 144.78 191.77 0)
+			(at 144.78 196.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8139,7 +8209,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 144.78 191.77 0)
+			(at 144.78 196.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8148,7 +8218,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 144.78 191.77 0)
+			(at 144.78 196.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8162,14 +8232,14 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04041")
+					(reference "#PWR04042")
 					(unit 1)
 				)
 			)
 		)
 	)
 	(wire
-		(pts (xy 144.78 201.93) (xy 144.78 204.47))
+		(pts (xy 144.78 207.01) (xy 144.78 209.55))
 		(stroke
 			(width 0)
 			(type default)
@@ -8178,15 +8248,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 144.78 204.47 180)
+		(at 144.78 209.55 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "8be7bca6-101f-59ac-ac5b-68a4f81bf8c6")
-		(property "Reference" "#PWR04042"
-			(at 144.78 204.47 0)
+		(property "Reference" "#PWR04043"
+			(at 144.78 209.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8195,7 +8265,7 @@
 			)
 		)
 		(property "Value" "OLED_VIN"
-			(at 144.78 207.77 0)
+			(at 144.78 212.85 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8204,7 +8274,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 144.78 204.47 0)
+			(at 144.78 209.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8213,7 +8283,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 144.78 204.47 0)
+			(at 144.78 209.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8222,7 +8292,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 144.78 204.47 0)
+			(at 144.78 209.55 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8236,7 +8306,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04042")
+					(reference "#PWR04043")
 					(unit 1)
 				)
 			)
@@ -8244,7 +8314,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 35.56 223.52 90)
+		(at 35.56 231.14 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8252,7 +8322,7 @@
 		(dnp no)
 		(uuid "18d71197-b303-5d64-a5b3-711339e559c8")
 		(property "Reference" "R25"
-			(at 35.56 220.904 90)
+			(at 35.56 228.524 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8260,7 +8330,7 @@
 			)
 		)
 		(property "Value" "100k"
-			(at 35.56 226.136 90)
+			(at 35.56 233.756 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8268,7 +8338,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8277,7 +8347,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8286,7 +8356,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8295,7 +8365,7 @@
 			)
 		)
 		(property "MPN" "0402WGF1003TCE"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8304,7 +8374,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8313,7 +8383,7 @@
 			)
 		)
 		(property "LCSC" "C25741"
-			(at 35.56 223.52 0)
+			(at 35.56 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8337,7 +8407,7 @@
 		)
 	)
 	(wire
-		(pts (xy 31.75 223.52) (xy 29.21 223.52))
+		(pts (xy 31.75 231.14) (xy 29.21 231.14))
 		(stroke
 			(width 0)
 			(type default)
@@ -8346,7 +8416,7 @@
 	)
 	(global_label "OLED_VCC_EN"
 		(shape passive)
-		(at 29.21 223.52 180)
+		(at 29.21 231.14 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -8356,7 +8426,7 @@
 		)
 		(uuid "0fb587a9-1be2-5900-ad5e-1a83e8afda16")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 29.21 223.52 180)
+			(at 29.21 231.14 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8367,7 +8437,7 @@
 		)
 	)
 	(wire
-		(pts (xy 39.37 223.52) (xy 41.91 223.52))
+		(pts (xy 39.37 231.14) (xy 41.91 231.14))
 		(stroke
 			(width 0)
 			(type default)
@@ -8376,15 +8446,15 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 41.91 223.52 90)
+		(at 41.91 231.14 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "b976ec54-c1fe-5265-bb79-ba804a2c8e2e")
-		(property "Reference" "#PWR04043"
-			(at 41.91 223.52 0)
+		(property "Reference" "#PWR04044"
+			(at 41.91 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8393,7 +8463,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 45.21 223.52 90)
+			(at 45.21 231.14 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8402,7 +8472,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 41.91 223.52 0)
+			(at 41.91 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8411,7 +8481,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 41.91 223.52 0)
+			(at 41.91 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8420,7 +8490,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 41.91 223.52 0)
+			(at 41.91 231.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8434,7 +8504,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04043")
+					(reference "#PWR04044")
 					(unit 1)
 				)
 			)
@@ -8442,7 +8512,7 @@
 	)
 	(symbol
 		(lib_id "Device:L")
-		(at 55.88 243.84 0)
+		(at 55.88 248.92 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -8450,7 +8520,7 @@
 		(dnp no)
 		(uuid "412b902c-d61a-52f3-bdac-154cf46ef33c")
 		(property "Reference" "L20"
-			(at 57.15 242.57 0)
+			(at 57.15 247.65 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8459,7 +8529,7 @@
 			)
 		)
 		(property "Value" "10u"
-			(at 57.15 245.11 0)
+			(at 57.15 250.19 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8468,7 +8538,7 @@
 			)
 		)
 		(property "Footprint" "Inductor_SMD:L_Sunlord_SWPA3015S"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8477,7 +8547,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8486,7 +8556,7 @@
 			)
 		)
 		(property "Description" "Inductor"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8495,7 +8565,7 @@
 			)
 		)
 		(property "MPN" "SWPA3015S100MT"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8504,7 +8574,7 @@
 			)
 		)
 		(property "Manufacturer" "Sunlord"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8513,7 +8583,7 @@
 			)
 		)
 		(property "LCSC" "C45403"
-			(at 55.88 243.84 0)
+			(at 55.88 248.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8537,7 +8607,7 @@
 		)
 	)
 	(wire
-		(pts (xy 55.88 240.03) (xy 55.88 237.49))
+		(pts (xy 55.88 245.11) (xy 55.88 242.57))
 		(stroke
 			(width 0)
 			(type default)
@@ -8545,7 +8615,7 @@
 		(uuid "bf0e4f55-95fd-5c06-be2b-3a9c4ac75bca")
 	)
 	(label "OLED_BST_SW"
-		(at 55.88 237.49 90)
+		(at 55.88 242.57 90)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -8555,7 +8625,7 @@
 		(uuid "8cce8428-87ed-5544-8555-76370f3012ef")
 	)
 	(wire
-		(pts (xy 55.88 247.65) (xy 55.88 250.19))
+		(pts (xy 55.88 252.73) (xy 55.88 255.27))
 		(stroke
 			(width 0)
 			(type default)
@@ -8564,15 +8634,15 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 55.88 250.19 180)
+		(at 55.88 255.27 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "f2d82657-f6ce-5046-8870-18be32aac9f8")
-		(property "Reference" "#PWR04044"
-			(at 55.88 250.19 0)
+		(property "Reference" "#PWR04045"
+			(at 55.88 255.27 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8581,7 +8651,7 @@
 			)
 		)
 		(property "Value" "OLED_VIN"
-			(at 55.88 253.49 0)
+			(at 55.88 258.57 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8590,7 +8660,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 55.88 250.19 0)
+			(at 55.88 255.27 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8599,7 +8669,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 55.88 250.19 0)
+			(at 55.88 255.27 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8608,7 +8678,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 55.88 250.19 0)
+			(at 55.88 255.27 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8622,7 +8692,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04044")
+					(reference "#PWR04045")
 					(unit 1)
 				)
 			)
@@ -8739,7 +8809,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "418fff09-1adf-5acd-8b60-a470f690fb36")
-		(property "Reference" "#PWR04045"
+		(property "Reference" "#PWR04046"
 			(at 212.09 180.34 0)
 			(effects
 				(font
@@ -8790,7 +8860,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04045")
+					(reference "#PWR04046")
 					(unit 1)
 				)
 			)
@@ -8945,7 +9015,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "a9aabc3e-5bbf-56b3-b2da-0400beea596c")
-		(property "Reference" "#PWR04046"
+		(property "Reference" "#PWR04047"
 			(at 246.38 207.01 0)
 			(effects
 				(font
@@ -8996,7 +9066,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04046")
+					(reference "#PWR04047")
 					(unit 1)
 				)
 			)
@@ -9124,7 +9194,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "47efd901-5790-5e5d-bfa0-2315c2e1e583")
-		(property "Reference" "#PWR04047"
+		(property "Reference" "#PWR04048"
 			(at 264.16 187.96 0)
 			(effects
 				(font
@@ -9175,7 +9245,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04047")
+					(reference "#PWR04048")
 					(unit 1)
 				)
 			)
@@ -9198,7 +9268,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "d1178da2-8447-5369-9c26-9c629eadcabf")
-		(property "Reference" "#PWR04048"
+		(property "Reference" "#PWR04049"
 			(at 264.16 190.5 0)
 			(effects
 				(font
@@ -9249,7 +9319,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04048")
+					(reference "#PWR04049")
 					(unit 1)
 				)
 			)
@@ -9272,7 +9342,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "f795f51e-7242-5dc6-a8a1-5db3a9457bd0")
-		(property "Reference" "#PWR04049"
+		(property "Reference" "#PWR04050"
 			(at 274.32 200.66 0)
 			(effects
 				(font
@@ -9323,7 +9393,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04049")
+					(reference "#PWR04050")
 					(unit 1)
 				)
 			)
@@ -9496,7 +9566,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "87c47dd1-e0ff-5168-87ef-16b662e8ba8b")
-		(property "Reference" "#PWR04050"
+		(property "Reference" "#PWR04051"
 			(at 304.8 207.01 0)
 			(effects
 				(font
@@ -9547,7 +9617,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04050")
+					(reference "#PWR04051")
 					(unit 1)
 				)
 			)
@@ -9682,7 +9752,7 @@
 		(on_board yes)
 		(dnp no)
 		(uuid "9872e8bc-8050-5cc3-8a59-bc6c4434e06e")
-		(property "Reference" "#PWR04051"
+		(property "Reference" "#PWR04052"
 			(at 342.9 187.96 0)
 			(effects
 				(font
@@ -9733,7 +9803,7 @@
 		(instances
 			(project "dial-me-spinner-main"
 				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/1ed31de8-daef-5c47-978c-557b82800f0b"
-					(reference "#PWR04051")
+					(reference "#PWR04052")
 					(unit 1)
 				)
 			)

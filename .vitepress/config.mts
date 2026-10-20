@@ -34,7 +34,9 @@ export default withMermaid(defineConfig({
   lastUpdated: true,
   // README.md is the home page; everything else keeps its repository path as its URL
   rewrites: { 'README.md': 'index.md' },
-  srcExclude: ['hardware/kicad/**', 'hardware/fab/**', '**/node_modules/**', '.github/**'],
+  // CLAUDE*.md: agent instructions and per-developer local notes (CLAUDE.local.md) live at the
+  // repository root, where every .md is otherwise a page.  They are not documentation.
+  srcExclude: ['hardware/kicad/**', 'hardware/fab/**', '**/node_modules/**', '.github/**', 'CLAUDE*.md'],
   markdown: {
     config: (md) => { md.use(repoLinks) },
     languageAlias: { dts: 'c', conf: 'ini' },   // devicetree and Kconfig snippets in the firmware doc
@@ -54,6 +56,7 @@ export default withMermaid(defineConfig({
           { text: 'Introduction', link: '/' },
           { text: 'Architecture', link: '/docs/architecture' },
           { text: 'SPEC (architecture of record)', link: '/hardware/design/SPEC' },
+          { text: 'Display study (rev B)', link: '/docs/display-study' },
         ],
       },
       {

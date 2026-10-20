@@ -83,6 +83,9 @@ SYMBOLS = [
 ]
 
 
+NFC_FP = "NFC_Coil_Pads_1x02_P2.0mm"
+
+
 def footprints(fpgen, lib_dir):
     # SII SC-20S recommended soldering pattern (standard spec, C97603): two 0.7 x 1.4 mm pads, 0.8 mm gap
     # (centres at +/-0.75 mm). KiCad's generic 2012 crystal footprint uses smaller
@@ -98,6 +101,16 @@ def footprints(fpgen, lib_dir):
     silk = fpgen.pcbnew.F_SilkS
     fp.line(silk, -0.25, -0.85, 0.25, -0.85)
     fp.line(silk, -0.25, 0.85, 0.25, 0.85)
+    fp.save(lib_dir)
+
+    # NFC coil solder pads: the coil flex lives in the top cover and its tail is soldered here. Flat pads, because a
+    # side-entry header (2.95 mm) does not fit under the display glass (2.3 mm above the board top).
+    fp = fpgen.Footprint(NFC_FP, "NFC coil flex-tail solder pads, 2 pads 1.2 x 2.0 mm at 2.0 mm pitch, no paste",
+                         "NFC antenna coil pads")
+    fp.smd("1", -1.0, 0, 1.2, 2.0, paste=False)
+    fp.smd("2", 1.0, 0, 1.2, 2.0, paste=False)
+    fp.courtyard_rect(-1.85, -1.25, 1.85, 1.25)
+    fp.fab_rect(-1.6, -1.0, 1.6, 1.0)
     fp.save(lib_dir)
 
     # u.FL-only copy of the Raytac footprint: the stock one carries the all-layer keep-out for the
@@ -123,10 +136,10 @@ def build(d):
     d.group("nRF52840 module MDBT50Q-U1MV2",
             "Normal-voltage mode: VDD + VDDH on +3V3, DCCH n/c,\n"
             "REG1 DC/DC on (its inductor is inside the module).\n"
-            "u.FL on module -> Molex 146153-0050 flex antenna.\n"
+            "u.FL on module -> Molex 146153-0100 flex antenna.\n"
             "Pin map = nets.MCU_PINS (SPEC §4).\n"
-            "UICR: P0.18 = nRESET; NFC pins as GPIO.\n"
-            "P0.10/NFC2 floats (never tie it).\n"
+            "UICR: P0.18 = nRESET; NFCPINS stays in NFC mode\n"
+            "(P0.09/P0.10 = NFC1/NFC2 antenna).\n"
             "Symbol: stock MDBT50Q-U1MV2 pins, regrouped by port.")
     d.add("U10", "dial_spinner:" + MCU_SYM, "MDBT50Q-U1MV2", MCU_FP,
           pins=dict(MCU_PINS),
@@ -139,11 +152,23 @@ def build(d):
     d.add("C11", "Device:C", "100n", C0402, pins={"1": "+3V3", "2": "GND"}, rot=0,
           fields={"MPN": "CL05B104KO5NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C1525"})
 
-    d.group("USB VBUS (module pad 32)", "4.7 uF keeps total VBUS capacitance\n"
-            "(+ BQ25180 IN 2.2 uF) below 10 uF.\n"
-            "D+/D- direct to link, no series R.")
-    d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS", "2": "GND"}, rot=0,
+    d.group("USB VBUS (module pad 32) and second-stage USB ESD",
+            "R12 in series (nRF52840 PS 7.3 config 1): a legacy-cable hot plug rings the link VBUS to 6.5-8.4 V,\n"
+            "above the 5.8 V VBUS abs max; with 4.7 R (Nordic's value) R12 x C12 filters the ring and the pin sees the settled\n"
+            "VBUS, 4.49-5.49 V for a 4.5-5.5 V source (hardware/sim test_hotplug_nrf_vbus_abs_max).\n"
+            "DC drop ~11 mV at the 2.4 mA VBUS current. C12 on the module side; total sink C < 10 uF.\n"
+            "U12 USBLC6 at the module: IEC 8 kV on D+/D- otherwise drives 2.6-3.7 A into the nRF pads through the\n"
+            "~145 nH link (HBM 2 kV class = 1.33 A). U12 as close as the module courtyard allows (3.1 mm pad\n"
+            "centre to D- pad centre); test_usb_input reads the placed distance.")
+    d.add("R12", "Device:R", "4.7", R0402, pins={"1": "VBUS", "2": "VBUS_NRF"},
+          fields={"MPN": "FRC0402F4R70TS", "Manufacturer": "FOJAN", "LCSC": "C2909356"})
+    d.add("C12", "Device:C", "4.7u/16V", C0603, pins={"1": "VBUS_NRF", "2": "GND"}, rot=0,
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
+    d.add("U12", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",
+          pins={"1": "USB_DP", "6": "USB_DP", "3": "USB_DM", "4": "USB_DM", "5": "VBUS_NRF", "2": "GND"},
+          fields={"MPN": "USBLC6-2SC6", "Manufacturer": "STMicroelectronics", "LCSC": "C7519"})
+    # VBUS_NRF is fed from the flagged VBUS through R12; ERC does not propagate a supply through a resistor.
+    d.add("#FLG10", "power:PWR_FLAG", "PWR_FLAG", "", pins={"1": "VBUS_NRF"}, in_bom=False, on_board=False)
 
     d.group("32.768 kHz LFXO", "SC-20S CL 9 pF; Ccap = 2*CL - Cpin - Cpcb ~ 12 pF C0G.\n"
             "R1 <= 90k (nRF RS_LFXO max 100k); DLmax 0.5 uW = nRF PD_LFXO.\n"
@@ -183,6 +208,19 @@ def build(d):
           in_bom=False)
     d.add("R11", "Device:R", "10k", R0402, pins={"1": "+3V3", "2": "NRESET"}, dnp=True,
           fields={"MPN": "0402WGF1002TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25744"})
+
+    d.group("NFC tag antenna (nRF52840 NFCT, NFC-A Type 2/4)",
+            "Coil between NFC1 and NFC2: its flex tail solders to pads J11 (coil in the top cover).\n"
+            "Tune: Ctune = 2/((2*pi*13.56 MHz)^2 * L_coil) - Cp - Cint (Cint ~ 4 pF, PS 6.13);\n"
+            "180 pF C0G each suits L ~ 1.4-1.5 uH; retune on prototype.\n"
+            "Route NFC1/NFC2 as a pair, away from the TMAG and the LED data line.")
+    d.add("C16", "Device:C", "180p C0G", C0402, pins={"1": "NFC1", "2": "GND"},
+          fields={"MPN": "0402CG181J500NT", "Manufacturer": "FH (Guangdong Fenghua)", "LCSC": "C78636"})
+    d.add("C17", "Device:C", "180p C0G", C0402, pins={"1": "NFC2", "2": "GND"},
+          fields={"MPN": "0402CG181J500NT", "Manufacturer": "FH (Guangdong Fenghua)", "LCSC": "C78636"})
+    d.add("J11", "Connector_Generic:Conn_01x02", "NFC_COIL", "dial_spinner:" + NFC_FP,
+          pins={"1": "NFC1", "2": "NFC2"}, in_bom=False,
+          description="Solder pads for the NFC coil flex tail (no part fitted)")
 
     d.group("Spare GPIO test pads", "Value = module GPIO\n(P0.03/P0.04 = AIN1/AIN2)")
     spares = {"TP_SPARE1": "P0.03", "TP_SPARE2": "P0.04", "TP_SPARE3": "P1.11", "TP_SPARE4": "P1.13"}

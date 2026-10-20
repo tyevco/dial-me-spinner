@@ -3,7 +3,7 @@
 * =====================================================================================================
 * Part      : Nordic nRF52840 in the Raytac MDBT50Q-U1MV2 module (U10), pins P1.04 LED_PWR_EN, P1.02 OLED_VCC_EN,
 *             P0.06 LED_DIN_MCU
-* Datasheet : nRF52840 Product Specification v1.1, section 6.9.2 "GPIO electrical specification"
+* Datasheet : nRF52840 Product Specification v1.1, section 6.9.3.1 "GPIO Electrical Specification"
 *             https://cdn.sparkfun.com/assets/d/2/6/2/6/nRF52840_PS_v1.1.pdf
 *             (also https://docs.nordicsemi.com/bundle/ps_nrf52840/page/pin.html)
 * Modelled:

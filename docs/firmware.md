@@ -5,9 +5,12 @@
 Controller. **Hardware:** [`hardware/design/SPEC.md`](../hardware/design/SPEC.md)
 rev A, its net names in [`nets.py`](../hardware/design/nets.py) and the
 generated sheets in [`sheets/`](../hardware/design/sheets/). Where this
-document and SPEC disagree, SPEC wins, except where the sheets are already
-ahead of SPEC (the OLED boost-input switch U21 and the piezo resistors). The
-disagreements found are listed in [§18](#18-open-items-and-to-verify-list).
+document and SPEC disagree, SPEC wins; where SPEC and the sheets disagree, the
+sheets and the netlist win. The disagreements found are listed in
+[§18](#18-open-items-and-to-verify-list). Firmware rules that come from the
+SPICE suite ([`hardware/sim`](../hardware/sim), described in
+[simulation.md](simulation.md)) cite its finding id, e.g.
+"(hardware/sim, LSW-3)".
 
 This document is written for the person who will implement and bring up the
 firmware. Each section gives the decision, the numbers behind it, and what
@@ -107,8 +110,8 @@ both used, so **SPIM0 and SPIM1 are unavailable**.
 |---|---|---|
 | RADIO, TIMER0, RTC0, some PPI channels and SWI/EGU | MPSL/SDC | Reserved. Never touch them. |
 | RTC1 | Zephyr kernel timer | LFXO 32.768 kHz, 20 ppm |
-| TWIM0 (ID 3, shares with SPIM0) | Encoder driver, through nrfx directly | Dedicated to the TMAG5273, 400 kHz. The Zephyr I2C driver must **not** bind ([§3](#3-devicetree-and-kconfig)). |
-| TWIM1 (ID 4, shares with SPIM1) | Zephyr I2C | LIS2DW12 (0x19) and BQ25180 (0x6A, over the link), 400 kHz |
+| TWIM0 (ID 3, shares with SPIM0) | Encoder driver, through nrfx directly | Dedicated to the TMAG5273, about 390 kHz (FREQUENCY = 0x06200000, errata 219, [§4.4](#44-zero-cpu-acquisition-chain)). The Zephyr I2C driver must **not** bind ([§3](#3-devicetree-and-kconfig)). |
+| TWIM1 (ID 4, shares with SPIM1) | Zephyr I2C | LIS2DW12 (0x19) and BQ25180 (0x6A, over the link), 250 kHz (errata 219, [§3.1](#31-board-dts-draft)) |
 | SPIM2 (ID 35) | Spare | Same-pin fallback for the OLED (8 MHz, [§7.1](#71-spi-link-and-the-spim3-errata)), or for the LEDs (`worldsemi,ws2812-spi`, MOSI only on P0.06) if I2S cannot run with SDOUT alone. It can serve only one of the two. |
 | SPIM3 (ID 47) | OLED, through `zephyr,mipi-dbi-spi` | 16 MHz (SPEC §4). Anomalies 198 and 195 apply, with their workarounds ([§7.1](#71-spi-link-and-the-spim3-errata)). Fallback: SPIM2 at 8 MHz on the same pins. |
 | I2S (ID 37) | LED ring, `worldsemi,ws2812-i2s` | The nRF52840 has only one I2S |
@@ -121,12 +124,12 @@ both used, so **SPIM0 and SPIM1 are unavailable**.
 | SAADC | VSYS_SENSE on AIN0 | |
 | TIMER1 | Encoder batch timestamps, 1 MHz | Runs only while tracking |
 | TIMER2 | Encoder sample counter (low-power counter mode) | Runs only while tracking |
-| TIMER3, TIMER4 | Spare | |
+| TIMER3, TIMER4 | Spare | The nrfx NFCT driver may claim one for its field-detect workaround on the nRF52840; check which instance the NCS NFC platform selects |
 | GPIOTE | 1 IN channel for TMAG_INT_N while tracking | Every other interrupt pin uses PORT/SENSE |
 | PPI | 2 channels + 1 fork for the encoder, via `nrfx_gppi` | Allocate at run time; the SDC reserves its own |
 | WDT | Task watchdog | |
 | POWER (POF) | Power manager | POF warning at 2.9 V on VDD |
-| NFCT | Disabled | P0.09/P0.10 used as GPIO (UICR) |
+| NFCT | NFC tag emulation, NCS `nfc_t2t` / `nfc_t4t` ([§9.7](#97-nfc-tag-emulation)) | P0.09/P0.10 = NFC1/NFC2; UICR NFCPINS stays in NFC mode; field sense in sleep |
 | CC310 | MCUboot signature check, BLE crypto | |
 
 ### 1.3 GPIO configuration
@@ -143,14 +146,15 @@ against 17.37 µA for a GPIOTE IN channel
 | P0.16 | OLED_DC | `dc-gpios` | Output | Low |
 | P1.01 | OLED_RES_N | `reset-gpios`, active low | Output | High (keeps GDDRAM; 3.3 µA flows in the 1 MΩ pull-down) |
 | P1.02 | OLED_VCC_EN | ON of U21 (TPS22917 boost-input load switch, R25 100 kΩ pull-down), regulator node | Output | Low |
-| P0.06 | LED_DIN_MCU | I2S SDOUT | Standard drive | **GPIO output, driven low** (SPEC §5.4), set after the all-zero frame and before VLED goes off ([§6.4](#64-rail-sequencing)) |
+| P0.06 | LED_DIN_MCU | I2S SDOUT (R40 220 Ω at the pin) | **H0H1 drive, required** ([§6.1](#61-hardware-facts-used)) | **GPIO output, driven low** (SPEC §5.4), set after the all-zero frame and before VLED goes off ([§6.4](#64-rail-sequencing)) |
 | P1.04 | LED_PWR_EN | ON of U2 (TPS22917 VLED load switch, R3 100 kΩ pull-down), regulator node | Output | Low |
-| P0.24 / P0.25 | TMAG_SCL / TMAG_SDA | TWIM0 | External 4.7 kΩ pull-ups | Disconnected |
+| P0.24 / P0.25 | TMAG_SCL / TMAG_SDA | TWIM0 | S0D1 (default drive), external 4.7 kΩ pull-ups | Disconnected |
 | P0.27 | TMAG_INT_N | GPIOTE IN, high-to-low (tracking) | No pull (47 kΩ external) | SENSE low (latched INT) |
-| P0.08 / P1.09 | I2C_SCL / I2C_SDA | TWIM1 | External 4.7 kΩ pull-ups | Disconnected |
+| P0.08 / P1.09 | I2C_SCL / I2C_SDA | TWIM1 | S0D1 (default drive), external 4.7 kΩ pull-ups | Disconnected |
 | P1.12 | IMU_INT1 | LIS2DW12 wake/6D/tap (push-pull, latched) | Edge | SENSE high |
 | P0.30 | IMU_INT2 | LIS2DW12 FIFO watermark (balancing only) | Edge | Interrupt disabled |
-| P0.09 | CHG_INT_N | BQ25180 /INT (128 µs pulses), NFC1 used as GPIO | SENSE low (LATCH captures short pulses, TVP) | SENSE low |
+| P1.03 | CHG_INT_N | BQ25180 /INT (128 µs pulses), R55 10 kΩ pull-up | SENSE low (LATCH captures short pulses, TVP) | SENSE low |
+| P0.09 / P0.10 | NFC1 / NFC2 | NFCT antenna: coil pads J11, C16/C17 180 pF tuning caps ([§9.7](#97-nfc-tag-emulation)) | NFC mode (UICR NFCPINS), tag emulation | NFCT field sense, about 100 nA |
 | P1.10 | BTN_N | Dial press (`gpio-keys`) | SENSE low | SENSE low |
 | P0.02 | VSYS_SENSE | SAADC AIN0 | Analog | Analog |
 | P0.26, P0.05 | MOT_A_IN1, MOT_A_IN2 | PWM0 channels 0, 1 | Standard drive | Disconnected (the DRV8837 internal pull-downs give coast) |
@@ -160,16 +164,26 @@ against 17.37 µA for a GPIOTE IN channel
 | P0.12 / P1.08 | BUZZ_A / BUZZ_B | PWM1 channel 0 / channel 1 inverted | H0H1 drive | Disconnected (`pwm1_sleep` uses low-power-enable). The piezo is a capacitor between two floating pins, so no current flows; R59 (1 MΩ across BZ1) bleeds any shock-generated charge. |
 | P1.00 | SWO | UARTE0 TX (log) | Output | Disconnected |
 | P0.03, P0.04, P1.11, P1.13 | TP_SPARE1–4 | Scope timing toggles in `dev` builds | Output | Disconnected. **P0.04 is the only fast spare pin.** |
-| P0.10, P0.28, P0.29, P0.31, P1.03, P1.05–P1.07 | not connected | none | Reset default (input disconnected) | Same |
+| P0.28, P0.29, P0.31, P1.05–P1.07 | not connected | none | Reset default (input disconnected) | Same |
 
 Rules the firmware has to respect:
 
 * No fast signal goes on the low-frequency-only pins. The pin map already
   complies; do not move functions around in pinctrl.
-* Never drive LED_DIN high while VLED is off. A high DIN back-powers the LED
-  chain through its ESD diodes.
-* NFC pins: UICR `nfct-pins-as-gpios` must be applied before CHG_INT_N is used.
-  P0.10 is not connected, so leave it disconnected.
+* Firmware MUST never drive P0.06 (LED_DIN_MCU) high while VLED is off, nor
+  within 10 ms of LED_PWR_EN going high. U2's QOD holds VLED near 0 V, so a
+  high DIN sits more than 0.7 V above the LED's VDD (WS2812C abs max
+  VDD + 0.7 V) and back-powers the ring through its ESD diode. This is a hard
+  rule while R43 (0 Ω) is fitted ([§6.4](#64-rail-sequencing); hardware/sim,
+  LSW-3, LED-DATA-V4).
+* NFC pins: P0.09/P0.10 are the NFCT antenna (NFC1/NFC2). UICR NFCPINS MUST
+  stay in NFC mode, its erased default: do not set `nfct-pins-as-gpios` in
+  the board files. In GPIO mode the NFCT stays disabled and the tag cannot
+  work (hardware/sim, SLP-V1).
+* The TWIM pins keep the default S0D1 drive. Stronger pull-ups or H0D1 drive
+  would need series resistors in I2C_SCL/I2C_SDA, so H0D1 is not used and
+  the H0D1 proposal for VOL margin (PI-5) is not adopted (hardware/sim,
+  PB-2, NF-3).
 
 ### 1.4 Memory map
 
@@ -198,7 +212,7 @@ backup and crash-log area (96 KB) at 0x0E8000; littlefs for assets and logs
 | MCUmgr, littlefs, settings buffers | about 12 KB | |
 | LED I2S buffers | 1.4 KB | 2 × 700 B slab blocks for 48 LEDs |
 | Encoder DMA ring | 240 B | 40 frames × 6 B |
-| Retained RAM: boot-mode request (16 B) plus boot-loop counter and crash summary | 1 KB | 0x2003FC00–0x2003FFFF, **outside** sram0, seen by both MCUboot and the app ([§3.1](#31-board-dts-draft)) |
+| Retained RAM: boot-mode request (16 B) plus boot-loop counter, crash summary and the rail-state record (LED_PWR_EN, OLED_VCC_EN, [§15](#15-fault-handling)) | 1 KB | 0x2003FC00–0x2003FFFF, **outside** sram0, seen by both MCUboot and the app ([§3.1](#31-board-dts-draft)) |
 | **Total** | **about 165–180 KB** | That leaves 75 KB or more of margin |
 
 ---
@@ -214,7 +228,7 @@ backup and crash-log area (96 KB) at 0x0E8000; littlefs for assets and logs
                                            └─fork─▶ TIMER1 CAPTURE[0] (batch timestamp)
  BTN_N, IMU_INT1, CHG_INT_N, TMAG_INT_N (sleep) ─▶ GPIO PORT/SENSE ─▶ gpio callbacks
  PWM0 SEQEND0/1 ─▶ stepper_isr (refills one full step of µsteps)
- I2S, SPIM3, QSPI, USBD, SAADC, TWIM1 ─▶ Zephyr driver ISRs
+ I2S, SPIM3, QSPI, USBD, SAADC, TWIM1 ─▶ Zephyr driver ISRs;  NFCT ─▶ NCS NFC library
  ─────────────────────────────────────────────────────────────────────────────────────
  enc_isr (TIMER2 IRQ, prio 1): CRC + SET_COUNT check ─▶ calibration ─▶ atan2 ─▶ unwrap ─▶ tracker
         │ writes                                    │ k_event
@@ -253,7 +267,7 @@ peripheral priority is 1.
 | `power_thread` | 6 | 1.5 KB | 1 s tick plus events | Power states, BQ25180, battery, sleep entry |
 | `led_thread` | 7 | 2 KB | 30–240 fps | Effects, power limiter, I2S write |
 | `lvgl_thread` | 9 | 4 KB | 30 fps (`lv_timer_handler`) | OLED UI |
-| System work queue | Default | 2 KB | | Piezo patterns, short jobs |
+| System work queue | Default | 2 KB | | Piezo patterns, NFC tag events, short jobs |
 | `storage_wq` | 12 | 2 KB | Deferred | Settings, calibration, littlefs writes (never from an ISR) |
 | Shell / log | 14 | 2 KB | | |
 
@@ -371,7 +385,7 @@ against the current bindings.
 				checksum = <1>;                /* CRC-8 */
 			};
 
-			crash_info0: retention@10 {        /* boot-loop counter + crash summary (§15) */
+			crash_info0: retention@10 {        /* boot-loop counter, crash summary, rail-state record (§15) */
 				compatible = "zephyr,retention";
 				status = "okay";
 				reg = <0x10 0x3F0>;
@@ -395,15 +409,17 @@ against the current bindings.
 		compatible = "regulator-fixed";
 		regulator-name = "VLED";
 		enable-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;   /* LED_PWR_EN -> U2 TPS22917 ON (R3 100 kΩ pull-down) */
-		startup-delay-us = <5000>;    /* U2 tON about 4 ms: C7 = 1 nF from CT to VIN (SPEC §5.1); scope it at test 12 */
-		off-on-delay-us = <30000>;    /* QOD: about 49 µF through R4 100 Ω + 150 Ω internal, fall about 27 ms (architecture.md §7) */
+		startup-delay-us = <10000>;   /* >= 10 ms with P0.06 low before the first frame, so VLED >= 2.67 V (hardware/sim, LED-DATA-V4);
+		                               * U2 tON about 4 ms: C7 = 1 nF from CT to VIN (SPEC §5.1); scope it at test 12 */
+		off-on-delay-us = <30000>;    /* QOD via R4 68 Ω: VLED to 10 % in <= 26.6 ms worst case (SPEC §5.1; hardware/sim, LSW-2) */
 	};
 
 	oled_vcc: regulator-oled-vcc {
 		compatible = "regulator-fixed";
 		regulator-name = "+13V_OLED";
 		enable-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;   /* OLED_VCC_EN -> U21 TPS22917 ON (R25 100 kΩ pull-down) -> OLED_VIN -> TPS61040 */
-		startup-delay-us = <5000>;    /* U21 tON about 4 ms (C37 = 1 nF CT to VIN); oled_power.c waits the rest of the 200 ms asynchronously */
+		startup-delay-us = <10000>;   /* U21 tON about 4 ms (C37 = 1 nF CT to VIN) + TPS61040 soft start; never below 10 ms
+		                               * (hardware/sim, OLED-V2); oled_power.c waits the rest of the 200 ms asynchronously */
 		off-on-delay-us = <100000>;
 	};
 
@@ -428,9 +444,9 @@ against the current bindings.
 		pwm = <&pwm0>;
 		nsleep-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
 		home-gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-		full-steps-per-mm = <50>;              /* M2x0.4 lead, 20 steps/rev -> 0.02 mm/step */
+		carriage-um-per-step = <15>;           /* M2x0.4 lead, 20 steps/rev: 0.02 mm slider x 0.75 slot */
 		microsteps = <8>;
-		stroke-steps = <375>;                  /* 7.5 mm, click -> park */
+		stroke-steps = <500>;                  /* 7.5 mm / 0.015 mm, click -> park (mechanical.md §7) */
 		coil-milliohms = <20000>;
 	};
 
@@ -444,7 +460,7 @@ against the current bindings.
 		compatible = "dial,board-signals";
 		imu-int1-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
 		imu-int2-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
-		chg-int-gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
+		chg-int-gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;    /* CHG_INT_N, R55 10 kΩ pull-up */
 		led-din-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;   /* LED_DIN_MCU forced low while VLED is off (§6.4) */
 		tp-spare-gpios = <&gpio0 3 0>, <&gpio0 4 0>, <&gpio1 11 0>, <&gpio1 13 0>;
 	};
@@ -457,7 +473,11 @@ against the current bindings.
 
 &uicr {
 	gpio-as-nreset;          /* P0.18 = NRESET (TC2030 pin 3) */
-	nfct-pins-as-gpios;      /* P0.09 = CHG_INT_N */
+	/* NFCPINS stays in NFC mode (erased default): P0.09/P0.10 = NFC1/NFC2, the tag antenna (§9.7) */
+};
+
+&nfct {
+	status = "okay";         /* NFC tag for the NCS nfc_t2t / nfc_t4t libraries (check whether your NCS needs it) */
 };
 
 &reg1 {
@@ -467,10 +487,10 @@ against the current bindings.
 &gpiote { status = "okay"; };
 
 /* PORT/SENSE for every interrupt pin, so no GPIOTE IN channel is used in sleep.
- * gpio0: P0.09 CHG_INT_N, P0.27 TMAG_INT_N, P0.30 IMU_INT2 */
-&gpio0 { status = "okay"; sense-edge-mask = <0x48000200>; };
-/* gpio1: P1.10 BTN_N, P1.12 IMU_INT1, P1.14 HOME_N */
-&gpio1 { status = "okay"; sense-edge-mask = <0x00005400>; };
+ * gpio0: P0.27 TMAG_INT_N, P0.30 IMU_INT2 */
+&gpio0 { status = "okay"; sense-edge-mask = <0x48000000>; };
+/* gpio1: P1.03 CHG_INT_N, P1.10 BTN_N, P1.12 IMU_INT1, P1.14 HOME_N */
+&gpio1 { status = "okay"; sense-edge-mask = <0x00005408>; };
 
 &wdt0 { status = "okay"; };
 
@@ -494,7 +514,7 @@ against the current bindings.
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "disabled";
-	clock-frequency = <I2C_BITRATE_FAST>;
+	clock-frequency = <I2C_BITRATE_FAST>;   /* unused: the encoder driver writes FREQUENCY = 0x06200000 (§4.4) */
 	pinctrl-0 = <&i2c0_default>;
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
@@ -503,7 +523,11 @@ against the current bindings.
 &i2c1 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
-	clock-frequency = <I2C_BITRATE_FAST>;
+	/* nRF52840 errata 219: at 400 kHz the TWIM holds SCL low for only 1.25 µs, below the 1.3 µs tLOW of
+	 * the LIS2DW12 and BQ25180. Run at 250 kHz (K250, FREQUENCY = 0x04000000; write it after init if the
+	 * driver rejects 250000), or at I2C_BITRATE_STANDARD if the bring-up SCL rise time at J3 exceeds
+	 * 250 ns (hardware/sim, NF-1, PB-2; the 100 kHz fallback is not simulated). Never I2C_BITRATE_FAST. */
+	clock-frequency = <250000>;
 	pinctrl-0 = <&i2c1_default>;
 	pinctrl-1 = <&i2c1_sleep>;
 	pinctrl-names = "default", "sleep";
@@ -570,7 +594,7 @@ against the current bindings.
 	pinctrl-0 = <&i2s0_default>;
 	pinctrl-1 = <&i2s0_sleep>;
 	pinctrl-names = "default", "sleep";
-	clock-source = "PCLK32M_HFXO";     /* bit period exactly 1.25 µs; HFINT error is not acceptable */
+	clock-source = "PCLK32M_HFXO";     /* bit period exactly 1.25 µs; HFINT (±8 %) breaks T1H/T0L (§6.1, LED-DATA-V2) */
 
 	led_strip: ws2812 {
 		compatible = "worldsemi,ws2812-i2s";
@@ -652,6 +676,7 @@ zephyr_udc0: &usbd {
 
 ```dts
 &pinctrl {
+	/* TWIM pins: default S0D1 drive, no nordic,drive-mode (§1.3; hardware/sim, PB-2, NF-3) */
 	i2c0_default: i2c0_default { group1 { psels = <NRF_PSEL(TWIM_SCL, 0, 24)>, <NRF_PSEL(TWIM_SDA, 0, 25)>; }; };
 	i2c0_sleep:   i2c0_sleep   { group1 { psels = <NRF_PSEL(TWIM_SCL, 0, 24)>, <NRF_PSEL(TWIM_SDA, 0, 25)>; low-power-enable; }; };
 	i2c1_default: i2c1_default { group1 { psels = <NRF_PSEL(TWIM_SCL, 0, 8)>,  <NRF_PSEL(TWIM_SDA, 1, 9)>; }; };
@@ -665,7 +690,10 @@ zephyr_udc0: &usbd {
 		group1 { psels = <NRF_PSEL(SPIM_SCK, 0, 13)>, <NRF_PSEL(SPIM_MOSI, 0, 14)>; };
 	};
 
-	i2s0_default: i2s0_default { group1 { psels = <NRF_PSEL(I2S_SDOUT, 0, 6)>; }; };   /* SCK/LRCK not routed (TVP) */
+	i2s0_default: i2s0_default {   /* SCK/LRCK not routed (TVP) */
+		/* H0H1 is REQUIRED: standard drive cannot guarantee the WS2812C windows (hardware/sim, LED-DATA-V1) */
+		group1 { psels = <NRF_PSEL(I2S_SDOUT, 0, 6)>; nordic,drive-mode = <NRF_DRIVE_H0H1>; };
+	};
 	/* No low-power-enable: SPEC §5.4 wants P0.06 driven low (not floating) while VLED is off.
 	 * led_thread also forces it low through led-din-gpios before VLED goes off (§6.4). */
 	i2s0_sleep:   i2s0_sleep   { group1 { psels = <NRF_PSEL(I2S_SDOUT, 0, 6)>; }; };
@@ -693,10 +721,11 @@ zephyr_udc0: &usbd {
 			         <NRF_PSEL(QSPI_IO2, 0, 22)>, <NRF_PSEL(QSPI_IO3, 0, 23)>;
 			 nordic,drive-mode = <NRF_DRIVE_H0H1>; };
 	};
-	qspi_sleep: qspi_sleep {
+	qspi_sleep: qspi_sleep {   /* SCK/IO0-IO3 pulled down so they do not float in DPD (hardware/sim, SLP-4);
+	                            * IO2 = /WP and IO3 = /HOLD may be held low only with QE = 1 (test 5) */
 		group1 { psels = <NRF_PSEL(QSPI_SCK, 0, 19)>, <NRF_PSEL(QSPI_IO0, 0, 20)>,
 			         <NRF_PSEL(QSPI_IO1, 0, 21)>, <NRF_PSEL(QSPI_IO2, 0, 22)>,
-			         <NRF_PSEL(QSPI_IO3, 0, 23)>; low-power-enable; };
+			         <NRF_PSEL(QSPI_IO3, 0, 23)>; low-power-enable; bias-pull-down; };
 		group2 { psels = <NRF_PSEL(QSPI_CSN, 0, 17)>; low-power-enable; bias-pull-up; };
 	};
 
@@ -731,7 +760,7 @@ properties:
   pwm:                { type: phandle, required: true }
   nsleep-gpios:       { type: phandle-array, required: true }
   home-gpios:         { type: phandle-array, required: true }
-  full-steps-per-mm:  { type: int, required: true }
+  carriage-um-per-step: { type: int, required: true }
   microsteps:         { type: int, default: 8 }
   stroke-steps:       { type: int, required: true }
   coil-milliohms:     { type: int, required: true }
@@ -848,6 +877,12 @@ CONFIG_BT_BUF_ACL_RX_SIZE=251
 CONFIG_BT_BUF_ACL_TX_SIZE=251
 CONFIG_BT_CTLR_DATA_LENGTH_MAX=251
 CONFIG_BT_CTLR_TX_PWR_DYNAMIC_CONTROL=y
+# NFC tag (§9.7); UICR NFCPINS stays in NFC mode (check names against your NCS)
+CONFIG_NFC_T2T_NRFXLIB=y              # or CONFIG_NFC_T4T_NRFXLIB=y; start with one tag type per build
+CONFIG_NFC_NDEF=y
+CONFIG_NFC_NDEF_MSG=y
+CONFIG_NFC_NDEF_RECORD=y
+CONFIG_NFC_NDEF_URI_REC=y             # plus TEXT_RECORD etc. for the record types the app offers
 # USB (device_next)
 CONFIG_USB_DEVICE_STACK_NEXT=y
 CONFIG_USBD_HID_SUPPORT=y
@@ -979,9 +1014,9 @@ and the TMAG returns:
 X_MSB  X_LSB  Z_MSB  Z_LSB  CONV_STATUS  CRC8          (6 bytes; TVP: XZX might return X, Z, X -> 8 bytes)
 ```
 
-* Bus time at 400 kHz: 7 × 9 bits × 2.5 µs plus start/stop ≈ **163 µs**,
-  against a 322 µs conversion period. An 8-byte frame (about 208 µs) would
-  still fit.
+* Bus time at about 390 kHz (errata 219 setting, [§4.4](#44-zero-cpu-acquisition-chain)):
+  7 × 9 bits × 2.56 µs plus start/stop ≈ **167 µs**, against a 322 µs
+  conversion period. An 8-byte frame (about 213 µs) would still fit.
 * **CRC-8:** polynomial x⁸+x²+x+1 (0x07), initial value 0xFF, computed **over
   the command byte 0x6B followed by the 5 data bytes**. The verifier found
   that the CRC includes the command byte; code that covers only the data flags
@@ -992,7 +1027,7 @@ X_MSB  X_LSB  Z_MSB  Z_LSB  CONV_STATUS  CRC8          (6 bytes; TVP: XZX might 
   duplicate read, and gap = k > 1 means k − 1 conversions were missed. POR
   (bit 4) and DIAG_STATUS (bit 1) must both read 0.
 * The result registers do not update while a read is in progress, so each read
-  must finish before the next conversion ends. 163 µs within 322 µs satisfies
+  must finish before the next conversion ends. 167 µs within 322 µs satisfies
   that.
 
 ```c
@@ -1015,7 +1050,7 @@ Each sample costs no CPU. The CPU runs once every 4 samples.
 |---|---|
 | GPIOTE IN channel (allocated with `nrfx_gpiote_channel_alloc`) | PSEL = P0.27, POLARITY = HiToLo, event only. Before using it, disable the Zephyr GPIO interrupt on this pin. |
 | PPI channel A | GPIOTE IN event → TWIM0.TASKS_STARTRX |
-| TWIM0 | ENABLE; ADDRESS = 0x35; FREQUENCY = K400 (0x06400000, the TWIM maximum); RXD.PTR = ring[0]; RXD.MAXCNT = 6 (or 8); **RXD.LIST = ArrayList** (the pointer advances by MAXCNT per transfer); SHORTS = LASTRX_STOP; INTEN = ERROR |
+| TWIM0 | ENABLE; ADDRESS = 0x35; **FREQUENCY = 0x06200000** (about 390 kHz), written after init and never K400: nRF52840 errata 219 makes K400 hold SCL low for only 1.25 µs, below the TMAG5273's 1.3 µs minimum (hardware/sim, NF-1; simulated tLOW 1.306–1.312 µs at the TMAG5273 with this value, only 6–12 ns over 1.3 µs, reading errata 219's "greater than 1.3 µs" as 1.30 µs); RXD.PTR = ring[0]; RXD.MAXCNT = 6 (or 8); **RXD.LIST = ArrayList** (the pointer advances by MAXCNT per transfer); SHORTS = LASTRX_STOP; INTEN = ERROR |
 | PPI channel B | TWIM0.EVENTS_STOPPED → TIMER2.TASKS_COUNT, **fork** → TIMER1.TASKS_CAPTURE[0] |
 | TIMER2 | Low-power counter mode, 16-bit, CC[0] = 4, SHORTS COMPARE0_CLEAR, INTEN COMPARE0 → `enc_isr` at IRQ priority 1 |
 | TIMER1 | Timer mode, 1 MHz, 32-bit, free-running while tracking |
@@ -1330,34 +1365,45 @@ sits in standby at 0.45 mA):
 * **Carriage coordinate.** x is the offset in mm, measured radially inward from
   the CLICK-MAX position: x = 0 is full click at r = 29.0, and x ≥ 7.5 is FREE
   (park, r ≤ 21.5).
-* **Actuator.** A micro PM linear stepper (VIC-TECH VSM08102 class, or the
-  10 mm sibling; SPEC "micro actuator"). It has 20 full steps per revolution
-  on an M2×0.4 lead screw, so 1 full step = **0.02 mm**, and the stroke is 375
-  full steps. The self-locking screw gives zero hold power.
-* **Strength LUT.** Peak detent torque vs in-plane offset at a 1.0 mm gap,
-  verified by independent re-simulation
+* **Actuator.** A micro PM linear stepper (VIC-TECH VSM08102 class; SPEC
+  "micro actuator"; the 10 mm sibling does not fit the bowl, mechanical.md §7).
+  It has 20 full steps per revolution on an M2×0.4 lead screw, so the slider
+  moves 0.02 mm per full step, and the link plate's inclined slot (slope 0.75)
+  turns that into **0.015 mm** of carriage per full step: the 7.5 mm stroke is
+  **500** full steps (mechanical.md §7, `hardware/mechanical/calcs_output.txt`
+  §4). The self-locking screw gives zero hold power.
+* **Strength LUT.** Peak detent torque vs in-plane offset at a 1.0 mm gap
   ([detent research](https://www.micro-steppermotors.com/sale-28526335-vsm08102-8mm-4-pins-fpc-small-linear-stepper-motor-with-slider-m2-lead-screw.html)
   for the actuator; the magnetics come from the project's magpylib model). The
-  values are for R = 30 mm; SPEC's R = 29 mm differs by only a few percent
-  (TVP). Calibration step (f) scales them per unit.
+  points at 0, 1.5, 3.0, 5.0 and 7.5 mm were verified by independent
+  re-simulation; the others are log-linear interpolations between them. This
+  is the LUT of `hardware/mechanical/calcs_output.txt` §4 (also mechanical.md
+  §7 and bringup.md B-12.3); the earlier table here carried the research's own
+  intermediate values, up to 12 % higher at 0.5–1.0 mm. The values are for
+  R = 30 mm; SPEC's R = 29 mm gives about 2–5 % less (TVP). Calibration step
+  (f) scales them per unit, and bring-up B-12.3 replaces them with the
+  measured LUT.
 
   | x (mm) | 0 | 0.5 | 1.0 | 1.5 | 2.0 | 2.5 | 3.0 | 3.5 | 4.0 | 5.0 | 6.0 | 7.0 | 7.5 |
   |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-  | T1 (mN·m) | 16.5 | 15.4 | 12.8 | 9.5 | 6.2 | 3.7 | 2.0 | 1.1 | 0.55 | 0.14 | 0.031 | 0.006 | 0.0027 |
+  | T1 (mN·m) | 16.5 | 13.7 | 11.4 | 9.5 | 5.65 | 3.36 | 2.0 | 1.03 | 0.53 | 0.14 | 0.029 | 0.0059 | 0.0027 |
+  | Full steps from click | 0 | 33 | 67 | 100 | 133 | 167 | 200 | 233 | 267 | 333 | 400 | 467 | 500 |
 
 * **User strength s (1–100 %)** maps logarithmically to torque:
   T = T_min·(T_max/T_min)^((s−1)/99), with T_min = 1.0 mN·m and
   T_max = 16.5·k_unit mN·m. Interpolate x from the LUT in ln(T), round to whole
   full steps, and **end every move on a full step**. s = 0 means FREE.
   * The **default is s = 100 %** (x = 0, T ≈ 16.5 mN·m, 0.47 N at the 35 mm
-    rim). That is where the optional friction shoe engages (design intent
-    x ≤ 0.5 mm, [§5.6](#56-friction-shoe-interplay)), so the default click is
-    damped. It follows architecture.md §6.2 ("default to the strongest
-    setting") and the detent verifier's correction.
-  * An EC11-like s = 85 % (T ≈ 11 mN·m at x ≈ 1.25 mm, 62 steps) becomes the
-    default only if the factory-measured `shoe_x_max` is at least 1.3 mm.
-    Otherwise 85 % stays a user choice and is undamped: about 10 s of rocking
-    after a spin with bearing friction alone (§5.6).
+    rim), inside the optional friction shoe's engagement window (offsets
+    ≤ 1.5 mm as drawn, mechanical.md §7; [§5.6](#56-friction-shoe-interplay)), so
+    the default click is damped. It follows architecture.md §6.2 ("default to
+    the strongest setting") and the detent verifier's correction.
+  * An EC11-like s = 85 % (T ≈ 11 mN·m at x ≈ 1.15 mm, 77 steps) becomes the
+    default only if the factory-measured `shoe_x_max` is at least 1.3 mm. A
+    unit built to the drawing (1.5 mm window) meets that, so 85 % is the
+    expected default there and 100 % the fallback for a short window or no
+    shoe. With a short window 85 % stays a user choice and is undamped: about
+    10 s of rocking after a spin with bearing friction alone (§5.6).
 * **Physics** at strength T1, with I = 1.3·10⁻⁴ kg·m² and N = 24:
   * In-well natural frequency f_n = √(N·T1/I)/2π: 8.8 Hz at 16.5 mN·m,
     6.7 Hz at 9.5 mN·m, 3.1 Hz at 2 mN·m.
@@ -1384,11 +1430,19 @@ sits in standby at 0.45 mA):
 | State | Entry actions | Exit condition |
 |---|---|---|
 | HOMING | nSLEEP high; wait 1 ms (tWAKE ≤ 30 µs); energise the stored phase for 10 ms at run current; run the homing procedure of [§5.4](#54-homing-with-the-drv5032) (approach at **run current**, final stall at 50 % current and 80 PPS) | The **stall at the park stop** is the reference: after the stall, HOME must read asserted; back off 4 steps; set x = x_park. Otherwise retry (×3), then FAULT. |
-| IDLE(x) | All IN low, nSLEEP low. **Immediately** write x, the motor phase and `valid = 1` to `state/carriage` in NVS (no debounce). | New target |
+| IDLE(x) | Brake, then sleep: IN1 = IN2 = 1 on U40 and U41 for ≥ 3 ms, then all IN low and nSLEEP low. **Immediately** write x, the motor phase and `valid = 1` to `state/carriage` in NVS (no debounce). | New target |
 | MOVING | **First** clear `state/carriage.valid` in NVS and wait for the write to complete (a few ms; TVP with BLE active). Then wake the driver; energise the current phase for 10 ms; run the profile ([§5.3](#53-stepping-profile)); set the `ACTUATOR_MOVING` flag. A move to FREE ends with the re-reference stall ([§5.4](#54-homing-with-the-drv5032)). | Last full step reached |
 | SETTLE | Hold current for 20 ms | → IDLE |
-| FAULT | Driver asleep. Report on status/UI. Detent features stay wherever the carriage is. | User "re-home", or reboot |
+| FAULT | Brake ≥ 3 ms, then driver asleep. Report on status/UI. Detent features stay wherever the carriage is. | User "re-home", or reboot |
 
+* **Brake before sleep on every stop path.** IDLE entry, FAULT, an abort
+  (low battery, POF, per-move watchdog) and any other path that ends a move
+  MUST set IN1 = IN2 = 1 on U40/U41 for ≥ 3 ms before IN = 00 and nSLEEP low.
+  Coasting the coils from a hold dumps their energy through the DRV8837 body
+  diodes into VSYS; on USB after charge termination nothing but the VSYS
+  ceramics absorbs it, against the BQ25180's 5.5 V SYS absolute maximum
+  (hardware/sim, MD-1). A reset mid-move cannot brake; the 25 V VSYS
+  capacitors and C74 keep that coast under 5.5 V (SPEC §5.1, §5.6; MD-5).
 * **Boot:** skip homing only if `state/carriage.valid = 1`. Because `valid` is
   cleared before the first step of every move and set again only after
   SETTLE, a watchdog reset, HardFault, brown-out or battery removal during a
@@ -1400,9 +1454,9 @@ sits in standby at 0.45 mA):
     i.e. one erase per 4 KB sector every 5 days or so, against 10,000 cycles.
   * Ship-mode entry parks first ([§12](#12-power-management)); the park move's
     SETTLE writes the valid record.
-  * Homing takes about 2 s from the click end, up to about 2.7 s from inside
-    the park zone, and about 3 s before the factory has learned the HOME edges
-    ([§5.4](#54-homing-with-the-drv5032)).
+  * Homing takes about 2.4 s from the click end, up to about 3.2 s from
+    inside the park zone, and about 3.5 s before the factory has learned the
+    HOME edges ([§5.4](#54-homing-with-the-drv5032)).
 * **Command coalescing:** only the latest target is kept. A new target during
   MOVING re-plans from the current step, with deceleration if the direction
   reverses.
@@ -1413,23 +1467,37 @@ sits in standby at 0.45 mA):
   individual decoder mode. Coil A = channels 0 and 1 (DRV8837 #1), coil B =
   channels 2 and 3.
 * **Microstepping.** 8 µsteps per full step (32 per electrical cycle); coil A
-  ∝ cos θ and coil B ∝ sin θ in 11.25° increments.
+  ∝ cos θ and coil B ∝ sin θ in 11.25° increments. Keep this sine drive:
+  firmware MUST never use full-current two-phase full steps on USB, which
+  store about 4× the coil energy of the sine hold (hardware/sim, MD-1).
 * **Slow decay.** DRV8837 IN1/IN2: 1,0 = forward; 1,1 = brake (both low-side
   on, slow decay); 0,0 = coast. For positive current hold IN1 high and PWM IN2
   at a duty of (1 − |d|); for negative current, swap. Encode the polarity with
   the PWM sequence value's polarity bit.
-* **Amplitude** (voltage mode, scaled by measured VSYS):
-  d_peak = I_target·R_coil/VSYS, with R_coil ≈ 20.3 Ω including RDS(on).
-  * Run: I_target = 160 mA, giving d = 0.77 at 4.2 V, 0.88 at 3.7 V and 0.96 at
-    3.4 V.
+* **Amplitude** (voltage mode, scaled by measured VSYS and compensated for
+  coil temperature, hardware/sim, MD-3):
+  d_peak = I_target × (20 Ω × (1 + 0.00393 × (max(T, 25 °C) − 25 °C)) + 0.33 Ω) / VSYS,
+  with T the nRF die temperature and VSYS the idle reading (20.33 Ω at 25 °C
+  and below, including RDS(on); 23.08 Ω at 60 °C). The compensation MUST NOT
+  lower the duty below 25 °C: with (T − 25 °C) the −10 °C drive fell to
+  160 mA × 17.58 Ω = 2.81 V while the back-EMF and the cold-pack sag stay,
+  and the thrust estimate at 446 PPS was 0.493 N against the 0.5 N budget;
+  with max(T, 25 °C) it is 0.57–0.59 N (hardware/sim, MD-3).
+  Clamp d ≤ 1; at T = 60 °C the 160 mA run current needs VSYS ≥ 3.69 V
+  (calculated from the formula).
+  * Run: I_target = 160 mA, giving d = 0.77 at 4.2 V, 0.88 at 3.7 V and 0.90 at
+    3.6159 V, the move-threshold reading of [§5.8](#58-limits) (25 °C).
   * Homing: run current (160 mA) for every travel phase, because the load
     can oppose the carriage in either direction (magnetic up to 0.29 N, and
     0.8–1.15 N worst case with guide friction and the anti-lash spring,
-    architecture.md §6.2, against the VSM08102's 0.78 N minimum thrust).
-    80 mA (50 %) only for the final stall into the park stop, where the
-    magnetic force is about 0 and the anti-lash spring pushes toward PARK.
-  * Below VSYS 3.4 V the run current can no longer be reached, so only park
-    moves are allowed ([§5.8](#58-limits)).
+    architecture.md §6.2, against the VSM08102's 0.78 N minimum thrust; this
+    shortfall is still open, [§18](#18-open-items-and-to-verify-list)
+    item 10). 80 mA (50 %) only for the final stall into the park stop, where
+    the magnetic force is about 0 and the anti-lash spring pushes toward PARK.
+  * Below VSYS_est 3.54 V (0.979 × the idle reading, rule R1' of
+    [§12.4](#124-battery-measurement-and-low-battery-policy), i.e. a reading
+    below 3.6159 V) the coil may no longer get its rated current under load,
+    so only park moves are allowed ([§5.8](#58-limits)).
 * **Sequences.** Use `nrfx_pwm_complex_playback()` with two ping-pong
   sequences, each holding 8 µsteps (one full step) × 4 channels (64 B).
   REFRESH sets periods per µstep, i.e. speed. The SEQEND IRQ refills the idle
@@ -1452,12 +1520,15 @@ sits in standby at 0.45 mA):
   | x > 4 mm | Ramp 521 → 781 PPS (1042 only after a thrust test, TVP) | Magnetic force is about 0 there |
   | Decel | Mirror of the ramp, last 4 steps at 313 PPS | |
   | Homing travel (back-off, approach, run-in) | 313 PPS back-off; approach and run-in 313 → 446 PPS; run current | Thrust margin in the loaded zone ([§5.4](#54-homing-with-the-drv5032)) |
-  | Final stall (homing, and the tail of every move to FREE) | 80 PPS, 50 % current, about 60–140 steps | Gentle stall into the park stop; at x ≥ 6.7 mm the detent torque is ≤ 0.01 mN·m, so the slow tail is not felt |
+  | Final stall (homing, and the tail of every move to FREE) | 80 PPS, 50 % current, about 60–130 steps | Gentle stall into the park stop; from s = 40 (x = 6.9 mm) on, the detent torque is below 0.01 mN·m, so the slow tail is not felt |
 
-  A full 7.5 mm stroke takes **about 0.7–0.9 s** (verifier: plan 0.6–0.9 s),
+  A full 7.5 mm stroke (500 full steps: 267 in the loaded zone at 446 PPS,
+  233 beyond it on the 521–781 PPS ramp) takes **about 0.9–1.1 s**
+  (mechanical.md §7 gives 0.83–1.18 s for 500 / 300 PPS in the loaded zone),
   plus the 0.75 s re-reference tail when the target is FREE ([§5.4](#54-homing-with-the-drv5032));
-  a strength trim of 0.5 mm takes about 60 ms. Energy is 0.035–0.055 mAh per
-  full stroke, and battery peak current is 0.36–0.42 A.
+  a strength trim of 0.5 mm (33 full steps) takes about 80 ms. Energy is
+  about 0.045–0.07 mAh per full stroke (scaled from the 375-step estimate by
+  the longer stroke time), and battery peak current is 0.36–0.42 A.
 
 ### 5.4 Homing with the DRV5032
 
@@ -1478,23 +1549,24 @@ BHYS 0.8/1.5/3 mT (min/typ/max). It samples at 20 Hz with a sampling period
 tS of 27/50/75 ms, so a field change is seen 0–75 ms late
 ([DRV5032 DS SLVSDC7H §6.5, §6.6](https://www.ti.com/lit/ds/symlink/drv5032.pdf)).
 The 48-magnet track adds about 0.01 mT. Below, s is the carriage distance from
-the **park stop** in full steps (s = 0 at the stop, s = 375 at click;
-x = (375 − s) × 0.02 mm). This leads to the following:
+the **park stop** in full steps (s = 0 at the stop, s = 500 at click;
+x = (500 − s) × 0.015 mm, [§5.1](#51-coordinates-and-strength-lut)). This
+leads to the following:
 
 * At park the field is more than 50 mT, so HOME is solidly asserted.
 * **Assert edge** (moving toward park): HOME asserts about 3.8–4.6 mm from the
-  stop, i.e. s_ast ≈ 190–230 steps. It does **not** mark the stop.
+  stop, i.e. s_ast ≈ 253–307 steps. It does **not** mark the stop.
 * **Release edge** (moving toward click): the field falls below BRP about
-  4.1–5.0 mm from the stop, s_rel ≈ 200–250 steps. The hysteresis puts the
-  release 11–42 steps further out than the assert (BHYS 0.8–3 mT over a local
-  gradient of about 3.6 mT/mm).
+  4.1–5.0 mm from the stop, s_rel ≈ 273–333 steps. The hysteresis puts the
+  release 15–56 steps (0.22–0.83 mm) further out than the assert (BHYS
+  0.8–3 mT over a local gradient of about 3.6 mT/mm).
 * **Detection lag**: 0–75 ms in the direction of travel, which is 0–6 steps at
   80 PPS, 0–24 at 313 PPS and 0–34 at 446 PPS. Both edges lie at
   x ≈ 2.5–3.7 mm, inside the ≤ 446 PPS loaded zone of
   [§5.3](#53-stepping-profile).
 * At the click end |Bz| reaches 1.0–1.4 mT. That is below BOP min (1.5 mT), but
   only by 0.1–0.5 mT, so a unit with a low die or a strong magnet may assert
-  HOME at full click (a SPEC concern, [§18](#18-open-items-and-to-verify-list)).
+  HOME at full click (SPEC §5.6 notes it; [§18](#18-open-items-and-to-verify-list) item 2).
   Factory test 19 rejects or reworks any unit that asserts HOME at x = 0, so
   firmware may assume that **HOME asserted means the park zone (s ≤ s_rel)**.
 
@@ -1510,28 +1582,28 @@ re-home, lost-step recovery, FAULT retry):
 | Phase | Drive | Ends when | Limit |
 |---|---|---|---|
 | H0 wake | nSLEEP high, 1 ms; energise the stored phase 10 ms at run current | | |
-| H1 back-off (only if HOME reads asserted) | Toward click, **run current**, 313 PPS | HOME releases (now just outside the park zone) | s_rel,L + 24 + 20 steps (default 295). Still asserted → failed attempt |
-| H2 approach | Toward park, **run current**, 4 steps at 313 PPS then 446 PPS | HOME released → asserted edge | 375 + 40 = 415 steps. No edge → failed attempt (likely a stall in the loaded zone) |
-| H3 run-in | Continue toward park, run current, 446 PPS, for n3 = s_ast,L − 34 − 10 − 20 steps | n3 steps done; the carriage is now 20–80 steps from the stop (20–94 with the unlearned default, n3 = 136) | |
-| H4 final stall | Decelerate to **80 PPS, 50 % current**; step the remaining maximum + 20 steps of overdrive (100 learned, 114 default) | The carriage reaches the stop after 20–94 steps and slips for at least 20 more | |
-| H5 confirm | Read HOME | HOME asserted → back off 4 steps at run current, x = x_park = stop − 4 steps (7.42 mm nominal, T1 ≈ 3 µN·m), → SETTLE | HOME not asserted → failed attempt |
+| H1 back-off (only if HOME reads asserted) | Toward click, **run current**, 313 PPS | HOME releases (now just outside the park zone) | s_rel,L + 24 + 20 steps (default 377). Still asserted → failed attempt |
+| H2 approach | Toward park, **run current**, 4 steps at 313 PPS then 446 PPS | HOME released → asserted edge | 500 + 40 = 540 steps. No edge → failed attempt (likely a stall in the loaded zone) |
+| H3 run-in | Continue toward park, run current, 446 PPS, for n3 = s_ast,L − 34 − 10 − 20 steps | n3 steps done; the carriage is now 20–80 steps from the stop (20–108 with the unlearned default, n3 = 199) | |
+| H4 final stall | Decelerate to **80 PPS, 50 % current**; step the remaining maximum + 20 steps of overdrive (100 learned, 128 default) | The carriage reaches the stop after 20–108 steps and slips for at least 20 more | |
+| H5 confirm | Read HOME | HOME asserted → back off 4 steps at run current, x = x_park = stop − 4 steps (7.44 mm nominal, T1 ≈ 3 µN·m), → SETTLE | HOME not asserted → failed attempt |
 
 * **x_park and SPEC.** SPEC §1 defines FREE as x ≥ 7.5 mm. With the park stop
-  exactly at 7.5 mm, the 4-step back-off leaves x = 7.42 mm and
+  exactly at 7.5 mm, the 4-step back-off leaves x = 7.44 mm and
   T1 ≈ 3 µN·m, which is the residual the 7.5 mm stroke was sized for. Ask
-  the mechanical design for the park stop at x ≥ 7.58 mm (r ≤ 21.42 mm) so
+  the mechanical design for the park stop at x ≥ 7.56 mm (r ≤ 21.44 mm) so
   that x_park itself is ≥ 7.5 mm; `stroke-steps` in [§3.1](#31-board-dts-draft)
   then becomes the measured stop-to-stop count (TVP).
 * A failed attempt retries from H0 with every travel phase at 313 PPS, where
   the PM stepper has more thrust; after 3 failures go to FAULT (E_DET_HOME).
-* **Duration**: about 2 s from the click end (H2 ≤ 0.5 s, H3 about 0.3 s,
-  H4 1.25 s), up to about 2.7 s from inside the park zone (H1 adds up to
-  0.9 s), and about 3 s with unlearned edges.
+* **Duration**: about 2.4 s from the click end (H2 ≤ 0.65 s, H3 about
+  0.5 s, H4 1.25 s), up to about 3.2 s from inside the park zone (H1 adds up
+  to 1.2 s), and about 3.5 s with unlearned edges (H4 1.6 s).
 * **Every move to FREE re-references.** Run the normal profile to s = 40
-  (x = 6.7 mm), then 80 PPS at 50 % current for 40 + 20 steps (0.75 s), confirm
+  (x = 6.9 mm), then 80 PPS at 50 % current for 40 + 20 steps (0.75 s), confirm
   HOME asserted, back off 4 steps and set x = x_park. Detent torque is already
-  ≤ 0.01 mN·m at s = 40, so the slow tail is not felt. If HOME is not asserted
-  there, run the full homing procedure. This park stall plus HOME confirmation
+  below 0.01 mN·m at s = 40 (about 7 µN·m), so the slow tail is not felt. If
+  HOME is not asserted there, run the full homing procedure. This park stall plus HOME confirmation
   is the **primary** lost-step check (and it matches architecture.md §6.2:
   "HOME must read asserted after every park stall, including the one that
   ends every return to free mode").
@@ -1560,17 +1632,18 @@ Firmware rules that follow:
 
 There is no current sensing, so stall detection is open-loop. A PM stepper
 slips against the stop at 50 % current, and the final error is ±1–2 full
-steps (±0.02–0.04 mm, about ±2–4 % torque). *TVP:* confirm on the prototype
+steps (±0.015–0.03 mm, about ±1.5–3 % torque). *TVP:* confirm on the prototype
 that repeated 50 % stalls do not wear or jam the lead-screw nut, and that the
-run-current approach clears the loaded zone at 446 PPS at VSYS 3.4 V.
+run-current approach clears the loaded zone at 446 PPS at a true VSYS of
+3.54 V, the non-park move minimum of [§5.8](#58-limits).
 
 ### 5.5 Modes
 
 | Mode | Behaviour |
 |---|---|
-| FREE | Go to the park stop with the re-reference tail, end at x_park ≈ 7.42 mm ([§5.4](#54-homing-with-the-drv5032)) |
+| FREE | Go to the park stop with the re-reference tail, end at x_park ≈ 7.44 mm ([§5.4](#54-homing-with-the-drv5032)) |
 | CLICK(s) | Go to x(s) from the LUT |
-| AUTO | Like Logitech SmartShift. In CLICK, a flick (ω rising past 2 rev/s with α > 20 rev/s²) moves to FREE; returns to CLICK when \|ω\| < 0.5 rev/s or on `TOUCH`. Rate-limited to one switch per second. The actuator takes 0.7–0.9 s (the 0.75 s re-reference tail of a move to FREE is not felt), so switching happens after the flick, which is fine. |
+| AUTO | Like Logitech SmartShift. In CLICK, a flick (ω rising past 2 rev/s with α > 20 rev/s²) moves to FREE; returns to CLICK when \|ω\| < 0.5 rev/s or on `TOUCH`. Rate-limited to one switch per second. The actuator takes 0.9–1.1 s (the 0.75 s re-reference tail of a move to FREE is not felt), so switching happens after the flick, which is fine. |
 | BRAKE (game) | FREE while \|ω\| > ω_brake (default 1.5 rev/s); below that, move to CLICK-MAX with the shoe engaged, giving a short prize-wheel ending. ω_brake is fixed per game setting and never depends on the prediction (fairness). |
 
 ### 5.6 Friction shoe interplay
@@ -1581,9 +1654,10 @@ ringing settles in about 8–12 cycles. SPEC does not fix it, and bearing
 friction is the dominant unknown. Firmware therefore treats the shoe as
 optional and **learned**:
 
-* **Engagement offset** `shoe_x_max` is a factory or setting value (design
-  intent ≤ 0.5 mm, which covers the s = 100 % default; ≥ 1.3 mm would also
-  cover the EC11-like 85 % setting, [§5.1](#51-coordinates-and-strength-lut)). Firmware
+* **Engagement offset** `shoe_x_max` is a factory or setting value (drawn
+  window ≤ 1.5 mm, mechanical.md §7: an 8° rail ramp lifts the pad between
+  1.5 and 2.3 mm. It covers the s = 100 % default, and at ≥ 1.3 mm also the
+  EC11-like 85 % setting, [§5.1](#51-coordinates-and-strength-lut)). Firmware
   confirms it by measuring the Coulomb term a during short spin-downs at a few
   offsets. A step of about 8–12 rad/s² marks the shoe.
 * The **predictor** keeps separate priors for shoe-on and shoe-off
@@ -1622,10 +1696,12 @@ because the ring may be moving. "Blanking" here means suppressing the
 
 | Limit | Value | Reason |
 |---|---|---|
-| Minimum VSYS for non-park moves | 3.40 V (measured idle) | Torque falls about 20 % at 3.0 V |
+| Minimum VSYS for non-park moves | VSYS_est ≥ 3.54 V, with VSYS_est = 0.979 × the idle reading (rule R1', [§12.4](#124-battery-measurement-and-low-battery-policy)), i.e. a reading ≥ 3.6159 V | The coil must get its rated 165 mA at 3.3 V under the stroke load (cell, BATFET, link and rDS(on) sag); that point is a true 3.533 V at 25 °C. R1' tolerates a reading up to 2.1 % (75.9 mV) high at this threshold, so the true idle VSYS is at least 3.54 V, which gives 165.3 mA; the worst simulated over-read there is 72.4 mV (aged unit at −10/60 °C), which leaves VSYS_est 3.4 mV below the true value. The former 3.55 V reading, 46 mV high, left a true 3.504 V and 163.6 mA (hardware/sim, MD-2) |
 | Minimum VSYS for a park move | 3.30 V | Parking is needed before ship mode |
 | Rate | At most 20 full strokes per minute sustained; bursts of 5 | Motor heating (about 1 J per stroke) and battery |
-| LED cap while moving | 100 mA | Keeps the coincident peak below about 0.6 A and the cell sag below 0.3 V |
+| LED cap while moving | 100 mA average; instantaneous budget less 0.23 A ([§6.3](#63-power-limiter)) | Keeps the coincident peak below about 0.6 A and the cell sag below 0.3 V |
+| OLED_VCC_EN during a move | Never toggled while VBAT_est < 3.6 V; enable the OLED before a park move | The OLED turn-on surge (≈ 0.3 A for ~2 ms, 0.4 A peak) on top of a stroke eats the BQ25180 BAT-pin margin to BUVLO at a low cell (hardware/sim, NEW-2) |
+| Stop | Brake ≥ 3 ms, then sleep ([§5.2](#52-state-machine)) | VSYS overshoot on USB (hardware/sim, MD-1) |
 | Watchdog per move | Expected steps / PPS + 0.5 s | A hung profile goes to FAULT and the driver sleeps |
 
 ---
@@ -1634,30 +1710,53 @@ because the ring may be moving. "Blanking" here means suppressing the
 
 ### 6.1 Hardware facts used
 
-* 48× WS2812C-2020-V6, 5 mA per channel. The WS2812B-2020-V6 (12 mA per
-  channel) is a drop-in, so the variant is a factory setting; **the default
-  assumes 12 mA**, which is the safe direction.
+* 48× WS2812C-2020-V6 (D101–D148), 5 mA per channel. The WS2812B-2020-V6
+  (12 mA per channel) is pin-compatible only: firmware supports it as a
+  factory-set variant, and with it the instantaneous cap of
+  [§6.3](#63-power-limiter) (1.0 A from VBAT_est ≥ 3.92 V, the PI-2 rows below that) is mandatory
+  (hardware/sim, PI-3). Until the variant is set, **firmware assumes 12 mA**,
+  which is the safe direction. Both variants must be V6 parts; the data-line
+  margins below assume the V6 input threshold (SPEC §5.4).
 * LED j (0-based; D(101+j) in SPEC and the `leds` sheet) sits at θ = 7.5°·j,
   CCW from the USB-C direction. That gives 2 LEDs per detent.
-* Data path: P0.06 → R40 220 Ω → LED_DIN_R (R41 100 kΩ pull-down) → R43 0 Ω
-  → D101 DIN, at 3.3 V logic. A DNP SN74LV1T34 level shifter (U43, powered
-  from VLED, with C43) replaces R43 only if the bench test at VSYS 4.6 V shows
-  bit errors. Firmware is the same either way, including the DIN rules of
-  [§6.4](#64-rail-sequencing).
+* Data path: P0.06 → R40 220 Ω (next to the module pin) → LED_DIN_R (R41
+  100 kΩ pull-down) → R43 0 Ω → D101 DIN, at 3.3 V logic. A DNP SN74LV1T34
+  level shifter (U43, powered from VLED, with C43) replaces R43 only if the
+  bench test at VSYS 4.6 V shows bit errors. Firmware keeps the DIN rules of
+  [§6.4](#64-rail-sequencing) either way; U43 (Ioff) only makes a violation
+  harmless.
+* **Data margin.** The DC high-level margin at D101 is +427 mV realistic but
+  only about +41 mV on the nRF datasheet bound at VSYS 4.59 V (SYS_REG
+  4.5 V + 2 %), and about +116 mV with SYS_REG 4.4 V; the tightest pulse
+  width is T1H, with 15 ns of margin (SPEC §5.4; hardware/sim, LED-DATA-2,
+  LDO-2). Three firmware rules hold that margin; they are requirements, not
+  options:
+  * P0.06 MUST use `nordic,drive-mode = NRF_DRIVE_H0H1` in its default
+    pinctrl state ([§3.1](#31-board-dts-draft)): standard drive does not
+    guarantee the WS2812C T1H/T0L/T1L windows (hardware/sim, LED-DATA-V1).
+  * Every LED frame MUST be clocked from the HFXO: request it and wait until
+    it runs before the frame, and release it afterwards. On HFINT (±8 %) the
+    bit timing breaks T1H/T0L (hardware/sim, LED-DATA-V2). The nrfx I2S
+    driver with `clock-source = "PCLK32M_HFXO"` requests the HFXO itself and
+    starts the transfer once it runs (check on your Zephyr version);
+    otherwise `led_thread` does it through the HF clock onoff manager.
+  * BQ25180 SYS_REG_CTRL MUST be 001 (4.4 V); 010 (4.5 V) is the only other
+    allowed value, never higher or pass-through while the LEDs may run
+    ([§13.1](#131-register-init-table); hardware/sim, LED-DATA-V3). VLED =
+    VSYS sets the LED's VIH, so a higher SYS eats the margin above.
 * Timing: T0H 312.5 ns, T0L 937.5 ns, T1H/T1L 625 ns (all inside the V6
-  windows), with reset at least 280 µs
+  windows with H0H1 drive and the HFXO), with reset at least 280 µs
   ([WS2812C-2020-V6 DS](https://datasheet.lcsc.com/datasheet/pdf/8c7f104c99e52e4adb687ae84e594e95.pdf),
   [Zephyr ws2812-i2s binding](https://docs.zephyrproject.org/latest/build/dts/api/bindings/led_strip/worldsemi,ws2812-i2s.html)).
 * Frame: (48 × 3 + 1 + 30) words × 4 B = 700 B; line time 1.75 ms. The stock
   driver adds 300 µs of extra wait and blocks, so the **frame period is about
   2.05 ms, at most about 480 fps**. The `led_thread` blocks for that time,
   which is why it runs at low priority.
-* The I2S clock source is PCLK32M_HFXO, so the driver requests the HFXO only
-  while sending.
 * *TVP:* the I2S runs with only SDOUT routed. If the driver insists on SCK and
   LRCK pins, no second fast spare pin exists (only P0.04). Fall back to
   `worldsemi,ws2812-spi` on SPIM2 (4 MHz, 0x70/0x40 frames, MOSI only on
-  P0.06) with no hardware change, as long as the OLED stays on SPIM3.
+  P0.06, still H0H1 and HFXO-clocked) with no hardware change, as long as the
+  OLED stays on SPIM3.
 
 ### 6.2 Frame pipeline
 
@@ -1701,23 +1800,110 @@ float cap = (bucket > 0) ? I_BURST : I_SUST;
 cap = fminf(cap, derate_cap());          /* battery, thermal, actuator, USB rules */
 float s = (I_req > cap) ? cap / I_req : 1.0f;
 scale_codes(frame, s);                   /* current is linear in code, so this is exact */
+/* instantaneous budget (PI-2): a lit channel draws its full I_ch while its PWM is on */
+float pk = peak_cap();                   /* VBAT row below, minus 0.23 A while moving, USB rule */
+while (lit_channels(frame) * I_CH > pk)
+    zero_dimmest_channel(frame);         /* scaling codes does not lower the peak */
 ```
 
-* **Derating** (VBAT is the rested estimate, [§12.4](#124-battery-measurement-and-low-battery-policy)):
+* **Instantaneous (lit-channel) budget.** The average cap dims each channel
+  by lowering its PWM duty, but a lit channel still sinks its full 5 mA
+  while its PWM is on. With all 48 LEDs lit at any brightness and their
+  2 kHz PWM in phase (the worst case), the ring draws 0.72 A for
+  70–210 µs every 500 µs, and VLED sags almost as far as at DC. Firmware MUST
+  therefore also cap Σ(lit channels) × I_ch (hardware/sim, PI-2):
+
+  | VBAT_est (V) | 3.48 | 3.53 | 3.60 | 3.65 | 3.70 | 3.80 | ≥ 3.90 |
+  |---|---|---|---|---|---|---|---|
+  | Allowed peak (A) | 0.19 | 0.26 | 0.33 | 0.42 | 0.51 | 0.69 | full ring (0.72 A) |
+
+  * Look the row up with VBAT_est = 0.979 × the rested reading (rule R1',
+    [§12.4](#124-battery-measurement-and-low-battery-policy)), never with the
+    raw reading: use the row at or below VBAT_est, so the row is at or below
+    the true VBAT. Subtract about 0.23 A while the actuator
+    moves. On battery the LEDs are off below VBAT_est 3.53 V (derating
+    below), so the 3.48 V row is used on USB only.
+  * The table assumes the OLED-BST-2 dimming: OLED C7 ≤ 08h below VBAT_est
+    3.75 V and during LED bursts ([§7.4](#74-burn-in-mitigation-and-power-caps)).
+    The rows come from the model's worst-corner budgets
+    (`test_led_peak_budget_vs_vbat`, a 10-step bisection, so each figure is
+    within 0.7 mA below the true budget): 0.1856 / 0.2756 A at 3.48 / 3.53 V
+    (OLED at C7 ≤ 08h), 0.3298 / 0.4205 / 0.5119 / 0.6947 A at 3.60 / 3.65 /
+    3.70 / 3.80 V with the OLED at 100 %, about 0.403 / 0.493 / 0.584 A at
+    3.60 / 3.65 / 3.70 V with C7 ≤ 08h (same model, not a suite check), and
+    the whole 0.72 A ring from 3.90 V. The 3.53 V
+    row is 95 % of its budget, rounded down (0.26 A): the former 0.28 A left
+    only 3 mV over the WS2812C's 3.3 V VDD minimum with its documented
+    100 mA load. With the documented loads every battery row now keeps at
+    least +13.4 mV at the worst corner (the 3.53 V row with the pack at
+    3.53 V, the lowest true VBAT R1' admits for that row), and the 3.48 V row
+    +214 mV on USB (hardware/sim, PI-2).
+  * **On USB** SYS is regulated, so VBAT_est is the last battery-only
+    estimate of this power-up, or unknown ([§12.4](#124-battery-measurement-and-low-battery-policy)).
+    While VBAT_est ≥ 3.48 V (a true cell of at least 3.48 V under R1'), firmware MUST
+    either use the 3.48 V row until CHG_STAT reports CV or done, or keep the
+    **instantaneous** on-USB sum (lit channels × I_ch + OLED boost input
+    current + actuator) ≤ 0.40 A. An average does not do: with 0.40 A as
+    the limiter's average, VLED falls to 3.156 V at the worst corner. Below
+    VBAT_est 3.48 V, or with VBAT_est unknown, the LEDs get no lit channels
+    beyond the charging cue: at the ILIM minimum the BQ25180 runs in DPPM or
+    supplement and SYS follows the pack, and the 0.40 A sum crosses 3.3 V at
+    a 3.434 V pack (3.164 V at a 3.30 V pack, a self-discharged cell that
+    still charges in CC). Once CHG_STAT reports CV or done the cell has
+    reached VBATREG, and the ≥ 3.90 V row applies. With a pack below about
+    3.35 V, VSYS sits only about 60 mV above the pack, and only the
+    LED-DATA-3 rule (all-zero frame, then LED_PWR_EN low below a loaded VSYS
+    of about 3.3 V) protects VLED (hardware/sim, NF-1).
+  * With the B variant, I_ch = 12 mA. The rows above apply in amperes (the
+    ≥ 3.90 V row is 0.72 A, i.e. 60 lit B channels, not the 1.73 A B ring),
+    and the 1.0 A aligned peak is allowed only from VBAT_est ≥ 3.92 V (a
+    reading of 4.0041 V): at the worst corner (300 mA bursts, OLED C7 ≤ 08h)
+    VLED reaches 3.3 V at a true 3.9025 V and keeps +10 mV from 3.9123 V; with
+    the OLED at 100 % the bursts would need 3.9405 V (hardware/sim, PI-3).
+    At the R1' bound (true VBAT = VBAT_est = 3.920 V) the burst phase keeps
+    +17.85 mV (VLED 3.3178 V, I(BAT) 1.12 A; sustained +64.0 mV, moving
+    +122.7 mV), above the 10 mV it is sized for. The simulated worst
+    over-read at 3.92 V (80.2 mV) leaves VBAT_est 3.84 mV below the true
+    value, so a real unit sits a little higher still. The earlier threshold,
+    VBAT_est 3.91 V, kept only +7.9 mV at its R1' bound (true 3.910 V), short
+    of the 10 mV ([§18](#18-open-items-and-to-verify-list) item 12, closed).
+  * *TVP:* bring-up scopes the summed ring current after power-up to see
+    whether the V6 PWM phases really align; the budget stays until that is
+    measured.
+
+* **Derating** (VBAT_est = 0.979 × the rested reading, rule R1',
+  [§12.4](#124-battery-measurement-and-low-battery-policy); never the raw
+  reading: compared with the raw reading, the 3.60 V burst edge admits a
+  3.528 V cell, and 300 mA bursts at −10 °C then take VLED to 3.295 V, under
+  the 3.3 V VDD minimum; at VBAT_est the thinnest case is +67 mV,
+  hardware/sim, `test_vled_at_firmware_led_floor`):
 
   | Condition | Cap |
   |---|---|
-  | VBAT ≥ 3.65 V | 150/300 mA (re-enable threshold, with hysteresis) |
-  | VBAT < 3.60 V | 100 mA, no bursts |
-  | VBAT < 3.53 V | LEDs off except one dim red low-battery cue (≤ 2 mA). Red Vf stays in regulation. |
+  | VBAT_est ≥ 3.65 V | 150/300 mA (re-enable threshold, with hysteresis) |
+  | VBAT_est < 3.60 V | 100 mA, no bursts |
+  | VBAT_est < 3.53 V | LEDs off except one dim red low-battery cue (≤ 2 mA); SHIP follows below VBAT_est 3.465 V ([§12.4](#124-battery-measurement-and-low-battery-policy)). Red Vf stays in regulation. |
+  | Loaded VSYS < about 3.3 V (WS2812C VDD minimum), any reading | All-zero frame, then LED_PWR_EN low ([§6.4](#64-rail-sequencing); hardware/sim, LED-DATA-3) |
   | Actuator moving | 100 mA |
   | nRF die temperature > 55 °C | 100 mA sustained |
-  | On USB, charging (optional "charge first") | 150 mA, no bursts |
-  | **VBUS present but input limit still 100 mA** (TMR_ILIM = 0xC9, before USB "configured" or charger detection, [§13.3](#133-input-current-strategy-on-usb)) | **20 mA**, no bursts. Also: OLED C7 ≤ 04h, and no actuator moves (homing is deferred). Lifted when ILIM goes to 500 mA (at most about 2 s after VBUS). With a battery below BUVLO or absent, the BQ25180 cannot supplement SYS ([SLUSE99C §8.3.3](https://www.ti.com/lit/ds/symlink/bq25180.pdf)), so an uncapped boot (OLED VCC, LED animation, homing at run current) could collapse SYS into a brown-out reboot loop. |
+  | On USB, charging (optional "charge first") | 150 mA, no bursts; instantaneous budget per the USB rule above |
+  | **VBUS present but input limit still 100 mA** (TMR_ILIM = 0xC9, before USB "configured" or charger detection, [§13.3](#133-input-current-strategy-on-usb)) | **20 mA**, no bursts: the charging cue. No actuator moves (homing is deferred). OLED_VCC_EN stays low unless the battery can supplement SYS (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a battery-only reading in this power-up, [§7.2](#72-init-sequence-and-power-sequencing)); only then OLED C7 ≤ 04h (hardware/sim, NEW-1, OLED-V1). Lifted when ILIM goes to 500 mA (at most about 2 s after VBUS). With a battery below BUVLO or absent, the BQ25180 cannot supplement SYS ([SLUSE99C §8.3.3](https://www.ti.com/lit/ds/symlink/bq25180.pdf)) and the 100 mA input cannot carry the OLED boost's turn-on surge, so an uncapped boot (OLED VCC, LED animation, homing at run current) collapses SYS into a brown-out reboot loop exactly in the "battery empty, plug in" case. |
+  | **No supplement** on USB: pack absent or not yet seen (no battery-only VBAT_est in this power-up, [§13.3](#133-input-current-strategy-on-usb)), or STAT1 BUVLO_STAT = 1, which also covers precharge (CHG_STAT has no precharge code and reports precharge as CC; with VLOWV = BUVLO = 3.0 V, [§13.1](#131-register-init-table), BUVLO_STAT stays 1 through precharge, because it clears only at 3.11–3.19 V rising, above VLOWV's 3.1 V maximum, SLUSE99C §7.5) | ILIM 100 mA phase: LEDs at most the ≤ 20 mA charging cue, OLED off, no flash erase, BLE TX 0 dBm, total ≤ 70 mA. ILIM 500 mA phase: no actuator moves, LEDs ≤ 100 mA and peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA; while VBAT_est is unknown the USB rule above also holds (only the charging cue until CHG_STAT reports CV or done). Without this profile both USB budgets exceed the ILIM minimum (80 / 450 mA) and SYS has no operating point (hardware/sim, PI-4). |
+  | VLED fault latched, or the last reset was a brown-out/BATOCP with LED_PWR_EN set | LEDs off ([§15](#15-fault-handling); hardware/sim, NEW-5, NF-3) |
+
+  While the LEDs run above the 150 mA sustained cap (bursts), the OLED is
+  held at C7 ≤ 08h and ≤ 30 % white ([§7.4](#74-burn-in-mitigation-and-power-caps)).
 
 * **Hardware worst case** without the limiter is 730 mA for 48 C-variant LEDs
-  at full white, or 1.74 A for the B variant. The limiter is therefore
-  mandatory and runs on the first frame after boot.
+  at full white, or 1.74 A for the B variant; with the OLED at full white, both
+  coils on and the +3V3 peak the system draws about 1.33 A, which pulls VLED
+  below the WS2812C's 3.3 V minimum at VBAT 3.7 V and browns the system out at
+  the end of discharge. The LED/OLED/motor limiter is therefore a
+  hardware-protection function: it MUST be active from the first frame after
+  reset, and MCUboot and the USB-recovery image MUST keep LED_PWR_EN,
+  OLED_VCC_EN and MOT_NSLEEP low (their pull-downs R3, R25 and R70 hold them
+  off until firmware drives them; [§11.2](#112-mcuboot-configuration))
+  (hardware/sim, PI-1).
 
 ### 6.4 Rail sequencing
 
@@ -1730,19 +1916,44 @@ scale_codes(frame, s);                   /* current is linear in code, so this i
      whenever the I2S is not driving the pin, so DIN never floats on the
      100 kΩ pull-down alone; `i2s0_sleep` (no low-power-enable) also leaves it
      an output low.
-  3. `regulator_disable(vled)`. Wait at least 30 ms before turning on again
-     or treating VLED as off: QOD discharges about 49 µF (C8, C9,
-     C101–C148) through R4 = 100 Ω plus the switch's internal 150 Ω, a fall
-     time of about 27 ms (tFALL = 2.2 × 250 Ω × 49 µF, TPS22917 SLVSDW8B
-     §9.3.3; architecture.md §7).
-* **On:** `regulator_enable(vled)` (LED_PWR_EN high), wait at least 5 ms (U2's
-  tON is about 4 ms with C7 = 1 nF from CT to VIN; check the ramp at test 12),
-  and only then hand P0.06 back to the I2S: PSEL.SDOUT stays assigned, so the
-  I2S takes the pin when it next starts; re-apply the I2S default pinctrl
-  state if the scope shows no data (TVP). Then send the first frame.
-* Never drive DIN high with VLED off. The V6 standby current is 1 µA or less
-  per LED, but the rail is still gated, because DESK_IDLE and SLEEP budget it
-  at about 0.
+  3. `regulator_disable(vled)`. Firmware MUST wait at least 30 ms before
+     turning on again or treating VLED as off: the QOD discharges C8, C9 and
+     C101–C148 through R4 = 68 Ω plus the switch's internal QOD resistance,
+     taking VLED to 10 % in about 24 ms nominal and 26.6 ms worst case
+     (3.465 V start, the SHIP floor, C8/C9 +20 %, DC bias) (SPEC §5.1;
+     hardware/sim, LSW-2).
+     Test 12 measures tFALL: the datasheet tFALL row implies an internal QOD
+     of about 170 Ω rather than 150 Ω (hardware/sim, NEW-4). Clear
+     LED_PWR_EN in the retained rail-state record once the pin is low
+     ([§15](#15-fault-handling)).
+
+  This order is a hard rule (hardware/sim, LSW-3): all-zero frame, P0.06
+  low, then LED_PWR_EN low. Firmware MUST never drive P0.06 high while VLED
+  is off: QOD holds VLED near 0 V, DIN would sit more than 0.7 V above it
+  (WS2812C abs max VDD + 0.7 V) and back-power the ring through its ESD
+  diode, and a larger R40 does not cure it at cold. Fitting the DNP U43
+  (SN74LV1T34, Ioff) with C43 and removing R43 makes a violation harmless;
+  the rule stays in firmware either way.
+* **On:** first check the VLED fault latch and the last reset ([§15](#15-fault-handling));
+  record LED_PWR_EN = 1 in the retained rail-state record. Then
+  `regulator_enable(vled)` (LED_PWR_EN high) and wait at least 10 ms with
+  P0.06 held low (the regulator's `startup-delay-us`): VLED must be at least
+  2.67 V before DIN goes high, because the DI abs max is VDD + 0.7 V and
+  +3V3 can be 3.366 V (3.366 V − 0.7 V = 2.666 V). U2's tON is about 4 ms
+  with C7 = 1 nF from CT to VIN (check the ramp at test 12); at 10 ms VLED is
+  at least 2.972 V (VBAT 3.0 V, −10 °C) (hardware/sim, LED-DATA-V4). POFWARN
+  is ignored for 10 ms after this edge
+  ([§12.4](#124-battery-measurement-and-low-battery-policy)). Only then hand
+  P0.06 back to the I2S: PSEL.SDOUT stays assigned, so the I2S takes the pin
+  when it next starts;
+  re-apply the I2S default pinctrl state (H0H1) if the scope shows no data
+  (TVP). Then request the HFXO ([§6.1](#61-hardware-facts-used)) and send the
+  first frame.
+* **Low VSYS:** when the loaded VSYS falls below about 3.3 V (the WS2812C
+  VDD minimum), firmware MUST send an all-zero frame and drop LED_PWR_EN,
+  using the off sequence above (hardware/sim, LED-DATA-3).
+* The V6 standby current is 1 µA or less per LED, but the rail is still
+  gated, because DESK_IDLE and SLEEP budget it at about 0.
 
 ---
 
@@ -1815,20 +2026,48 @@ with the verifier's corrections.
 | 19 | BEh | 05h | VCOMH = 0.82 × VCC |
 | 20 | A6h | | Normal display |
 | 21 | 15h / 75h / 5Ch | 00h 7Fh / 00h 7Fh / 32 KB of 00h | **Clear GDDRAM before VCC on** |
-| 22 | (hardware) | | OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN, reaching 90 % after a turn-on time tON of about 4 ms (C37 = 1 nF from CT to VIN; 3.8–4 µs/pF, SLVSDW8B §7.6), and the TPS61040 then ramps to 13.0 V |
-| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 5 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's tON; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, never below 5 ms. |
+| 22 | (hardware) | | Check the OLED_VCC_EN rules below, record OLED_VCC_EN = 1 in the retained rail-state record, then OLED_VCC_EN high: U21 (TPS22917) connects VSYS to OLED_VIN, reaching 90 % after a turn-on time tON of about 4 ms (C37 = 1 nF from CT to VIN; 3.8–4 µs/pF, SLVSDW8B §7.6). The TPS61040 (EN = OLED_VIN) starts at its ≈ 1.5 V UVLO while U21 is still ramping; its soft start sets the inrush, ≈ 0.3 A for ~2 ms and 0.4 A peak from VSYS, and it ramps to 13.0 V (SPEC §5.3; hardware/sim, LSW-4, OLED-BST-3). POFWARN is ignored for 10 ms after this edge ([§12.4](#124-battery-measurement-and-low-battery-policy)) |
+| 23 | (wait) | | **200 ms** (Orient sequence) before AFh. The first 10 ms (the regulator's `startup-delay-us`, [§3.1](#31-board-dts-draft)) cover U21's tON and the boost soft start; send nothing that needs VCC before it returns. TVP: measure VCC settling and shorten with margin, but the wait MUST never be below 10 ms (hardware/sim, OLED-V2). |
 | 24 | AFh | | Display on; SEG/COM turn on about 200 ms later (tAF) |
 
 | Transition | Sequence | Notes |
 |---|---|---|
-| **Sleep** (DESK_IDLE, SLEEP) | AEh → ABh 00h (VDD regulator off) → OLED_VCC_EN low | RES# stays high, so GDDRAM is retained. About 10–12 µA total: ICI about 4 µA, about 5 µA leaks through the panel's VCI→VCC ESD path into the 499 k/52.3 k divider, and 3.3 µA flows in the RES# pull-down. Worst case 35–40 µA. |
+| **Sleep** (DESK_IDLE, SLEEP) | AEh → ABh 00h (VDD regulator off) → OLED_VCC_EN low | RES# stays high, so GDDRAM is retained. U21's QOD holds OLED_VIN at about 0 V, so the TPS61040 stays in shutdown; +13V_OLED floats behind D21. About 17.6 µA total at 25 °C (typical): ICI about 4 µA, about 5 µA through the panel's VCI→VCC ESD path into the 499 k/52.3 k divider, 3.3 µA in the RES# pull-down, and about 5.4 µA of D21 (B5819W) reverse leakage from the ESD-held +13V_OLED (about 2.7 V) that U21's QOD sinks; that leakage is about 30 µA at 60 °C. Datasheet maximum about 46 µA at 25 °C and 72 µA at 60 °C (hardware/sim, sleep budget; accepted for rev A). |
 | **Wake** | ABh 01h → VCC_EN high → wait (step 23) → AFh → **full-frame rewrite** | The rewrite self-heals any SPI corruption. Wake-to-visible takes about 200–400 ms, so the LEDs give feedback within 5 ms. |
 | **Short idle** (DIM) | AEh only, VCC kept on | About 5 mA. Gives instant re-show for idles under 30 s. |
 | **Off for long storage / ship** | AEh → VCC_EN low → RES# low | VCI stays up (no switch on +3V3) |
 
 Never apply VCC while VCI is off. U21 guarantees this in hardware: R25 holds
 its ON pin low whenever the nRF (on +3V3, which also feeds VCI) is unpowered
-or in reset. Firmware keeps the order anyway.
+or in reset, and its QOD pulls OLED_VIN below 0.4 V within 1.6 ms of a reset
+(hardware/sim, LSW-1). Firmware keeps the order anyway.
+
+**OLED_VCC_EN rules** (`oled_power.c` checks them before every enable):
+
+* Firmware MUST never set OLED_VCC_EN while the BQ25180 input limit is
+  100 mA (TMR_ILIM = 0xC9) unless the battery can supplement SYS: no
+  BUVLO_STAT and VBAT_est ≥ 3.21 V (a true-cell value; a reading of
+  3.2789 V, [§12.4](#124-battery-measurement-and-low-battery-policy)), taken
+  from a battery-only reading in this power-up (none counts as "cannot").
+  Otherwise it raises OLED_VCC_EN only after ILIM = 500 mA, and until then
+  shows the charging cue on the LEDs (≤ 20 mA).
+  A dead battery cannot supplement SYS and the 100 mA input cannot carry the
+  boost's turn-on surge, so otherwise the unit reboot-loops exactly in the
+  "battery empty, plug in" case (hardware/sim, NEW-1, OLED-V1; [§13.3](#133-input-current-strategy-on-usb)).
+  At −10 °C (pack impedance doubled) the U21 + boost surge needs about a
+  3.204 V cell to keep the BQ25180 BAT pin above BUVLO (3.0 V). With a
+  3.21 V cell (the R1' bound) the BAT pin stays at 3.039 V or more (ILIM 80 mA minimum);
+  the former 3.15 V reading admitted a 3.104 V cell, whose BAT pin fell to
+  2.935 V for 1.37 ms, far past the 60 µs tBUVLO.
+* Firmware MUST NOT toggle OLED_VCC_EN during an actuator move while
+  VBAT_est < 3.6 V; it enables the OLED before a park move ([§5.8](#58-limits);
+  hardware/sim, NEW-2).
+* Firmware records OLED_VCC_EN in the retained rail-state record. If the
+  next reset is a brown-out, or the BQ25180 reports BAT_OCP_FAULT (FLAG0
+  bit 0), with OLED_VCC_EN recorded high, it MUST leave the OLED off for the
+  session and show an error on the LEDs ([§15](#15-fault-handling);
+  hardware/sim, OLED-V3). Assembly inspects J20 pins 1–2 (VCC next to GND at
+  0.5 mm pitch).
 
 ### 7.3 LVGL configuration
 
@@ -1858,8 +2097,8 @@ or in reset. Firmware keeps the order anyway.
 | Auto-dim / off | C7 03–04h after 10 s; display sleep after 30 s (setting 10–300 s). No mode may show a static screen without a timer; an "always on" clock face must move. |
 | Pixel orbit | ±2 px every 60 s. Vertical via A2h, horizontal via the LVGL root offset. |
 | Status | Battery and link state show on the LED ring (brief), not as permanent OLED icons |
-| Master current | C7 ≤ 0Ah in normal use. "Bright" mode (0Fh) only on user request, with a timer. |
-| Low battery | Below VBAT 3.60 V (the warning level, [§12.4](#124-battery-measurement-and-low-battery-policy)): C7 ≤ 08h and no screens with more than 30 % white area. At VBAT 3.0 V with minimum ILIM the TPS61040 delivers only about 33–35 mA, about the full-white current. |
+| Master current | C7 ≤ 0Ah in normal use. "Bright" mode (0Fh) only on user request, with a timer, and only above the low-battery limit below. |
+| Low battery / boost headroom | Firmware MUST hold C7 ≤ 08h and no screens with more than 30 % white area below VBAT_est 3.75 V ([§12.4](#124-battery-measurement-and-low-battery-policy)) and whenever the LED current exceeds its 150 mA sustained cap; the LED peak table of [§6.3](#63-power-limiter) assumes this dimming. At 3.6 V the worst-case boost stack (TPS61040 current limit, L20 −20 %, DCR and U21 RON at maximum) cannot deliver the panel's 42 mA 100 %-on maximum at VCC ≥ 12.5 V. The simulated crossover, about 3.67–3.68 V, already includes the BATFET and harness drop; the roughly 70 mV up to 3.75 V is margin for the cell's internal resistance and other VSYS loads, which the model leaves out. At 3.75 V the worst stack delivers at least 43.3 mA against the 42.0 mA needed, also with the 150 mA sustained LED load on VSYS (hardware/sim, OLED-BST-2). |
 
 ---
 
@@ -1896,6 +2135,11 @@ or in reset. Firmware keeps the order anyway.
     No UI gesture may need more than 10 s.
   * Its WAKE1/WAKE2 flags and the brief charge pause during a press are
     ignored.
+  * A press pulls TS/MR low, which the TS comparators read as HOT, so
+    firmware MUST ignore TS_STAT, TS_FAULT and TS interrupts while BTN_N is
+    low and for 5 ms (one debounce) after it returns high; otherwise every
+    press while charging can show "too hot to charge" (hardware/sim,
+    charger_ts-v2).
 * **Flick-artifact rejection** (mechanical research: a hard flick can lift the
   floating assembly and false-click). A press is suppressed when all of these
   hold:
@@ -2143,12 +2387,41 @@ SLEEP. Off entirely in Controller mode unless "app always" is set.
 | 0009 | `status` | R/N (on change, ≤ 1 Hz) | 16 | u8 version; u8 battery %; u16 vsys_mV; u8 charge_state; u8 power_state; u8 detent_state; u8 detent_mode; u16 detent_offset_um; u16 fault_flags; u8 active_slot; u8 fw major/minor/patch packed in 2 B (4/6/6 bits) |
 | 000A | `command` | W without response | 1 + n | 0x01 identify (blink + beep); 0x02 start encoder calibration; 0x03 re-home actuator; 0x04 demo spin animation; 0x05 select host slot n; 0x06† clear slot n; 0x07† enable party mode; 0x08† reboot to serial recovery; 0x09 set time (u32 Unix); 0x0A play sound n |
 | 000B | `raw_angle` | N, ≤ 50 Hz, off by default | 12 | u32 t_ms; s64 pos (motion units) |
+| 000C | `nfc_tag` | R/W | ≤ 20 per write | Draft. Write {u8 op; payload}: 0 tag off, 1 set NFCID1 (4, 7 or 10 B), 2 append an NDEF chunk, 3 commit (store and restart emulation), 4 clear. Read: u8 enabled; u8 tag type (2 or 4); u16 NDEF length; NFCID1 ([§9.7](#97-nfc-tag-emulation)) |
 
 **Valid spin (game).** A spin counts if it covers at least `min_revs_x10`/10
 revolutions and peaks at 1.5 rev/s or more. Otherwise the result is flagged
 "too weak", with a "spin again" prompt. The optional shuffle re-randomises ψ
 from the hardware RNG at `SPIN_START`, shown with a quick LED wipe, which
 defeats practised flicks.
+
+### 9.7 NFC tag emulation
+
+* **Hardware** (SPEC §5.2): the NFCT on P0.09/P0.10 (NFC1/NFC2), C16/C17 =
+  180 pF C0G from each pin to GND, and a 13.56 MHz flex coil
+  (about 1.4–1.5 µH) in the top cover, soldered to the pads J11 on the
+  main-board top. UICR NFCPINS stays in NFC mode ([§1.3](#13-gpio-configuration)).
+  C16/C17 are retuned on the prototype for the coil's real inductance.
+* **Function.** The dial is an NFC-A tag that phones read: Type 2 (NCS
+  `nfc_t2t`) or Type 4 (`nfc_t4t`, for larger NDEF messages). The NDEF
+  content (for example a URI or a text record) and the NFCID1 can be changed
+  at run time: stop emulation, set the payload and the NFCID1 parameter,
+  start again (`nfc_t2t_emulation_stop()`, `nfc_t2t_payload_set()`,
+  `nfc_t2t_parameter_set()` with `NFC_T2T_PARAM_NFCID1`,
+  `nfc_t2t_emulation_start()`, and the `nfc_t4t_*` equivalents; check names).
+  The content lives in `cfg/nfc` ([§11.4](#114-settings-schema)).
+* **"Read a tag" is done by the phone.** The nRF52840 NFCT is a tag only and
+  cannot read tags. The app reads a tag with the phone and sends its content
+  to the spinner over BLE (`nfc_tag`, [§9.6](#96-custom-game-service); writes
+  need an encrypted link). Only open NDEF content and a chosen NFCID1 are
+  reproduced: encrypted badges and payment cards cannot be emulated.
+* **Power.** Between reads the NFCT sits in field sense, about 100 nA in
+  sleep (hardware/sim, SLP-V1). A reader field raises FIELDDETECTED, which
+  wakes the CPU from System ON idle ([§12.3](#123-wake-sources)); the NFCT
+  can also wake the chip from System OFF, which this design does not use. In
+  SHIP and SHUTDOWN the nRF is unpowered, so the tag is silent.
+* *TVP:* read range through the top cover; whether the T2T and T4T libraries
+  can be linked into one image (until then, one tag type per build).
 
 ---
 
@@ -2176,9 +2449,13 @@ defeats practised flicks.
   and the BLE HID link stays connected but silent. A setting allows "both". On
   USB suspend the HID path is idle; a rotation sends a remote-wakeup request if
   the host enabled it.
-* **USB suspend and the 2.5 mA limit:** on the suspend event, set the BQ25180
-  to charge-disabled and battery-only SYS; restore on resume
-  ([§13.3](#133-input-current-strategy-on-usb), register bits TVP).
+* **USB suspend and the 2.5 mA limit:** the BQ25180 draws about 1 mA from
+  VBUS even when idle (IQ_IN 0.75 mA typical, no input high-impedance mode),
+  so the device meets the suspend limit only as a high-power device with
+  remote wakeup (the descriptor above) and with charging stopped. On the
+  suspend event firmware MUST therefore disable charging and set
+  battery-only SYS (or drop ILIM to the 50 mA code), and restore on resume
+  ([§13.3](#133-input-current-strategy-on-usb); hardware/sim, V-2).
 * There is no CC-pin sensing to the MCU (SPEC: 5.1 kΩ Rd only), so firmware
   cannot see 1.5 A or 3 A Type-C sources. It always stays at the 500 mA input
   code.
@@ -2230,6 +2507,12 @@ littlefs_storage:     { address: 0x100000, size: 0xF00000, device: DT_CHOSEN(nor
   With the USB stack inside, MCUboot is about 64 KB. **Size it from a real
   build** before freezing `pm_static.yml`. The verifier warned that 48 KB is
   not credible.
+* **MCUboot and the recovery image keep the loads off.** They MUST never
+  drive LED_PWR_EN (P1.04), OLED_VCC_EN (P1.02) or MOT_NSLEEP (P1.15) high;
+  leave the pins at their reset default so R3, R25 and R70 keep U2, U21 and
+  the DRV8837s off. The app's limiter ([§6.3](#63-power-limiter)) is not
+  running there, and it is a hardware-protection function (hardware/sim,
+  PI-1).
 * MCUboot cannot check the battery. The app refuses to mark an upload for test
   unless USB is present or VBAT ≥ 3.6 V rested. A swap of about 600 KB takes
   about 30–60 s (estimate). The W25Q128 needs VDD ≥ 2.7 V, and the LDO tracks
@@ -2256,9 +2539,11 @@ Settings live in NVS under keys `dial/…`; calibration is mirrored to
 
 * `cal/enc`, `cal/strength`, `cal/vsys_gain`, `cal/home_edges` (s_ast,L, s_rel,L, spread; [§5.4](#54-homing-with-the-drv5032))
 * `cfg/mode`, `cfg/detent`, `cfg/wheel`, `cfg/theme`, `cfg/timeouts`,
-  `cfg/slot_modes`
+  `cfg/slot_modes`, `cfg/nfc` (tag type, NFCID1, NDEF message; [§9.7](#97-nfc-tag-emulation))
 * `state/carriage` (x, phase, valid flag). `valid` is cleared before the first
   step of every move and set right after SETTLE ([§5.2](#52-state-machine)).
+* `state/vled_fault` (the latched VLED service fault, [§15](#15-fault-handling);
+  cleared only by the factory shell)
 * `bt/…` (bonds, owned by the BT stack)
 
 Factory data (written once): serial, LED variant, shoe_x_max, hardware
@@ -2287,20 +2572,20 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 |---|---|---|---|---|---|---|---|---|
 | **ACTIVE** | Any input or app activity | On, C7 08–0Ah | Per mode, capped | Tracking | LP 12.5 Hz (HP 400 Hz if tap is enabled) | HID 11.25–15 ms, latency 0; app set advertising | Running | Desk about **29 mA**; game about **104 mA** (range 40–180 mA with LEDs) |
 | **DIM** | 10 s without input | AEh or C7 03–04h, VCC on | Ambient or off | Tracking for 2 s after motion, then ARMED | LP | Latency 30 | Mostly idle | About 6–12 mA |
-| **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **57 µA**, the architecture.md §8.2 budget, which assumes +8 dBm TX; about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
-| **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **32 µA** |
-| **SHIP** | VBAT < 3.48 V rested (above the BQ25180 VBATPOR max of 3.46 V, [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
+| **DESK_IDLE** | 30 s without input (setting) | Sleep (VCC off) | Rail off | W&S ARMED 10 ms | LP wake | Connected, latency 30 (host-dependent) | System ON idle | About **62 µA** at 25 °C, the architecture.md §8.2 budget, which assumes +8 dBm TX and carries the 17.6 µA OLED line of [§7.2](#72-init-sequence-and-power-sequencing); about 2 µA less at the +4 dBm default of [§9.5](#95-connection-parameters-and-radio) (+130 µA if the host refuses latency) |
+| **SLEEP** | Host gone and reconnect advertising timed out (about 11 min), or 30 min in DESK_IDLE (setting; "always connected" keeps DESK_IDLE) | Sleep | Off | W&S DEEP 100 ms | LP wake | Off | System ON idle, SENSE wakes | About **38 µA** (25 °C typical, the architecture.md §8.2 sum; about 70 µA at 60 °C) |
+| **SHIP** | VBAT_est < 3.465 V, i.e. a rested reading below 3.5393 V (the BQ25180 VBATPOR max of 3.46 V plus 5 mV, with VBAT_est = 0.979 × reading, rule R1' of [§12.4](#124-battery-measurement-and-low-battery-policy)); user "power off"; idle more than N days (setting, default off) | Unpowered | | | | | Unpowered (BQ25180 BATFET off) | About **6.2 µA** (BQ 3.2 µA + pack PCM about 3 µA) |
 | **SHUTDOWN** | Factory/transport command | Unpowered | | | | | | About 3 µA (PCM only); wakes on USB only |
 
-* **System OFF is not used.** It would save only about 2.6 µA of the 32 µA
+* **System OFF is not used.** It would save only about 2.6 µA of the 38 µA
   floor, because the always-on peripherals dominate: OLED leakage, BQ25180,
   LDO, TMAG, IMU and DRV5032. It also turns every wake into a reset. System ON
   idle with SENSE wakes is the everyday "off"; ship mode is for storage.
-* **Sleep floor breakdown (µA):**
+* **Sleep floor breakdown (µA, 25 °C typical, VBAT 3.7 V):**
 
   | Contributor | µA |
   |---|---|
-  | OLED leakage | 12 |
+  | OLED leakage, incl. about 5.4 µA of D21 reverse leakage ([§7.2](#72-init-sequence-and-power-sequencing)) | 17.6 |
   | BQ25180 | 4 |
   | Pack PCM | 3 |
   | nRF | 3 |
@@ -2311,19 +2596,44 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
   | VSYS divider | 1.2 |
   | QSPI in deep power-down | 1 |
   | DRV8837 ×2 | 0.1 |
-  | **Total** | **≈ 32** |
+  | **Total** | **≈ 38** (sum of the lines) |
+
+  The SPICE suite gives 36.0 / 37.4 / 37.5 µA at VBAT 3.0 / 3.7 / 4.2 V and
+  31.5 / 37.4 / 70.0 µA at −10 / 25 / 60 °C (VBAT 3.7 V); the D21 leakage
+  drives the temperature spread (hardware/sim, sleep budget). The RT9080 line
+  is its no-load IQ; its ground current at the real sleep load is not
+  specified and is a bring-up measurement (hardware/sim, LDO-6).
 
 ### 12.2 Entry and exit procedures
 
+**Cold boot (application)**
+
+1. Read RESETREAS and the retained rail-state record; then the BQ25180 init
+   ([§13.1](#131-register-init-table)), whose FLAG0/STAT reads give
+   BAT_OCP_FAULT, BUVLO_STAT, VIN_PGOOD and CHG_STAT.
+2. Decide the rails from that: a brown-out or BAT_OCP_FAULT with
+   LED_PWR_EN or OLED_VCC_EN recorded high keeps that load off for the
+   session ([§15](#15-fault-handling)); a latched `state/vled_fault` keeps
+   the LEDs off.
+3. With VBUS present, the step-1 init already writes TMR_ILIM = 0xC9 (the
+   `bq_desired` value), and the 100 mA / no-supplement rules apply until the
+   USB state is known ([§13.3](#133-input-current-strategy-on-usb)).
+4. LED limiter active before the first frame ([§6.3](#63-power-limiter));
+   encoder init; homing if `state/carriage.valid = 0` (deferred while ILIM
+   is 100 mA or VSYS is too low, [§5.8](#58-limits)); OLED init last, under
+   the OLED_VCC_EN rules of [§7.2](#72-init-sequence-and-power-sequencing).
+
 **DESK_IDLE / SLEEP entry**
 
-1. Display sleep sequence ([§7.2](#72-init-sequence-and-power-sequencing)).
-2. LED rail off ([§6.4](#64-rail-sequencing)).
-3. Actuator idle: wait for any move to finish; drivers asleep.
+1. Actuator idle: wait for any move to finish (OLED_VCC_EN is not toggled
+   during a move below VBAT_est 3.6 V); brake, then drivers asleep
+   ([§5.2](#52-state-machine)).
+2. Display sleep sequence ([§7.2](#72-init-sequence-and-power-sequencing)).
+3. LED rail off ([§6.4](#64-rail-sequencing)).
 4. TMAG armed ([§4.8](#48-wake-on-rotation-wake-upsleep)).
 5. IMU in wake configuration ([§14.1](#141-wake-configuration-used-in-desk_idle-and-sleep)).
 6. Flash: flush settings, QSPI deep power-down (PM runtime).
-7. TWIM1, SPIM3 and SAADC suspended (PM device).
+7. TWIM1, SPIM3 and SAADC suspended (PM device); NFCT left in field sense.
 8. HFXO released.
 9. For SLEEP only, also stop all advertising.
 
@@ -2336,7 +2646,9 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 
 **SHIP entry**
 
-1. Park the actuator if it is not parked and VSYS ≥ 3.3 V.
+1. Park the actuator if it is not parked and VSYS ≥ 3.3 V. If the
+   "battery empty" screen is to be shown, switch the OLED on before the park
+   move, not during it ([§5.8](#58-limits)).
 2. Confirm that `state/carriage` holds `valid = 1`: the park move's SETTLE wrote
    it ([§5.2](#52-state-machine)). If the carriage could not be parked, the
    record from its last SETTLE is still valid.
@@ -2358,7 +2670,8 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 | Press (ship) | BQ25180 TS/MR via Q1A, ≥ 2 s hold | SHIP | 2 s + boot |
 | Pick-up / shake | IMU_INT1 SENSE high (latched) | DESK_IDLE, SLEEP | ≤ 80 ms (12.5 Hz ODR) |
 | USB plug | POWER USBDETECTED (VBUS ≥ 4.3 V guaranteed) | All; BQ adapter wake from SHIP/SHUTDOWN | Immediate |
-| Charger status | CHG_INT_N SENSE low | All | Handled silently (charging indicator only) |
+| Charger status | CHG_INT_N (P1.03) SENSE low | All | Handled silently (charging indicator only) |
+| NFC reader field | NFCT FIELDDETECTED | All System ON states | Tag answers the reader; no UI wake needed ([§9.7](#97-nfc-tag-emulation)) |
 | BLE | Host data or connection event | DESK_IDLE | Radio timing |
 | Timers | RTC1 | All | Battery sample every 60 s (10 min in SLEEP), advertising phases, 4 h TMAG re-arm |
 
@@ -2368,16 +2681,65 @@ budget. The modelled ones are TVP: **measure every state with a PPK2.**
 reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
 
 * VSYS = code × 3.6/4096 × 3.2 = **code × 2.8125 mV**. For example, 3.70 V
-  gives code 1316 and 4.50 V gives 1600.
+  gives code 1316 and 4.40 V gives 1564.
 * The source impedance is 687 kΩ with 100 nF (τ = 69 ms), which also filters
   the 2 kHz LED PWM ripple. Sample at most about 1 Hz; the 100 nF supplies the
   sampling charge, so the error is under 0.03 %.
-* **Production one-point calibration** at 3.800 V (bench supply on BAT) stores
-  `cal/vsys_gain`. That brings the ±1 % resistor and ±reference tolerances to
-  about ±10 mV.
+* **Production one-point calibration** at 3.800 V stores `cal/vsys_gain`
+  (test 8). The reference is a DMM at TP1 (VSYS at the divider), or the
+  board must draw under 5 mA during calibration, since any load current
+  lowers VSYS below the supply setpoint and would be stored as a permanent
+  gain error (hardware/sim, VSENSE-5). That brings the ±1 % resistor and
+  ±reference tolerances to about ±10 mV at 25 °C and about ±24 mV at
+  15–35 °C, **but only on a fresh unit**. Over temperature and with ageing
+  the calibrated reading drifts further (worst case over both calibration
+  references, at the 3.5393 V SHIP reading; the error grows with VSYS, to
+  about 2.0–2.1 % of the reading at the aged −10/60 °C corner): a fresh unit
+  over −10…60 °C reads up to about 48 mV high and 55 mV low, an aged unit at
+  25 °C +30/−36 mV, and an aged unit at −10 or 60 °C +73/−79 mV
+  (hardware/sim, VSENSE-1, VSENSE-4).
+* **Reading gain (rule R1', VREAD_GAIN = 0.979).** Every threshold in this
+  document that protects a datasheet limit is a true-cell value and is
+  compared against **VBAT_est = 0.979 × calibrated rested reading**, never
+  against the raw reading; the idle-VSYS move threshold of [§5.8](#58-limits)
+  likewise uses VSYS_est = 0.979 × idle reading. A threshold T therefore
+  engages at a reading of T / 0.979, and the true value is still at least T
+  while the worst over-read at T stays within 2.1 % of the reading. The
+  over-read is a gain error that grows with VSYS (aged unit at −10/60 °C,
+  calibrated with the board under 5 mA): 67.9 mV at 3.21 V (2.07 % of the
+  reading, the largest fraction), 71.4 mV at 3.465 V, 72.4 mV at 3.54 V,
+  73.3 mV at 3.60 V, 74.7 mV at 3.70 V, 75.7 mV at 3.75 V, 77.0 mV at
+  3.80 V, 79.6 mV at 3.90 V, 80.2 mV at 3.92 V and 87.6 mV at 4.20 V. At
+  every threshold the worst VBAT_est stays below the true value, over
+  11 264 corner values each (fresh unit at −10/15/25/35/60 °C, aged unit at
+  −10/25/60 °C, both calibration references; hardware/sim, VSENSE-1,
+  VSENSE-4, `test_read_margin_covers_over_read_with_fw_rule`):
+
+  | Threshold T (V, VBAT_est or VSYS_est) | 3.21 | 3.465 | 3.48 | 3.53 | 3.54 | 3.60 | 3.65 | 3.70 | 3.75 | 3.80 | 3.90 | 3.92 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | Reading T / 0.979 (V) | 3.2789 | 3.5393 | 3.5546 | 3.6057 | 3.6159 | 3.6772 | 3.7283 | 3.7794 | 3.8304 | 3.8815 | 3.9837 | 4.0041 |
+  | Margin left (mV, true − worst VBAT_est) | +0.97 | +2.87 | +2.98 | +3.35 | +3.43 | +3.87 | +4.24 | +4.62 | +4.68 | +4.43 | +3.94 | +3.84 |
+
+  The thresholds are NEW-1 (3.21), SHIP (3.465), the PI-2 rows (3.48–3.90,
+  with the NF-1 on-USB row at 3.48 and the derating edges 3.53 / 3.60 /
+  3.65), MD-2 (VSYS_est 3.54), OLED-BST-2 (3.75) and PI-3 (3.92). Firmware
+  computes VBAT_est and compares it with T; the reading row is for bench
+  checks. R1' replaces the flat VBAT_est = reading − 75 mV, which covered
+  the over-read only up to a true 3.72 V (closed,
+  [§18](#18-open-items-and-to-verify-list) item 12).
 * **On battery:** VSYS ≈ VBAT − I × 55 mΩ (BATFET). **On USB**, SYS is
-  regulated at 4.5 V, so VBAT cannot be measured; use BQ25180 CHG_STAT
-  instead. The BQ25180 has no ADC.
+  regulated at 4.4 V (SYS_REG 0x20, [§13.1](#131-register-init-table)), so
+  VBAT cannot be measured; use BQ25180 CHG_STAT instead. The BQ25180 has no
+  ADC. On USB, VBAT_est is the last battery-only VBAT_est of this power-up
+  from before VBUS appeared (not one from a USB-suspend window, while the
+  cell still relaxes from charging): while the input carries the load and
+  charges the cell, the cell does not fall, so the stale value stays on the
+  safe side. Without one (a cold boot
+  on USB, such as a wake from SHIP by plugging in, or no pack) VBAT_est is
+  **unknown**, and unknown counts as below every threshold: the battery
+  "cannot supplement" (NEW-1, PI-4) and the LEDs get only the charging cue
+  until CHG_STAT reports CV or done (NF-1; [§6.3](#63-power-limiter),
+  [§13.3](#133-input-current-strategy-on-usb)).
 * **Rested estimate:** VOCV ≈ Vmeas + I_est × 0.25 Ω, where I_est is the sum
   of the LED limiter estimate, OLED state, actuator state and a 3 mA base.
   Prefer samples taken after at least 1 s of light load.
@@ -2387,29 +2749,35 @@ reference (3.6 V full scale), 12-bit with 8× oversampling, TACQ 40 µs:
   |---|---|---|---|---|---|---|---|---|---|---|---|---|
   | SoC (%) | 100 | 90 | 80 | 70 | 60 | 50 | 40 | 30 | 20 | 10 | 5 | 0 |
 
-  The battery % shown to the user is rescaled so that 0 % is the 3.48 V SHIP
-  threshold below.
+  The battery % shown to the user is rescaled so that 0 % is the SHIP point
+  below (a reading of 3.5393 V).
 
-**Low-battery policy** (rested VBAT, with 50 mV of hysteresis upward):
+**Low-battery policy** (VBAT_est, i.e. 0.979 × the rested reading, with
+50 mV of hysteresis upward):
 
-| VBAT | Action |
+| VBAT_est | Action |
 |---|---|
-| ≥ 3.65 V | Normal |
-| < 3.60 V | Warning icon; LED cap 100 mA; OLED C7 ≤ 08h; TMAG DEEP-LOWBAT interval in SLEEP; DFU swap refused unless on USB |
-| < 3.53 V | LEDs off except the red cue; only park moves; quiet sounds |
-| < 3.48 V (3 readings 10 s apart) | SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)), so 3.48 V (about 20 mV above the max, covering the ±10 mV calibrated ADC error) lets every unit wake from a button press right after a low-battery ship. Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". This is 30 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs well under 1 % of capacity. |
-| POF event (VDD < 2.9 V) | Immediately: LEDs off, motor stop, abort flash writes. If it persists for 100 ms, enter SHIP. |
+| ≥ 3.75 V | Normal |
+| < 3.75 V | OLED C7 ≤ 08h and ≤ 30 % white area ([§7.4](#74-burn-in-mitigation-and-power-caps); hardware/sim, OLED-BST-2) |
+| < 3.60 V | Warning icon; LED cap 100 mA; TMAG DEEP-LOWBAT interval in SLEEP; DFU swap refused unless on USB |
+| VSYS_est < 3.54 V (an idle reading below 3.6159 V) | Only park moves ([§5.8](#58-limits); hardware/sim, MD-2) |
+| < 3.53 V | LEDs off except the red cue ([§6.3](#63-power-limiter)); quiet sounds |
+| < 3.465 V (a reading below 3.5393 V) | After 3 readings 10 s apart, SHIP entry. The BQ25180 battery-only power-up threshold VBATPOR is 3.08/3.21/3.46 V min/typ/max ([SLUSE99C](https://www.ti.com/lit/ds/symlink/bq25180.pdf)). R1' alone puts the true VBAT at 3.465 V or more, 5 mV above VBATPOR max; an aged unit read at −10 or 60 °C can be 72.4 mV high here, so a 3.5393 V reading still means a true VBAT of at least 3.4669 V, 6.9 mV above VBATPOR max, and every unit wakes from a button press right after a low-battery ship; the former 3.53 V reading left 3.4577 V at that corner (hardware/sim, VSENSE-1, VSENSE-4). Self-discharge in storage can still take a cell below VBATPOR, so the last screen always says "Battery empty: plug in to charge (or hold 2 s)". A nominal unit (no reading error) ships at a rested 3.539 V, 89 mV above the 3.45 V rested cutoff of architecture.md §8.1, which costs about 2 % of capacity (estimate from the OCV table above). |
+| POF event (VDD < 2.9 V) | Immediately: LEDs off, OLED off (OLED_VCC_EN low; hardware/sim, PI-4), motor brake then sleep, abort flash writes. If it persists for 100 ms, enter SHIP. **Blanking:** firmware ignores POFWARN for 10 ms after it raises OLED_VCC_EN or LED_PWR_EN. Those enables can dip +3V3 to 2.87–3.02 V (2.867 V: dead battery on USB at the 80 mA ILIM minimum with the charging cue; 2.93–3.02 V: the NEW-1 supplement branch at a 3.21 V cell), below the POF threshold's 3.045 V upper bound (2.9 V + 5 %) for up to 5.8 ms, though above VBOR and the W25Q128's 2.7 V minimum; without the blanking the handler would shed the OLED or the cue it has just enabled. 10 ms leaves 4.2 ms over the worst crossing, and +3V3 is back at 3.30 V by then (3.15 V, still above the 3.045 V bound, in the floor case that enables the OLED during a move, which NEW-2 forbids) (hardware/sim, NEW-1 and floor guards in `test_load_switches.py`). A POFWARN inside the window does not count toward the VLED fault latch of [§15](#15-fault-handling) either; a brown-out reset or BAT_OCP_FAULT still does. |
 | VBAT < 3.0 V | BQ25180 BUVLO disconnects the battery in hardware |
 
 ### 12.5 Peripheral power hygiene
 
 * QSPI: deep power-down whenever idle (`has-dpd` + PM runtime). The W25Q128
   standby current, tens of µA, would otherwise exceed the whole sleep budget.
+  The `qspi_sleep` state pulls SCK and IO0–IO3 down so the flash inputs do
+  not float (hardware/sim, SLP-4); verify the floor with the PPK2 (test 22).
 * SPIM3 suspended between frames is not needed, because the SPIM idle current
   is small, but suspend it in DESK_IDLE (anomaly 195; measure).
 * TWIM1 suspended in sleep. The pull-ups idle high, so no current flows.
-* HFXO is requested only by BLE radio events, USB, I2S and the clock source.
-  Tracking uses TWIM/TIMER on HFINT.
+* HFXO is requested only by BLE radio events, USB, I2S (every LED frame,
+  [§6.1](#61-hardware-facts-used)) and the clock source. Tracking uses
+  TWIM/TIMER on HFINT.
 * Before removing power from a peripheral, set every pin to it low or
   disconnected (pinctrl sleep states, [§1.3](#13-gpio-configuration)).
 
@@ -2434,8 +2802,9 @@ is the corrected one.
 | 5 | CHARGECTRL1 (0x06) | 0x92 | BATOCP 1.5 A, BUVLO 3.0 V, CHG_STATUS INT on, ILIM INT masked, VDPM INT on |
 | 6 | TMR_ILIM (0x08) | **0xCD** (or 0xC9, [§13.3](#133-input-current-strategy-on-usb)) | MR long press 20 s, MR_RESET_VIN 0, autowake 1 s, **ILIM code 101 = 500 mA** (450/475/498 mA min/typ/max) |
 | 7 | SHIP_RST (0x09) | 0x09 | Long press = hardware reset, WAKE1 300 ms, WAKE2 2 s, EN_PUSH = 1 |
-| 8 | SYS_REG (0x0A) | 0x40 | SYS 4.5 V on USB, normal SYS mode |
-| 9 | Read STAT0/STAT1/FLAG0 (0x00/0x01/0x02) | | Clears flags; record the initial state |
+| 8 | SYS_REG (0x0A) | **0x20** | SYS_REG_CTRL = 001: **SYS 4.4 V** on USB (POR default 010 = 4.5 V), normal SYS mode (SLUSE99C Table 8-19). MUST be 001; 010 (4.5 V) is the only other allowed value, never 011–111 (4.6 V up to pass-through) while the LEDs may run; `bq25180.c` asserts this on every SYS_REG write. It holds the LED data margin ([§6.1](#61-hardware-facts-used)) and lowers the coast peak on VSYS (hardware/sim, LED-DATA-V3, LDO-2, MD-5) |
+| 9 | TS_CONTROL (0x0B) | **0x90** | TS_HOT = 10 (50 °C), TS_COLD = 01 (3 °C), WARM 45 °C / COOL 10 °C unchanged (Table 8-20). With the 0x00 default the HOT/COLD thresholds sit exactly on the JEITA limits, and the NTC and bias tolerances let charging continue at about −2 °C and +65 °C (hardware/sim, charger_ts-1) |
+| 10 | Read STAT0/STAT1/FLAG0 (0x00/0x01/0x02) | | Clears flags; record the initial state, including FLAG0 BAT_OCP_FAULT and STAT1 BUVLO_STAT for the boot checks ([§12.2](#122-entry-and-exit-procedures)) |
 
 * **Why 400 mA with the 500 mA input code:** with ILIM at the 500 mA code
   (475 mA typical) and about 50 mA of system load, a 500 mA charge setting
@@ -2444,8 +2813,9 @@ is the corrected one.
 * 0x4D/0xCE (500 mA charge with a 700 mA input) would need a Type-C 1.5 A or
   3 A source, which this hardware cannot detect, so it is not used.
 * **Desired register state.** Three registers are changed deliberately at run
-  time: ICHG_CTRL (0x39 thermal, 0xC3 USB suspend), TMR_ILIM (0xC9 before
-  enumeration, 0xCD after) and SYS_REG (0x44 battery-only during USB suspend).
+  time: ICHG_CTRL (0x39 thermal; CHG_DIS = 1, e.g. 0xC3, for USB suspend, the
+  TS-open fault and the cold guard), TMR_ILIM (0xC9 before enumeration, 0xCD
+  after) and SYS_REG (0x24 battery-only during USB suspend).
   `bq25180.c` therefore keeps a `struct bq_desired` holding the value every
   register should have *now*: the table above with the current overrides
   applied. USB (attach, configured, suspend, resume), thermal and charger-type
@@ -2459,7 +2829,7 @@ is the corrected one.
     bus recovers, and in the 60 s check below: IC_CTRL reading back other than
     0x97 means the BQ has reset (it returns to its POR default after a POR, a
     20 s hardware reset or a watchdog event).
-  * Every 60 s while VBUS is present, read 0x03–0x0A and rewrite any register
+  * Every 60 s while VBUS is present, read 0x03–0x0B and rewrite any register
     that differs **from the struct**. This keeps the 2.5 mA suspend state, the
     100 mA pre-enumeration limit and the thermal derating intact. The BQ25180
     can change SYS_MODE by itself (it ignores battery-only below BUVLO and
@@ -2468,8 +2838,25 @@ is the corrected one.
 * **Thermal:**
   * If STAT1 reports TS WARM, or the nRF die temperature exceeds 45 °C, set
     ICHG to 0x39 (300 mA).
-  * JEITA stays enabled. The B3435 NTC matches the default thresholds of
-    0/10/45/60 °C.
+  * JEITA stays enabled, with the 3/10/45/50 °C thresholds of TS_CONTROL =
+    0x90 (the B3435 NTC sits on the base-board top, so it reads board and
+    pack-air temperature, not the cell skin; SPEC §8).
+  * **Cold guard.** While VBUS is present, firmware MUST set CHG_DIS = 1 when
+    the nRF die temperature reads below 0 °C and clear it above about 3 °C:
+    below about −11 °C the TS bias drives TS/MR above VTS_ENZ, where cold
+    protection is not guaranteed (hardware/sim, charger_ts-3).
+  * **TS open.** Firmware MUST treat STAT0.TS_OPEN_STAT = 1 (bit 7) as a
+    fault: set CHG_DIS = 1 and show "temperature sensor fault" until it
+    clears. An open NTC floats TS/MR to its clamp above VTS_ENZ, which can
+    disable TS monitoring rather than read cold (hardware/sim,
+    charger_ts-v1).
+  * **TS plausibility (SHOULD).** A resistive, partly open RT1 (about
+    46–90 kΩ) puts TS/MR above VTS_ENZ but below the open-NTC clamp, so
+    TS_OPEN_STAT stays 0 while TS monitoring is not guaranteed. Firmware
+    SHOULD treat a TS COLD state (STAT1) while the nRF die reads above
+    about 10 °C as the same sensor fault: CHG_DIS = 1 and "temperature
+    sensor fault". The suite shows the gap but has no rule for it
+    (hardware/sim, charger_ts-v1).
   * TREG at 100 °C throttles by itself.
 
 ### 13.2 Status, interrupts and faults
@@ -2481,17 +2868,20 @@ is the corrected one.
     nothing on USB power.
   * Optionally switch CHG_INT_N to a GPIOTE IN channel while VBUS is present,
     since the extra 15 µA does not matter then.
-* Decode STAT0: CHG_STAT (not charging / CC / CV / done), VIN_PGOOD, and the
-  DPPM, VINDPM, ILIM and thermal-regulation activity bits. Decode STAT1:
-  VIN_OVP, BUVLO, TS state, safety-timer fault and the WAKE flags (ignored).
+* Decode STAT0: TS_OPEN_STAT, CHG_STAT (not charging / CC / CV / done),
+  VIN_PGOOD, and the DPPM, VINDPM, ILIM and thermal-regulation activity
+  bits. Decode STAT1: VIN_OVP, BUVLO, TS state, safety-timer fault and the
+  WAKE flags (ignored). Decode FLAG0, including BAT_OCP_FAULT (bit 0).
   Publish them on `power_evt`. Exact bit positions per the datasheet register
-  map.
+  map (SLUSE99C Tables 8-9 to 8-11).
 * **Faults:**
 
   | Fault | Response |
   |---|---|
-  | VIN_OVP | "Bad charger" icon |
-  | TS cold/hot | "Too cold/hot to charge" |
+  | VIN_OVP | A flag within about 30 ms of plug-in is benign (the legacy-cable hot-plug overshoot of most plug-ins): do not report it (hardware/sim, V-3). Otherwise "bad charger" icon. Supported VBUS is 4.5–5.25 V; a source near 5.5 V can trip OVP and pause charging, and the unit then runs from the battery (NF-4) |
+  | TS cold/hot | "Too cold/hot to charge", except while BTN_N is low and for 5 ms after ([§8.2](#82-press-handling-pressc); hardware/sim, charger_ts-v2) |
+  | TS open (STAT0.TS_OPEN_STAT = 1), or TS COLD while the die reads above about 10 °C (SHOULD) | CHG_DIS = 1, "temperature sensor fault" ([§13.1](#131-register-init-table) Thermal) |
+  | BAT_OCP_FAULT | With LED_PWR_EN or OLED_VCC_EN recorded high: that load stays off ([§15](#15-fault-handling)) |
   | Safety-timer fault | Report; cleared by re-plugging |
   | Charge done | Ring shows green briefly when the user interacts |
 
@@ -2506,15 +2896,38 @@ is the corrected one.
    (100 mA) until the USB state is known. With a dead battery the system boots
    from VBUS at the BQ's default limit and then applies this. While the limit
    is 100 mA, apply the load cap of [§6.3](#63-power-limiter) (LEDs ≤ 20 mA,
-   OLED C7 ≤ 04h, no actuator moves, homing deferred): a battery below BUVLO
-   cannot supplement SYS (SLUSE99C §8.3.3).
+   no actuator moves, homing deferred): a battery below BUVLO cannot
+   supplement SYS (SLUSE99C §8.3.3). OLED_VCC_EN MUST stay low unless the
+   battery can supplement (no BUVLO_STAT and VBAT_est ≥ 3.21 V from a
+   battery-only reading in this power-up), and the LEDs show the charging
+   cue instead (hardware/sim, NEW-1, OLED-V1;
+   [§7.2](#72-init-sequence-and-power-sequencing)). If the pack is absent,
+   or STAT1 BUVLO_STAT = 1, the no-supplement profile of §6.3 applies
+   (total ≤ 70 mA; hardware/sim, PI-4). BUVLO_STAT is also the precharge
+   test: CHG_STAT reports precharge as CC (01), and with VLOWV = BUVLO =
+   3.0 V BUVLO_STAT stays 1 until the cell has left precharge. Firmware
+   cannot see an absent pack directly: with no pack, BAT holds only its
+   capacitor near VBATREG, so CHG_STAT may read done rather than CC. The pack therefore counts
+   as absent ("cannot supplement") until a battery-only reading in this
+   power-up has given a VBAT_est
+   ([§12.4](#124-battery-measurement-and-low-battery-policy)).
 2. **USB configured** by a host (bMaxPower 500 mA granted): TMR_ILIM = 0xCD.
 3. **No bus reset or SOF within 2 s** (a dedicated charger shorts D+/D−):
    assume a charger and set TMR_ILIM = 0xCD.
+   * At 500 mA without supplement: no actuator moves, LEDs ≤ 100 mA
+     peak-limited, OLED C7 ≤ 08h, total ≤ 400 mA (hardware/sim, PI-4).
+   * With a pack and VBAT_est ≥ 3.48 V: the LED instantaneous budget uses
+     the 3.48 V row until CHG_STAT reports CV or done, or the instantaneous
+     on-USB sum (lit channels × I_ch + OLED boost input + actuator) stays
+     ≤ 0.40 A, never an average. Below VBAT_est 3.48 V, or with VBAT_est
+     unknown, only the charging cue until CHG_STAT reports CV or done
+     ([§6.3](#63-power-limiter); hardware/sim, NF-1).
 4. **USB suspend:** ICHG_CTRL = 0xC3 (CHG_DIS = 1) and SYS_REG SYS_MODE =
-   battery-only (expected 0x44) to stay within 2.5 mA. On resume, restore 0x43
-   and 0x40. **TVP:** confirm the SYS_MODE field position and value in
-   SLUSE99C §8.6 before enabling this path.
+   battery-only (0x24: SYS_MODE = 01 in bits 3:2, SLUSE99C Table 8-19) to
+   stay within 2.5 mA ([§10](#10-usb-composite-device); hardware/sim, V-2).
+   The alternative is TMR_ILIM = 0xC8 (50 mA). On resume, restore 0x43 and
+   0x20. The BQ25180 ignores SYS_MODE = 01 while VBAT < BUVLO and returns to
+   00 on adapter re-insertion (§8.3.4).
 5. **VBUS removed:** nothing to do; the BQ switches to battery.
 
 ### 13.4 Ship and shutdown
@@ -2589,17 +3002,19 @@ clears the latch and the SENSE line.
 | Loss of lock | Tracker supervision | Coast, re-acquire from atan2; mark position relative | None | E_ENC_LOCK |
 | TMAG stuck in standby after W&S (0.45 mA) | 50 ms software watchdog after wake; 4 h periodic re-arm | Re-arm | None | E_ENC_ARM |
 | Magnet missing or reversed | Calibration self-test | Report pocket index; calibration rejected | "Magnet k fault" (factory) | E_MAG_k |
-| Homing failure | Any failed homing phase ([§5.4](#54-homing-with-the-drv5032)): no HOME release within the back-off limit; no released → asserted edge within 375 + 40 approach steps; or HOME not asserted after the final stall at the park stop | 3 retries at 313 PPS, then FAULT, driver asleep | "Detent fault"; mode fixed | E_DET_HOME |
+| Homing failure | Any failed homing phase ([§5.4](#54-homing-with-the-drv5032)): no HOME release within the back-off limit; no released → asserted edge within 500 + 40 approach steps; or HOME not asserted after the final stall at the park stop | 3 retries at 313 PPS, then FAULT, driver asleep | "Detent fault"; mode fixed | E_DET_HOME |
 | Lost steps | Primary: HOME not asserted after the re-reference stall that ends every move to FREE. Secondary: a HOME edge seen outside its direction- and speed-dependent window ([§5.4](#54-homing-with-the-drv5032) rule 2) | Primary: full homing. Secondary: re-reference at the next move to FREE; re-home at rest if the error is above 40 steps or repeats | None | E_DET_STEPS |
 | Move timeout | Per-move watchdog | Stop, sleep driver, FAULT after 2 | "Detent fault" | E_DET_TMO |
 | Actuator move at low battery | VSYS check | Refuse; park only | "Battery low" | W_DET_LOWBAT |
 | BQ25180 not responding | TWIM1 NACK at 0x6A | Retry every 5 s; assume no charger info; LED limiter stays on | "Charger comm" (factory) | E_CHG_I2C |
 | BQ register differs from the desired state, or BQ reset | 60 s verify on USB against `struct bq_desired`; IC_CTRL ≠ 0x97 marks a reset ([§13.1](#131-register-init-table)) | Rewrite the differing registers from the struct (whole struct after a reset); never rewrite the bare init table | None | W_CHG_RST |
-| Charger faults (OVP, TS, timer) | STAT1 | See [§13.2](#132-status-interrupts-and-faults) | Icon | E_CHG_* |
+| Charger faults (OVP, TS, TS open, timer) | STAT0/STAT1 | See [§13.2](#132-status-interrupts-and-faults); TS open → CHG_DIS = 1 | Icon; "Temperature sensor fault" | E_CHG_* |
 | Battery critical | [§12.4](#124-battery-measurement-and-low-battery-policy) | Derate, then SHIP | Low-battery screen | W_BAT_* |
-| Brown-out / POF | POFWARN at 2.9 V | Loads off, abort flash writes | None | E_POF |
+| Brown-out / POF | POFWARN at 2.9 V, ignored for 10 ms after OLED_VCC_EN or LED_PWR_EN rises ([§12.4](#124-battery-measurement-and-low-battery-policy)) | LEDs, OLED and motor off (brake, then sleep), abort flash writes (hardware/sim, PI-4) | None | E_POF |
+| VLED fault (shorted LED or VLED bridge; U2 has no current limit) | At boot: RESETREAS reads 0 (power-on or brown-out reset), or FLAG0 BAT_OCP_FAULT = 1, with LED_PWR_EN recorded high in the retained rail-state record | Keep the LEDs off for the session and log a VLED fault (hardware/sim, NEW-5). If a brown-out, POF (outside the 10 ms POF blanking) or BATOCP follows LED_PWR_EN within about 50 ms twice, latch VLED off in `state/vled_fault` and show a service fault (hardware/sim, NF-3) | "Service: LED ring fault" (latched case) | E_VLED |
+| OLED rail fault | Same boot check with OLED_VCC_EN recorded high | Leave the OLED off for the session; show an error on the LEDs (hardware/sim, OLED-V3) | LED error pattern | E_OLED_PWR |
 | OLED SPI corruption | Not detectable | Full redraw on every wake and every 5 s while static | None | — |
-| LED overcurrent | Model only (no sensing) | Limiter always on; B-variant default | None | — |
+| LED overcurrent | Model only (no sensing) | Average and instantaneous limiter always on ([§6.3](#63-power-limiter)); 12 mA/channel assumed until the variant is set | None | — |
 | QSPI failure | JEDEC ID at boot, littlefs mount | Re-format the assets partition and request re-sync from the app; DFU disabled if the ID is wrong | "Storage" (factory) | E_QSPI |
 | Settings corruption | NVS mount or CRC per record | Defaults; calibration restored from `factory_backup` | "Settings reset" | W_CFG |
 | Thread hang | Task watchdog (4 s, per-thread check-in) | Reset; crash info saved to retained RAM and then `crash_log` | None | E_WDT |
@@ -2608,6 +3023,12 @@ clears the latch and the SENSE line.
 | Pairing failure / bond table full | BT callbacks | Show the message; oldest phone bond is evicted on ID 0 only | Message | W_BT_* |
 
 The crash log is readable over SMP (custom group) and the shell.
+
+The rail-state record is written to retained RAM (CRC-16) just before
+LED_PWR_EN or OLED_VCC_EN goes high and again after it goes low. A
+power-on or brown-out reset may leave it corrupt; if its CRC fails, the
+boot check falls back to FLAG0 BAT_OCP_FAULT alone (*TVP:* whether the record
+survives a BATOCP collapse on the real board).
 
 ---
 
@@ -2638,29 +3059,29 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 
 | # | Test | Method | Pass criteria |
 |---|---|---|---|
-| 1 | Power rails (before the module is programmed) | USB on the base board; measure VSYS, +3V3; current with an erased nRF | VSYS 4.5 V ±3 % on USB; +3V3 3.3 V ±3 %; no excess current |
+| 1 | Power rails (before the module is programmed) | USB on the base board; measure VSYS, +3V3; current with an erased nRF | VSYS 4.5 V ±3 % on USB (BQ25180 POR default; 4.4 V after the [§13.1](#131-register-init-table) init); +3V3 3.3 V ±3 %; no excess current |
 | 2 | SWD + silicon | `nrfutil device` read FICR (part, variant, revision), APPROTECT state | Expected part; note Rev 2 or 3 |
-| 3 | UICR | Firmware applies NRESET and NFC-as-GPIO; reset via TC2030 pin 3 | Pin reset works; P0.09 reads high (10 k pull-up) |
+| 3 | UICR | Firmware applies NRESET only (NFCPINS left in NFC mode); read UICR.NFCPINS; reset via TC2030 pin 3 | Pin reset works; NFCPINS in NFC mode; CHG_INT_N (P1.03) reads high (R55 10 kΩ pull-up) |
 | 4 | Clocks | HFXO start; LFXO start time; count LFXO against HFXO for 1 s | LFXO within ±50 ppm; start < 1 s |
 | 5 | QSPI | JEDEC ID; SR2 QE bit; erase/write/read one sector; deep power-down current | EF 40 18; data intact; DPD verified in test 22 |
-| 6 | System I2C | Scan TWIM1; LIS2DW12 WHO_AM_I; BQ25180 register read | 0x19 (0x44) and 0x6A present |
-| 7 | BQ25180 | Write [§13.1](#131-register-init-table), read back; with USB check CHG_STAT; with the bench supply on BAT check VIN_PGOOD toggling | All registers match; charge status sane |
-| 8 | VSYS ADC calibration | Battery emulator at 3.800 V, no USB | Raw gain within ±3 %; store `cal/vsys_gain`; residual ≤ 10 mV |
+| 6 | System I2C | Scan TWIM1 at 250 kHz; LIS2DW12 WHO_AM_I; BQ25180 register read | 0x19 (0x44) and 0x6A present |
+| 7 | BQ25180 | Write [§13.1](#131-register-init-table), read back; with USB check CHG_STAT and VSYS; with the bench supply on BAT check VIN_PGOOD toggling | All registers match (SYS_REG 0x20, TS_CONTROL 0x90); VSYS 4.4 V ±2 % on USB; TS_OPEN_STAT = 0; charge status sane |
+| 8 | VSYS ADC calibration | Battery emulator at 3.800 V, no USB; reference from a DMM at TP1, or LEDs, OLED and motor off with the board under 5 mA (hardware/sim, VSENSE-5) | Raw gain within ±5.5 % (hardware/sim, VSENSE-2); store `cal/vsys_gain`; residual ≤ 10 mV |
 | 9 | Ship mode | Write 0x49, unplug, measure; hold the press 2 s | Battery current ≤ 4.5 µA (board side); wakes on the 2 s press |
 | 10 | Press | BTN_N press/release counts | 10/10 presses detected, no bounce |
-| 11 | OLED | Power sequence, colour bars, full white; measure +13V_OLED at C39 (the net has no test pad); sleep current | 12.5–13.5 V; correct colours and orientation; no garbage on first light |
-| 12 | LEDs | VLED ramp and fall at TP3 (scope); walk R/G/B over 48 LEDs; all red at 50 % → current | VLED tON ≤ 5 ms (about 4 ms expected) and fall ≤ 30 ms ([§6.4](#64-rail-sequencing)); all 48 in order (D101 at θ = 0°, CCW); about 48 × 2.5 mA (C) or 6 mA (B) ±15 % → sets the factory LED variant |
+| 11 | OLED | Power sequence, colour bars, full white; measure +13V_OLED at C39 (the net has no test pad); sleep current | VCC 12.7–13.3 V, the production screen for the FB-bias error of the 499 k/52.3 k divider (bring-up B-9.9a; hardware/sim, OLED-BST-1); correct colours and orientation; no garbage on first light |
+| 12 | LEDs | VLED ramp and fall at TP3 (scope); walk R/G/B over 48 LEDs; all red at 50 % → current | VLED tON ≤ 5 ms (about 4 ms expected) and fall to 10 % ≤ 30 ms (about 24 ms expected, 26.6 ms worst case; record tFALL, hardware/sim NEW-4; [§6.4](#64-rail-sequencing)); all 48 in order (D101 at θ = 0°, CCW); about 48 × 2.5 mA (C) or 6 mA (B) ±15 % → sets the factory LED variant |
 | 13 | Piezo | 4 kHz tone | Audible / mic SPL ≥ spec (optional) |
 | 14 | IMU | ST self-test (CTRL3 ST bits); flat-orientation Z ≈ +1 g; tap → INT1 | Self-test within limits; INT1 fires |
-| 15 | TMAG basic | ID and manufacturer registers; 6-byte CRC frames streaming; measured sample rate | CRC OK; rate 2.8–3.4 kSPS (record it); frame length confirmed 6 or 8 |
+| 15 | TMAG basic | ID and manufacturer registers; 6-byte CRC frames streaming with TWIM0 at FREQUENCY = 0x06200000; measured sample rate | CRC OK; rate 2.8–3.4 kSPS (record it); frame length confirmed 6 or 8 |
 | 16 | Magnet track | Spin by hand or with a jig motor at about 3 rev/s | 24 electrical cycles/rev; per-pole amplitude within ±15 %; Bt/Bz amplitude 8–25 mT; no reversed pole |
 | 17 | Encoder calibration | Run [§4.6](#46-calibration) (a)–(e) | Ellipse residual < 2 %; post-LUT error < 0.2° mech |
 | 18 | W&S wake | Arm 10 ms, rotate slowly; measure armed current with the PPK2 | Wake within 5° mech; W&S 10 ms ≤ 25 µA (TMAG share) |
-| 19 | Actuator | Home from the click end and from the park stop; learn the HOME edges (5 sweeps each way at 80 PPS, [§5.4](#54-homing-with-the-drv5032)); go to click (x = 0) and read HOME; pluck test f_n → T1; sweep 3 strength points; 20 CLICK ↔ FREE cycles | Both homings complete; HOME asserted after every park stall; **HOME released at x = 0** (else reject or apply the §18 item 2 hardware fix); s_ast,L in 180–240 and s_rel,L in 190–260 steps with a spread ≤ 10; T1(full click) within 13–20 mN·m; no E_DET_STEPS over 20 cycles |
+| 19 | Actuator | Home from the click end and from the park stop; learn the HOME edges (5 sweeps each way at 80 PPS, [§5.4](#54-homing-with-the-drv5032)); go to click (x = 0) and read HOME; pluck test f_n → T1; sweep 3 strength points; 20 CLICK ↔ FREE cycles | Both homings complete; HOME asserted after every park stall; **HOME released at x = 0** (else reject or apply the §18 item 2 hardware fix); s_ast,L in 243–317 and s_rel,L in 263–343 steps with a spread ≤ 10; T1(full click) within 13–20 mN·m; no E_DET_STEPS over 20 cycles |
 | 20 | Free-spin quality | 50 spin-downs from about 5 rev/s in FREE; histogram of rest angles; spin-down time from 10 rev/s | No preferred rest angle (χ² test over 24 bins). Spin-down from 10 rev/s, median of 10 runs: **≥ 45 s (target ≥ 60 s)**, the verified mechanical acceptance of architecture.md R3 and bringup.md B-13. Record the value and seed the FREE predictor prior with it. SPEC's 2.5–3 N preload is predicted to give only 20–50 s ([§4.7](#47-motion-events-velocity-and-spin-down-prediction)), so a failure here is a mechanical finding (preload, architecture.md D3), not a firmware or test-limit error. |
-| 21 | BLE RF | RSSI at 1 m with nRF Connect; radio test / DTM carrier and TX power; RX sensitivity with the OLED animating vs off | RSSI ≥ −65 dBm at 1 m (TVP target); ≤ 3 dB difference animating vs off |
-| 22 | Sleep current | PPK2 on BAT: SLEEP, DESK_IDLE (no host), SHIP | SLEEP ≤ 60 µA, and investigate anything above 45 µA (typical 32 µA; the OLED sleep leakage alone can reach 35–40 µA instead of 12 µA, [§7.2](#72-init-sequence-and-power-sequencing)). DESK_IDLE (no host, app advertising off): record; expect about 50 µA (the 57 µA budget minus the connection's 7 µA), investigate above 60 µA. SHIP ≤ 8 µA including PCM (board ≤ 4.5 µA) |
-| 23 | USB | Enumeration; HID test (Windows Wheel settings, Linux `evtest`); SMP echo on CDC | Enumerates as HID + 2 CDC; dial events in the right direction |
+| 21 | BLE RF and NFC | RSSI at 1 m with nRF Connect; radio test / DTM carrier and TX power; RX sensitivity with the OLED animating vs off. NFC: a phone reads the test NDEF record through the top cover ([§9.7](#97-nfc-tag-emulation)) | RSSI ≥ −65 dBm at 1 m (TVP target); ≤ 3 dB difference animating vs off; tag read reliably (record the range; retune C16/C17 if it is short, TVP) |
+| 22 | Sleep current | PPK2 on BAT at room temperature: SLEEP, DESK_IDLE (no host), SHIP | SLEEP ≤ 60 µA, and investigate anything above 45 µA (typical 38 µA at 25 °C; the OLED line alone is 17.6 µA typical and up to about 46 µA at datasheet maxima, [§7.2](#72-init-sequence-and-power-sequencing)). DESK_IDLE (no host, app advertising off): record; expect about 55 µA (the 62 µA budget minus the connection's 7 µA), investigate above 65 µA. SHIP ≤ 8 µA including PCM (board ≤ 4.5 µA) |
+| 23 | USB | Enumeration, also from a 4.5 V supply through a 1 m cable (R12 4.7 Ω leaves 28 mV over the nRF's 4.35 V VBUS minimum, hardware/sim USB-1); HID test (Windows Wheel settings, Linux `evtest`); SMP echo on CDC | Enumerates as HID + 2 CDC at both supplies; dial events in the right direction |
 | 24 | DFU | Upload over BLE and USB, test boot, confirm; forced revert test; serial recovery (press while plugging) | Swap OK; revert OK; recovery entered |
 | 25 | Final | Write factory data (serial, LED variant, shoe_x_max, calibration backup); clear logs; BQ shutdown (0x29) | Unit wakes only on USB |
 
@@ -2677,7 +3098,7 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 | M4 BLE HID | bt_hids, report map, Swift Pair, slots, pairing UX | Windows Dial menu works; macOS scroll; Android volume |
 | M5 USB + DFU | Composite USB, MCUboot with QSPI, SMP both ways, serial recovery | Test 24 |
 | M6 Power | State machine, BQ25180 driver, battery policy, sleep entry/exit | Tests 9 and 22 currents met |
-| M7 Game | Predictor, game service, app (Web Bluetooth first) | Prediction error vs actual logged over 100 spins |
+| M7 Game | Predictor, game service, app (Web Bluetooth first); NFC tag emulation and `nfc_tag` | Prediction error vs actual logged over 100 spins; a phone reads an NDEF record set from the app |
 | M8 Production | Factory sequencer, factory data, release build, APPROTECT policy | Full test table on 3 units |
 
 **Host-side unit tests** (`tests/`, ztest on `native_sim`, run in CI):
@@ -2701,9 +3122,13 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 * the W&S threshold rule, i.e. the [§4.8](#48-wake-on-rotation-wake-upsleep)
   simulation as a test;
 * predictor RLS on simulated spin-downs, with the analytic t_rem/Δθ_rem;
-* the LED limiter (token bucket, derating);
+* the LED limiter (token bucket, derating, the instantaneous lit-channel
+  budget with its VBAT rows, actuator offset and USB rule);
+* the boot rail checks (reset reason × retained rail-state record × FLAG0
+  BAT_OCP_FAULT, the VLED latch) and the OLED_VCC_EN rules at ILIM 100 mA;
 * HID report packing (int15 dial, sign, clamping, remainder carry);
-* BQ25180 register encoders (ICHG and ILIM codes);
+* BQ25180 register encoders (ICHG and ILIM codes) and the SYS_REG assert
+  (only SYS_REG_CTRL 001 or 010 accepted);
 * strength LUT inversion;
 * settings schema migration.
 
@@ -2712,23 +3137,25 @@ A pytest + pyserial script runs the sequence below and prints pass/fail.
 ## 18. Open items and to-verify list
 
 **Problems found in SPEC or in the sibling documents that affect firmware**
-(reported; SPEC stays the reference except where the sheets are ahead of it,
-item 9). Items 1 and 6 (first part) are resolved; they stay here, marked, so
-the history is traceable.
+(reported; SPEC stays the reference, and the sheets and the netlist win where
+they disagree with it). Items 1, 6 (first part) and 9 are resolved; they stay
+here, marked, so the history is traceable.
 
 1. **TPS22917 CT reference. Resolved.**
    * The TPS22917 datasheet says to connect CT to **VIN**. The `main_power`
-     sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 100 Ω
+     sheet now has C7 = 1 nF from CT to VIN (VSYS), QOD through R4 = 68 Ω
      to VLED and R3 = 100 kΩ as the ON pull-down, and SPEC §5.1 says the
      same. SPEC's "≈ 4 ms rise" is the turn-on time (tON = 3.8 µs/pF at
-     3.6 V); the 10–90 % rise is about 1.6 ms (SLVSDW8B §7.6).
+     3.6 V); the 10–90 % rise is about 1.6 ms (SLVSDW8B §7.6). R4 went from
+     100 Ω to 68 Ω so the VLED discharge (≤ 26.6 ms worst case) fits the
+     firmware's 30 ms allowance (hardware/sim, LSW-2).
    * SPEC now states that the TPS22918 (CT to GND) is *not* a drop-in, and
      §4 labels P1.04 "TPS22917 ON".
-   * The OLED boost-input switch U21 is wired the same way (C37 = 1 nF CT to
-     VIN, QOD open).
-   * Effect on firmware: the 5 ms power-on waits in [§6.4](#64-rail-sequencing)
-     and [§7.2](#72-init-sequence-and-power-sequencing) cover the ≈ 4 ms tON;
-     test 12 checks the VLED ramp.
+   * The OLED boost-input switch U21 has the same CT wiring (C37 = 1 nF CT to
+     VIN), with its QOD tied to OLED_VIN (hardware/sim, SLP-1, LSW-1).
+   * Effect on firmware: the 10 ms power-on waits in [§6.4](#64-rail-sequencing)
+     and [§7.2](#72-init-sequence-and-power-sequencing) cover the ≈ 4 ms tON
+     with margin (LED-DATA-V4, OLED-V2); test 12 checks the VLED ramp.
 2. **DRV5032 depth.** With the sensor on the top side, the die sits about
    2.4–2.8 mm above the detent-magnet face (the research recommended
    3.0–3.5 mm). My simulation gives |Bz| = 1.0–1.4 mT at full click, against
@@ -2784,22 +3211,63 @@ the history is traceable.
    * architecture.md §2 states 150 Radial Controller units per detent, while
      the MCU research recommends 100 (the Windows default is unverified).
      Firmware makes it a setting, default 100, pending a Windows test.
-7. **OLED sleep leakage.** About 5 µA leaks through the panel's VCI→VCC ESD
-   path into the 499 k/52.3 k divider, and 3.3 µA flows in the RES# pull-down.
-   Together they are about 37 % of the 32 µA sleep floor. Hardware options are
-   listed in docs/architecture.md §8.3.
+7. **OLED sleep leakage (accepted for rev A).** About 5 µA leaks through the
+   panel's VCI→VCC ESD path into the 499 k/52.3 k divider, 3.3 µA flows in the
+   RES# pull-down, and about 5.4 µA of D21 reverse leakage (about 30 µA at
+   60 °C) flows through U21's QOD. The OLED line, about 17.6 µA, is about
+   46 % of the 38 µA sleep floor ([§12.1](#121-states)). Rev-B options, not
+   done: a low-IR rectifier for D21, or the TPS61040 EN on its own GPIO with a
+   ≤ 400 kΩ pull-down and U21's QOD open (simulated 32.2 µA total; EN must not
+   rise before VIN) (hardware/sim, sleep budget). Further options are listed in
+   docs/architecture.md §8.3.
 8. **CHG_INT_N** delivers 128 µs pulses into a SENSE pin. Capture relies on
    the nRF52840 LATCH register (TVP); polling while on USB is the backstop.
-9. **SPEC behind the sheets** (reported as architecture.md §13 items 12 and
-   13). Firmware follows the sheets and the netlist:
-   * SPEC §3 and §5.3 still describe an AO3401A + 2N7002 OLED boost-input
-     disconnect. The `display` sheet has U21 TPS22917 instead (VIN = VSYS
-     with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down, C37 1 nF
-     from CT to VIN, QOD open, VOUT = OLED_VIN). Its always-on
-     reverse-current blocking (IIN,RCB ≤ 1 µA) keeps OLED_VIN from
-     back-feeding VSYS ([§3.1](#31-board-dts-draft), [§7.2](#72-init-sequence-and-power-sequencing)).
-   * SPEC §4 and §5.5 give 100 Ω per piezo side; the `sensors` sheet has
-     R57/R58 = 470 Ω plus the R59 1 MΩ bleed ([§8.1](#81-piezo)).
+9. **SPEC behind the sheets. Resolved** (reported as architecture.md §13
+   items 12 and 13). SPEC now matches the sheets and the netlist:
+   * SPEC §3 and §5.3 describe the OLED boost-input switch as U21 TPS22917
+     (VIN = VSYS with C41 10 µF, ON = OLED_VCC_EN with R25 100 kΩ pull-down,
+     C37 1 nF from CT to VIN, QOD tied to VOUT = OLED_VIN), as on the
+     `display` sheet. Its always-on reverse-current blocking
+     (IIN,RCB ≤ 1 µA) keeps OLED_VIN from back-feeding VSYS
+     ([§3.1](#31-board-dts-draft), [§7.2](#72-init-sequence-and-power-sequencing)).
+   * SPEC §4 and §5.5 give R57/R58 = 470 Ω per piezo side plus the R59 1 MΩ
+     bleed, as on the `sensors` sheet ([§8.1](#81-piezo); hardware/sim, PB-1).
+10. **Actuator thrust (still open; architecture.md risk R4).** The verified
+    worst-case load of 0.8–1.15 N exceeds the 8 mm VSM08102's thrust at any
+    battery VSYS (0.93 N best case). Cut the preloads to ≤ 0.5 N, or fall
+    back to the N20 or a Ø6 planetary gearmotor with a lead screw; the 10 mm
+    sibling's Ø10 can does not fit the 10.1 mm bowl (mechanical.md §7;
+    hardware/sim, MD-4). Firmware cannot close the gap: the 313 PPS homing
+    retries, the VSYS_est 3.54 V move threshold and the
+    temperature-compensated duty ([§5.3](#53-stepping-profile)) only keep the
+    rated current.
+11. **SPICE expected failures that depend on this document.** The suite keeps
+    strict xfails, with the old firmware values, for findings that only
+    firmware rules answer (LSW-3, NEW-1, PI-1 to PI-4, NF-1, MD-1 to MD-3,
+    VSENSE-1 to VSENSE-5, OLED-V2, OLED-BST-2, charger_ts-1/-v1, LED-DATA-V1,
+    errata 219), and next to each one a guard that runs the rule as written
+    here and passes; docs/simulation.md lists them under "Remaining strict
+    xfails". No rule is short there any more: item 12 is closed. The §1.3
+    GPIO-table drift (SLP-V1: CHG_INT_N on P1.03, NFC1/NFC2 on P0.09/P0.10) is fixed in this
+    revision, and `test_gpio_sleep_states_from_firmware_doc` passes against
+    it (hardware/sim/results/report.md).
+12. **VBAT reading margin above 3.72 V (closed; hardware/sim, VSENSE-1/4, PI-3).**
+    The flat 75 mV VREAD_MARGIN covered the worst calibrated over-read only up
+    to a true 3.72 V, because the over-read is a gain error that grows with
+    VSYS. [§12.4](#124-battery-measurement-and-low-battery-policy) now uses
+    rule R1', VBAT_est = 0.979 × calibrated reading, which covers a 2.1 %
+    over-read (the worst simulated is 2.07 % of the reading, at 3.21 V). The
+    three strict xfails of `test_read_margin_covers_over_read_with_fw_rule`
+    now pass and are retired: at 3.75 / 3.80 / 3.90 V the worst VBAT_est was
+    0.66 / 1.99 / 4.63 mV above the true value and is now 4.68 / 4.43 /
+    3.94 mV below it. Every threshold keeps its VBAT_est value, and only the
+    reading equivalents changed (the table in §12.4), except the B-variant
+    threshold of [§6.3](#63-power-limiter): at 3.91 V the R1' bound (true
+    VBAT ≥ 3.910 V) left +7.9 mV of VLED margin in the 300 mA bursts, short
+    of the 10 mV the threshold was sized for (+10.8 mV at the former true
+    3.913 V). It is now VBAT_est 3.92 V (a reading of 4.0041 V), which keeps
+    +17.85 mV at the bound itself (sustained +64.0 mV, moving +122.7 mV;
+    hardware/sim, PI-3). Nothing in this item stays open.
 
 **To verify on prototype or against documentation**
 
@@ -2818,8 +3286,26 @@ the history is traceable.
 * I2S running with SDOUT only; WS2812C V6 timing on the scope; LED per-IC
   current (0.2 mA).
 * The U2 (VLED) and U21 (OLED_VIN) turn-on ramps (tON about 4 ms with
-  1 nF CT) and the VLED QOD fall (about 27 ms), against the 5 ms and 30 ms
-  waits of [§3.1](#31-board-dts-draft) and [§6.4](#64-rail-sequencing).
+  1 nF CT) and the VLED QOD fall (about 24 ms nominal, ≤ 26.6 ms worst case;
+  the datasheet tFALL row implies an internal QOD of about 170 Ω, NEW-4),
+  against the 10 ms and 30 ms waits of [§3.1](#31-board-dts-draft) and
+  [§6.4](#64-rail-sequencing). U21's temperature and the VSYS sag at the
+  first OLED enable (≈ 0.3 A for ~2 ms, LSW-4); FB with the OLED off
+  (0.26–0.29 V against the TPS61040's 0.3 V abs max, LSW-1).
+* LED PWM phase alignment of the summed ring current after power-up, which
+  sets whether the instantaneous budget of [§6.3](#63-power-limiter) can be
+  relaxed (PI-2).
+* I2C with the errata-219 settings: tLOW at U30 pin 1 and U31 pin 1; SCL rise
+  time at J3 (above 250 ns, run TWIM1 at 100 kHz); SDA-to-SCL setup at
+  U31 and J3 (if short, also 100 kHz); SCL/SDA ringing at J3
+  (hardware/sim, NF-1, PB-2, NF-2, NF-3).
+* NFC: read range through the top cover and the C16/C17 retune; the NCS NFC
+  Kconfig and API names; whether T2T and T4T link into one image; which
+  TIMER the nrfx NFCT driver claims ([§9.7](#97-nfc-tag-emulation)).
+* Whether the retained rail-state record survives a BATOCP or brown-out
+  collapse ([§15](#15-fault-handling)).
+* The RT9080's ground current at the ≈ 20 µA sleep load (LDO-6; the TPS7A0233
+  is the alternate).
 * Piezo sound level with the 470 Ω series resistors.
 * The SSD1351 VCC-to-AFh delay (vendor 200 ms); the A0h remap for the actual
   mounting; SPI edge rates (tR/tF ≤ 15 ns); the anomaly-198 carve-out with
@@ -2831,14 +3317,16 @@ the history is traceable.
   detent); Swift Pair with RPA privacy; directed advertising per OS; whether
   Windows accepts peripheral latency 30.
 * GATT authorization callback availability in the NCS version used.
-* Stepper thrust above 500 PPS at VSYS 3.4–4.2 V; stroke time; HOME edge
+* Stepper thrust above 500 PPS at VSYS 3.54–4.2 V; stroke time; HOME edge
   repeatability and drift with temperature (the ±10-step margin of §5.4);
   homing time; that repeated 50 % stalls at the park stop do not wear or jam
   the nut.
 * Bearing friction, spin-down priors, friction-shoe engagement offset and
   torque.
-* BQ25180 SYS_MODE and CHG_DIS fields for USB suspend; ship entry with VBUS
-  present; WAKE-flag interrupt behaviour.
+* BQ25180 ship entry with VBUS present; WAKE-flag interrupt behaviour;
+  whether a press while charging sets TS_FAULT or pulses /INT
+  (charger_ts-v2). (The SYS_MODE and CHG_DIS fields for USB suspend are now
+  taken from SLUSE99C Table 8-19 and ICHG_CTRL bit 7, [§13.3](#133-input-current-strategy-on-usb).)
 * LIS2DW12 register bit fields, current at 3.3 V, and tap thresholds through
   the floating assembly.
 * Flick-artifact press-rejection thresholds.
@@ -2850,6 +3338,8 @@ the history is traceable.
 
 * SPEC and nets: `hardware/design/SPEC.md`, `hardware/design/nets.py`;
   docs/architecture.md.
+* SPICE suite: `hardware/sim` (tests and `results/report.md`), described in
+  docs/simulation.md; the finding ids cited above come from its tests.
 * Subsystem research and verifier reports (session scratchpad,
   `research/<key>.full.json`): sensing, detent, display, leds, power,
   mcu_rf_fw, mechanical. The corrected values are used throughout.

@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(HW, "tools"))
 import fab  # noqa: E402
 import jlc_cpl  # noqa: E402
 
-BOARDS = {"main": 4, "base": 2}
+BOARDS = {"main": 4, "base": 4}
 
 
 def render3d(pcb, png, side, zoom=1.0):

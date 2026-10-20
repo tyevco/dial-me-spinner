@@ -331,8 +331,34 @@ class BoardBuilder:
         """Save; zone filling only works on a board loaded from disk, so reload first."""
         self.board.SetFileName(path)
         pcbnew.SaveBoard(path, self.board)
+        unique_uuids(path)
         if fill:
             refill(path)
+
+
+def unique_uuids(path):
+    """Give every repeated UUID in a saved board a fresh one. Footprints copied from a library keep the library's
+    pad and graphic UUIDs, so every 0402 shares its pad UUIDs with every other; KiCad's DRC report then resolves a
+    violating pad to the wrong part. Deterministic (uuid5 of the reference and position in the file)."""
+    import uuid as _uuid
+    lines = open(path).read().split("\n")
+    seen, ref, changed = set(), "", 0
+    for i, ln in enumerate(lines):
+        st = ln.lstrip()
+        if st.startswith('(property "Reference" "'):
+            ref = st.split('"')[3]
+        elif st.startswith('(uuid "'):
+            u = st.split('"')[1]
+            if u in seen:
+                nu = str(_uuid.uuid5(_uuid.NAMESPACE_URL, f"dial-me-spinner/{os.path.basename(path)}/{ref}/{i}"))
+                lines[i] = ln.replace(u, nu)
+                u = nu
+                changed += 1
+            seen.add(u)
+    if changed:
+        with open(path, "w") as f:
+            f.write("\n".join(lines))
+    return changed
 
 
 def refill(path):
@@ -343,7 +369,14 @@ def refill(path):
 
 
 def export_dsn(pcb_path, dsn_path):
+    """Specctra DSN for Freerouting.  KiCad exports every rule area as a full keepout, so the pour-only ones (no copper
+    pour, tracks/vias/pads allowed, e.g. the antenna and magnet-track pour bands) are dropped from the in-memory board
+    first; otherwise the router may not run tracks through them or reach pads inside them.  The file is not saved."""
     b = pcbnew.LoadBoard(pcb_path)
+    for z in list(b.Zones()):
+        if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour() and not (
+                z.GetDoNotAllowTracks() or z.GetDoNotAllowVias() or z.GetDoNotAllowPads()):
+            b.Delete(z)
     if not pcbnew.ExportSpecctraDSN(b, dsn_path):
         raise RuntimeError("DSN export failed")
 
@@ -505,6 +538,8 @@ def stitch_vias(b, net_name="GND", pitch=3.0, via=0.5, drill=0.25, clearance=0.2
         for p in pads:
             if p.GetNetCode() != code and p.HitTest(pt, acc):
                 return False
+            if p.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN) and p.HitTest(pt, rv + MM(0.05)):
+                return False
         for p in holes:  # hole-to-hole spacing applies to every net
             if (p.GetPosition() - pt).EuclideanNorm() < MM(drill / 2 + 0.25) + p.GetDrillSize().x // 2:
                 return False
@@ -533,6 +568,118 @@ def stitch_vias(b, net_name="GND", pitch=3.0, via=0.5, drill=0.25, clearance=0.2
         tracks.append(v)
         added += 1
     return added
+
+
+def fanout_vias(b, net_name="GND", pads=None, via=0.5, drill=0.25, track=0.25, clearance=0.15, max_dist=2.2,
+                lock=True):
+    """Give each SMD pad of the net (or just `pads`) a through via with a short track on the pad's layer, so the
+    pad reaches the inner plane.  A pad that already has a same-net via within reach of its own edge gets only the
+    track.  Each candidate spot is checked against every other-net pad, track and via on every layer it touches,
+    the via/track rule areas and hole-to-hole spacing.  Returns (pads done, pads left without a spot)."""
+    net = b.GetNetInfo().GetNetItem(net_name)
+    if net is None:
+        return 0, []
+    code = net.GetNetCode()
+    cu = [lay for lay in (pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu) if b.IsLayerEnabled(lay)]
+    tracks = list(b.GetTracks())
+    allpads = [pd for fp in b.GetFootprints() for pd in fp.Pads()]
+    holes = [pd for pd in allpads if pd.GetDrillSize().x > 0]
+    vias = [t for t in tracks if t.Type() == pcbnew.PCB_VIA_T]
+    rules = [z for z in b.Zones() if z.GetIsRuleArea()]
+    rv, hw, clr = MM(via / 2), MM(track / 2), MM(clearance)
+    if pads is None:
+        pads = [pd for pd in allpads if pd.GetNetCode() == code and pd.GetDrillSize().x == 0
+                and (pd.IsOnLayer(pcbnew.F_Cu) or pd.IsOnLayer(pcbnew.B_Cu))]
+
+    def via_ok(pt):
+        for z in rules:
+            if z.GetDoNotAllowVias() and z.Outline().Collide(pt, int(rv + clr)):
+                return False
+        acc = rv + clr
+        for t in tracks:
+            if t.GetNetCode() != code and t.HitTest(pt, acc):
+                return False
+        for pd in allpads:
+            if pd.GetNetCode() != code and any(pd.IsOnLayer(lay) for lay in cu) and pd.HitTest(pt, acc):
+                return False
+            # no via ring on any SMD / connector pad, even of the same net: an open via in a pad wicks the solder
+            if pd.GetAttribute() in (pcbnew.PAD_ATTRIB_SMD, pcbnew.PAD_ATTRIB_CONN) and pd.HitTest(pt, rv + MM(0.05)):
+                return False
+        for h in holes:  # drill-to-drill 0.25 mm, and via copper to a (NPTH) hole edge 0.25 mm
+            if (h.GetPosition() - pt).EuclideanNorm() < max(MM(drill / 2), rv) + MM(0.25) + h.GetDrillSize().x // 2:
+                return False
+        for v in vias:
+            if (v.GetStart() - pt).EuclideanNorm() < MM(drill / 2 + 0.25) + v.GetDrillValue() // 2:
+                return False
+        return True
+
+    def seg_ok(a, c, layer, own):
+        n = max(2, int((c - a).EuclideanNorm() / MM(0.05)))
+        for k in range(1, n + 1):
+            q = pcbnew.VECTOR2I(a.x + (c.x - a.x) * k // n, a.y + (c.y - a.y) * k // n)
+            for z in rules:
+                if z.GetDoNotAllowTracks() and z.IsOnLayer(layer) and z.Outline().Collide(q, int(hw + clr)):
+                    return False
+            for t in tracks:
+                if t.GetNetCode() != code and t.IsOnLayer(layer) and t.HitTest(q, hw + clr):
+                    return False
+            for pd in allpads:
+                if pd is not own and pd.GetNetCode() != code and pd.IsOnLayer(layer) and pd.HitTest(q, hw + clr):
+                    return False
+        return True
+
+    def add_track(a, c, layer):
+        t = pcbnew.PCB_TRACK(b)
+        t.SetStart(a)
+        t.SetEnd(c)
+        t.SetWidth(MM(track))
+        t.SetLayer(layer)
+        t.SetNet(net)
+        t.SetLocked(lock)
+        b.Add(t)
+        tracks.append(t)
+
+    done, left = 0, []
+    for pd in pads:
+        layer = pcbnew.F_Cu if pd.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
+        c0 = pd.GetPosition()
+        reach = max(pd.GetSize().x, pd.GetSize().y) // 2
+        # an existing same-net via close by: just connect to it
+        near = sorted((v for v in vias if v.GetNetCode() == code),
+                      key=lambda v: (v.GetStart() - c0).EuclideanNorm())
+        if near and (near[0].GetStart() - c0).EuclideanNorm() <= reach + MM(1.0):
+            # the via's copper must really overlap the pad (a narrow pad's half-length is not a radius)
+            touching = pd.HitTest(near[0].GetStart(), near[0].GetWidth(pcbnew.F_Cu) // 2 - MM(0.02))
+            if touching or seg_ok(c0, near[0].GetStart(), layer, pd):
+                if not touching:
+                    add_track(c0, near[0].GetStart(), layer)
+                done += 1
+                continue
+        found = None
+        d = reach + rv + clr
+        while d <= reach + MM(max_dist) and not found:
+            for k in range(24):
+                a = 2 * math.pi * k / 24
+                pt = c0 + pcbnew.VECTOR2I(int(d * math.cos(a)), int(d * math.sin(a)))
+                if via_ok(pt) and seg_ok(c0, pt, layer, pd):
+                    found = pt
+                    break
+            d += MM(0.1)
+        if not found:
+            left.append(pd)
+            continue
+        v = pcbnew.PCB_VIA(b)
+        v.SetPosition(found)
+        v.SetWidth(MM(via))
+        v.SetDrill(MM(drill))
+        v.SetNet(net)
+        v.SetLocked(lock)
+        b.Add(v)
+        tracks.append(v)
+        vias.append(v)
+        add_track(c0, found, layer)
+        done += 1
+    return done, left
 
 
 def dedupe_tracks(b):

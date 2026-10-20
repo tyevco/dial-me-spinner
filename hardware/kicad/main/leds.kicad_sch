@@ -1008,7 +1008,7 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "48x WS2812C-2020-V6 (5 mA/ch) on VLED = TPS22917 load-switch output (main_power sheet, 2x 22 uF bulk there).\nData: nRF P0.06 (I2S SDOUT) = LED_DIN_MCU -> R40 220R -> LED_DIN -> D101 -> LED_D1 -> D102 -> ... -> D148 -> LED_D48 (TP40).\nD101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic; DNP SN74LV1T34 option (U43/R43) if the margin is short.\nWS2812B-2020-V6 (C52917434, 12 mA/ch) is a footprint/pinout drop-in; firmware must then cap peak current."
+	(text "48x WS2812C-2020-V6 (5 mA/ch) on VLED = TPS22917 load-switch output (main_power sheet, 2x 22 uF bulk there).\nData: nRF P0.06 (I2S SDOUT, H0H1 drive) = LED_DIN_MCU -> R40 220R -> LED_DIN_R (R41) -> R43 0R -> LED_DIN -> D101 -> ... -> D148 (TP40).\nD101 = pixel 0 at the mechanical index; pixels run in chain order around the ring. 3.3 V logic; DNP SN74LV1T34 option (U43/R43) if the margin is short.\nWS2812B-2020-V6 (C52917434, 12 mA/ch) is a footprint/pinout drop-in; firmware must then cap peak current."
 		(exclude_from_sim no)
 		(at 15.24 20.32 0)
 		(effects
@@ -1031,7 +1031,7 @@
 		)
 		(uuid "96eb3588-9575-50b3-81e1-6677aa7a3c29")
 	)
-	(text "220R series (bounds DIN clamp current if P0.06 is high while VLED is off): place within 3 mm of the nRF pin (P0.06).\n100k pull-down at D101.DIN holds DIN low while P0.06 is\nhigh-Z (reset/DFU). FIRMWARE: send an all-zero frame and\ndrive P0.06 low (pinctrl sleep) before deasserting\nLED_PWR_EN. Never drive LED_DIN_MCU high while VLED is off:\nQOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\nwould back-power the ring through its ESD diode."
+	(text "220R series (bounds DIN clamp current if P0.06 is high while VLED is off): place within 3 mm of the nRF pin (P0.06).\n100k pull-down R41 on LED_DIN_R holds DIN low while P0.06 is\nhigh-Z (reset/DFU). FIRMWARE: send an all-zero frame and\ndrive P0.06 low (pinctrl sleep) before deasserting\nLED_PWR_EN; after raising it, wait >= 10 ms with P0.06 low.\nNever drive LED_DIN_MCU high while VLED is off:\nQOD holds VLED at 0 V and VI max = VDD + 0.7 V, so DIN\nwould back-power the ring through its ESD diode."
 		(exclude_from_sim no)
 		(at 15.24 40.64 0)
 		(effects
@@ -1045,7 +1045,7 @@
 	)
 	(rectangle
 		(start 12.7 34.29)
-		(end 133.35 71.12)
+		(end 133.35 73.66)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -1067,7 +1067,7 @@
 		)
 		(uuid "9529a951-1f22-5832-9ec6-1d4571b4aac0")
 	)
-	(text "Default: R43 0R fitted, U43 not fitted (3.3 V drive; margin 0.1-0.2 V at VSYS 4.5 V on USB).\nIf the bench test at VSYS = 4.6 V shows bit errors: remove R43, fit U43 (powered from VLED,\nso it is unpowered whenever the ring is off) and C43."
+	(text "Default: R43 0R fitted, U43 not fitted (3.3 V drive; DC margin over 0.6 VDD +427 mV typical, +41 mV\ndatasheet bound at VSYS 4.59 V, so SYS_REG stays 4.4 V and the D101-D148 must be V6 parts).\nIf the bench test at VSYS = 4.6 V shows bit errors: remove R43, fit U43 (powered from VLED,\nso it is unpowered whenever the ring is off) and C43."
 		(exclude_from_sim no)
 		(at 140.97 40.64 0)
 		(effects
@@ -1081,7 +1081,7 @@
 	)
 	(rectangle
 		(start 138.43 34.29)
-		(end 271.78 99.06)
+		(end 271.78 100.33)
 		(stroke
 			(width 0.1)
 			(type dash)
@@ -1273,7 +1273,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 35.56 63.5 90)
+		(at 35.56 66.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1281,7 +1281,7 @@
 		(dnp no)
 		(uuid "d12f77f8-d0ff-5c54-9a5e-01ceb06f9361")
 		(property "Reference" "R40"
-			(at 35.56 60.884 90)
+			(at 35.56 63.424 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1289,7 +1289,7 @@
 			)
 		)
 		(property "Value" "220"
-			(at 35.56 66.116 90)
+			(at 35.56 68.656 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1297,7 +1297,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1306,7 +1306,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1315,7 +1315,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1324,7 +1324,7 @@
 			)
 		)
 		(property "MPN" "0402WGF2200TCE"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1333,7 +1333,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1342,7 +1342,7 @@
 			)
 		)
 		(property "LCSC" "C25091"
-			(at 35.56 63.5 0)
+			(at 35.56 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1366,7 +1366,7 @@
 		)
 	)
 	(wire
-		(pts (xy 31.75 63.5) (xy 29.21 63.5))
+		(pts (xy 31.75 66.04) (xy 29.21 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -1375,7 +1375,7 @@
 	)
 	(global_label "LED_DIN_MCU"
 		(shape passive)
-		(at 29.21 63.5 180)
+		(at 29.21 66.04 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -1385,7 +1385,7 @@
 		)
 		(uuid "36043475-da8c-54ff-a910-81c3f919f43a")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 29.21 63.5 180)
+			(at 29.21 66.04 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1396,7 +1396,7 @@
 		)
 	)
 	(wire
-		(pts (xy 39.37 63.5) (xy 41.91 63.5))
+		(pts (xy 39.37 66.04) (xy 41.91 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -1404,7 +1404,7 @@
 		(uuid "21f890e3-2688-532d-b300-558bbb3145f3")
 	)
 	(label "LED_DIN_R"
-		(at 41.91 63.5 0)
+		(at 41.91 66.04 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1415,7 +1415,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 78.74 63.5 90)
+		(at 78.74 66.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1423,7 +1423,7 @@
 		(dnp no)
 		(uuid "03e504a3-e004-5c5f-88cb-4492039c6c4c")
 		(property "Reference" "R41"
-			(at 78.74 60.884 90)
+			(at 78.74 63.424 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1431,7 +1431,7 @@
 			)
 		)
 		(property "Value" "100k"
-			(at 78.74 66.116 90)
+			(at 78.74 68.656 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1439,7 +1439,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1448,7 +1448,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1457,7 +1457,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1466,7 +1466,7 @@
 			)
 		)
 		(property "MPN" "0402WGF1003TCE"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1475,7 +1475,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1484,7 +1484,7 @@
 			)
 		)
 		(property "LCSC" "C25741"
-			(at 78.74 63.5 0)
+			(at 78.74 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1508,7 +1508,7 @@
 		)
 	)
 	(wire
-		(pts (xy 74.93 63.5) (xy 72.39 63.5))
+		(pts (xy 74.93 66.04) (xy 72.39 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -1516,7 +1516,7 @@
 		(uuid "b2037e2d-15d1-561d-8941-d2fdb64adf42")
 	)
 	(label "LED_DIN_R"
-		(at 72.39 63.5 180)
+		(at 72.39 66.04 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1526,7 +1526,7 @@
 		(uuid "33c185a0-7e3f-5a02-886f-2bd4156eff67")
 	)
 	(wire
-		(pts (xy 82.55 63.5) (xy 85.09 63.5))
+		(pts (xy 82.55 66.04) (xy 85.09 66.04))
 		(stroke
 			(width 0)
 			(type default)
@@ -1535,7 +1535,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 85.09 63.5 90)
+		(at 85.09 66.04 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1543,7 +1543,7 @@
 		(dnp no)
 		(uuid "6e9266ac-d8fc-5318-a9b4-2885df64e1d6")
 		(property "Reference" "#PWR05001"
-			(at 85.09 63.5 0)
+			(at 85.09 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1552,7 +1552,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 88.39 63.5 90)
+			(at 88.39 66.04 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1561,7 +1561,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 85.09 63.5 0)
+			(at 85.09 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1570,7 +1570,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 85.09 63.5 0)
+			(at 85.09 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1579,7 +1579,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 85.09 63.5 0)
+			(at 85.09 66.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1601,7 +1601,7 @@
 	)
 	(symbol
 		(lib_id "Device:R")
-		(at 160.02 55.88 90)
+		(at 160.02 58.42 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1609,7 +1609,7 @@
 		(dnp no)
 		(uuid "da880a79-cbe6-55bb-88b3-b8bfbc24ab4f")
 		(property "Reference" "R43"
-			(at 160.02 53.264 90)
+			(at 160.02 55.804 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1617,7 +1617,7 @@
 			)
 		)
 		(property "Value" "0"
-			(at 160.02 58.496 90)
+			(at 160.02 61.036 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1625,7 +1625,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1634,7 +1634,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1643,7 +1643,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1652,7 +1652,7 @@
 			)
 		)
 		(property "MPN" "0402WGF0000TCE"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1661,7 +1661,7 @@
 			)
 		)
 		(property "Manufacturer" "UNI-ROYAL"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1670,7 +1670,7 @@
 			)
 		)
 		(property "LCSC" "C17168"
-			(at 160.02 55.88 0)
+			(at 160.02 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1694,7 +1694,7 @@
 		)
 	)
 	(wire
-		(pts (xy 156.21 55.88) (xy 153.67 55.88))
+		(pts (xy 156.21 58.42) (xy 153.67 58.42))
 		(stroke
 			(width 0)
 			(type default)
@@ -1702,7 +1702,7 @@
 		(uuid "ff6002d1-2f84-514a-a6ce-3eb5ea6b085d")
 	)
 	(label "LED_DIN_R"
-		(at 153.67 55.88 180)
+		(at 153.67 58.42 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1712,7 +1712,7 @@
 		(uuid "9ac109fb-5788-526b-83cb-703f34b03a62")
 	)
 	(wire
-		(pts (xy 163.83 55.88) (xy 166.37 55.88))
+		(pts (xy 163.83 58.42) (xy 166.37 58.42))
 		(stroke
 			(width 0)
 			(type default)
@@ -1720,7 +1720,7 @@
 		(uuid "713ad8c7-959f-59a2-b8ee-a6f1c7953bfb")
 	)
 	(label "LED_DIN"
-		(at 166.37 55.88 0)
+		(at 166.37 58.42 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1731,7 +1731,7 @@
 	)
 	(symbol
 		(lib_id "74xGxx:74LVC1G34")
-		(at 213.36 73.66 0)
+		(at 213.36 76.2 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1739,7 +1739,7 @@
 		(dnp yes)
 		(uuid "b491743e-1f2a-57a7-bf39-36d01fc6add5")
 		(property "Reference" "U43"
-			(at 198.12 60.2 0)
+			(at 198.12 62.74 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1748,7 +1748,7 @@
 			)
 		)
 		(property "Value" "SN74LV1T34DBVR"
-			(at 198.12 62.5 0)
+			(at 198.12 65.04 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1757,7 +1757,7 @@
 			)
 		)
 		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1766,7 +1766,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lv1t34.pdf"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1775,7 +1775,7 @@
 			)
 		)
 		(property "Description" "Single buffer, 1.8-5.5 V, TTL-level input (level-up translator), DNP option"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1784,7 +1784,7 @@
 			)
 		)
 		(property "MPN" "SN74LV1T34DBVR"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1793,7 +1793,7 @@
 			)
 		)
 		(property "Manufacturer" "Texas Instruments"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1802,7 +1802,7 @@
 			)
 		)
 		(property "LCSC" "C100024"
-			(at 213.36 73.66 0)
+			(at 213.36 76.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1835,7 +1835,7 @@
 		)
 	)
 	(wire
-		(pts (xy 198.12 73.66) (xy 195.58 73.66))
+		(pts (xy 198.12 76.2) (xy 195.58 76.2))
 		(stroke
 			(width 0)
 			(type default)
@@ -1843,7 +1843,7 @@
 		(uuid "11901fa2-645c-52ee-b54b-7a687fb2c56f")
 	)
 	(label "LED_DIN_R"
-		(at 195.58 73.66 180)
+		(at 195.58 76.2 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1853,7 +1853,7 @@
 		(uuid "aca3a3b9-c928-51f8-9a57-87be05a2db82")
 	)
 	(wire
-		(pts (xy 208.28 63.5) (xy 208.28 60.96))
+		(pts (xy 208.28 66.04) (xy 208.28 63.5))
 		(stroke
 			(width 0)
 			(type default)
@@ -1862,7 +1862,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 208.28 60.96 0)
+		(at 208.28 63.5 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1870,7 +1870,7 @@
 		(dnp no)
 		(uuid "3c1d493e-e733-518c-aa9b-c3166502704d")
 		(property "Reference" "#PWR05002"
-			(at 208.28 60.96 0)
+			(at 208.28 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1879,7 +1879,7 @@
 			)
 		)
 		(property "Value" "VLED"
-			(at 208.28 57.66 0)
+			(at 208.28 60.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1888,7 +1888,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 208.28 60.96 0)
+			(at 208.28 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1897,7 +1897,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 208.28 60.96 0)
+			(at 208.28 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1906,7 +1906,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 208.28 60.96 0)
+			(at 208.28 63.5 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1927,7 +1927,7 @@
 		)
 	)
 	(wire
-		(pts (xy 208.28 83.82) (xy 208.28 86.36))
+		(pts (xy 208.28 86.36) (xy 208.28 88.9))
 		(stroke
 			(width 0)
 			(type default)
@@ -1936,7 +1936,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 208.28 86.36 0)
+		(at 208.28 88.9 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -1944,7 +1944,7 @@
 		(dnp no)
 		(uuid "c64420a0-5031-51c3-b68d-88a14f87085a")
 		(property "Reference" "#PWR05003"
-			(at 208.28 86.36 0)
+			(at 208.28 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1953,7 +1953,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 208.28 89.66 0)
+			(at 208.28 92.2 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1962,7 +1962,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 208.28 86.36 0)
+			(at 208.28 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1971,7 +1971,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 208.28 86.36 0)
+			(at 208.28 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -1980,7 +1980,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 208.28 86.36 0)
+			(at 208.28 88.9 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2001,11 +2001,11 @@
 		)
 	)
 	(no_connect
-		(at 210.82 83.82)
+		(at 210.82 86.36)
 		(uuid "fd3df83a-9db3-54f5-8837-1cf1971b629a")
 	)
 	(wire
-		(pts (xy 226.06 73.66) (xy 228.6 73.66))
+		(pts (xy 226.06 76.2) (xy 228.6 76.2))
 		(stroke
 			(width 0)
 			(type default)
@@ -2013,7 +2013,7 @@
 		(uuid "154e328f-f956-54af-ad47-ef6e503a2c58")
 	)
 	(label "LED_DIN"
-		(at 228.6 73.66 0)
+		(at 228.6 76.2 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -2024,7 +2024,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 256.54 55.88 90)
+		(at 256.54 58.42 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -2032,7 +2032,7 @@
 		(dnp yes)
 		(uuid "ccb8405a-5a03-5434-a979-59cad8e24d5f")
 		(property "Reference" "C43"
-			(at 256.54 52.248 90)
+			(at 256.54 54.788 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2040,7 +2040,7 @@
 			)
 		)
 		(property "Value" "100n"
-			(at 256.54 59.512 90)
+			(at 256.54 62.052 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2048,7 +2048,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2057,7 +2057,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2066,7 +2066,7 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2075,7 +2075,7 @@
 			)
 		)
 		(property "MPN" "CL05B104KO5NNNC"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2084,7 +2084,7 @@
 			)
 		)
 		(property "Manufacturer" "Samsung Electro-Mechanics"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2093,7 +2093,7 @@
 			)
 		)
 		(property "LCSC" "C1525"
-			(at 256.54 55.88 0)
+			(at 256.54 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2117,7 +2117,7 @@
 		)
 	)
 	(wire
-		(pts (xy 252.73 55.88) (xy 250.19 55.88))
+		(pts (xy 252.73 58.42) (xy 250.19 58.42))
 		(stroke
 			(width 0)
 			(type default)
@@ -2126,7 +2126,7 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
-		(at 250.19 55.88 90)
+		(at 250.19 58.42 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -2134,7 +2134,7 @@
 		(dnp no)
 		(uuid "84f4f3d3-dd8b-5cd2-adbb-d9ef0795404e")
 		(property "Reference" "#PWR05004"
-			(at 250.19 55.88 0)
+			(at 250.19 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2143,7 +2143,7 @@
 			)
 		)
 		(property "Value" "VLED"
-			(at 246.89 55.88 90)
+			(at 246.89 58.42 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2152,7 +2152,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 250.19 55.88 0)
+			(at 250.19 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2161,7 +2161,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 250.19 55.88 0)
+			(at 250.19 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2170,7 +2170,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 250.19 55.88 0)
+			(at 250.19 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2191,7 +2191,7 @@
 		)
 	)
 	(wire
-		(pts (xy 260.35 55.88) (xy 262.89 55.88))
+		(pts (xy 260.35 58.42) (xy 262.89 58.42))
 		(stroke
 			(width 0)
 			(type default)
@@ -2200,7 +2200,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 262.89 55.88 90)
+		(at 262.89 58.42 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -2208,7 +2208,7 @@
 		(dnp no)
 		(uuid "0719568d-a6e9-5469-8a9e-1c254e6674db")
 		(property "Reference" "#PWR05005"
-			(at 262.89 55.88 0)
+			(at 262.89 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2217,7 +2217,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 266.19 55.88 90)
+			(at 266.19 58.42 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2226,7 +2226,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 262.89 55.88 0)
+			(at 262.89 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2235,7 +2235,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 262.89 55.88 0)
+			(at 262.89 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2244,7 +2244,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 262.89 55.88 0)
+			(at 262.89 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)

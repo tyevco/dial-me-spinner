@@ -26,12 +26,21 @@ jobs:
           python-version: '3.12'
 
       - name: SPICE suite (results page)
+        timeout-minutes: 20
+        continue-on-error: true
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ngspice
           python -m pip install -q pytest numpy scipy
-          # the report is published even when a check fails; the Simulation workflow is the gate
-          python -m pytest hardware/sim -q -m "not slow" || true
-          test -f hardware/sim/results/report.md || printf '# SPICE suite results\n\nNo results were produced in this build.\n' > hardware/sim/results/report.md
+          # the report is published even when a check fails; the Simulation workflow is the gate.  The run is cut
+          # off before the step limit so the report (written at session end) still exists when it is slow.
+          timeout -s INT -k 60 17m python -m pytest hardware/sim -q -m "not slow" || true   # INT: pytest still writes the report
+
+      - name: SPICE results page placeholder
+        if: always()
+        run: |
+          # the docs link to this page; a build without results must still have it
+          mkdir -p hardware/sim/results
+          test -f hardware/sim/results/report.md || printf '# SPICE suite results\n\nNo results were produced in this build (see the Simulation workflow).\n' > hardware/sim/results/report.md
 
       - uses: actions/setup-node@v4
         with:

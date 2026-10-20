@@ -266,7 +266,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": -1,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.4,
+        "track_width": 0.3,
         "via_diameter": 0.5,
         "via_drill": 0.25,
         "wire_width": 6
@@ -284,7 +284,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": -1,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.4,
+        "track_width": 0.3,
         "via_diameter": 0.5,
         "via_drill": 0.25,
         "wire_width": 6
@@ -332,6 +332,15 @@
     "legacy_lib_dir": "",
     "legacy_lib_list": []
   },
-  "sheets": [],
+  "sheets": [
+    [
+      "fc48ae6b-820c-5234-a46b-1ec97c7946cc",
+      "Root"
+    ],
+    [
+      "d20f7d1f-e3e6-57be-a424-dcd2e3160d7e",
+      "Base board"
+    ]
+  ],
   "text_variables": {}
 }

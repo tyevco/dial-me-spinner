@@ -7,8 +7,10 @@
 *             to node 0 inside subcircuits, which would short the main-board ground to the base ground).
 *
 * MODELLED (defaults are the datasheet typicals; the tests pass min/max corner values as params):
-*   VSYSREG  4.5 V    SYS regulation target, SYS_REG = 0x40 (Table 8-3, Table 8-19); accuracy +/-2 %
-*                     (7.5 VSYS_REG_ACCURACY) -> tests use 4.41 / 4.59 V corners
+*   VSYSREG  4.5 V    SYS regulation target: default = the POR value, SYS_REG_CTRL = 010 (Table 8-3, Table 8-19);
+*                     the firmware writes SYS_REG = 0x20 (SYS_REG_CTRL = 001, 4.4 V; docs/firmware.md 13.1), and
+*                     4.5 V is the only other allowed value; accuracy +/-2 % (7.5 VSYS_REG_ACCURACY) -> the tests
+*                     pass 4.312 / 4.4 V on the minimum side and 4.59 V (4.5 V + 2 %) on the maximum side
 *   ILIM     0.475 A  input current limit, TMR_ILIM 500 mA code: 450 / 475 / 498 mA (7.5 ILIM);
 *                     100 mA code: 80 / 90 / 98 mA
 *   RON_IN   0.27 Ohm input FET IN->SYS, 270 typ / 470 max mOhm at 1 A (7.5 RON_IN)

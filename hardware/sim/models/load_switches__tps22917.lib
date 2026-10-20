@@ -3,52 +3,53 @@
 * =====================================================================================================
 * Part      : Texas Instruments TPS22917DBVR (SOT-23-6, active-high ON), LCSC C2681320
 * Datasheet : https://www.ti.com/lit/ds/symlink/tps22917.pdf  SLVSDW8B (Sept 2017, revised Dec 2021)
-* Source    : TI "TPS22917 Unencrypted PSpice Transient Model", SLVMCE8 (https://www.ti.com/lit/zip/SLVMCE8),
-*             file TPS22917_TRANS.LIB, "Final 1.00", 14DEC2017, (C) 2017 Texas Instruments.
-*             The vendor netlist is reproduced below element for element.  The ONLY changes are syntax
-*             translations from PSpice to native ngspice-42 (no ngbehavior=ps needed):
-*               - PSpice VSWITCH  -> XSPICE aswitch with log=TRUE limit=TRUE (same Von/Voff/Ron/Roff;
-*                 this is exactly the translation ngspice's own PSpice-compat mode performs)
-*               - E/G "TABLE {x} ((x,y)...)" -> B-source pwl(x, ...) (same breakpoints, clamped ends)
-*               - E "VALUE {IF(c,a,b)}" -> B-source; every ideal logic step (gates, latch, comparators,
-*                 enables) written as 0.5*(1+tanh(x/w)) with w = 50 mV on the 0/1 V logic nodes and w = 1 mV
-*                 on the comparator inputs (same thresholds and levels; ngspice otherwise stalls with
-*                 "timestep too small" at switching events that PSpice steps over)
-*               - RVAR POLY(2) multiplier -> B-source product (identical function)
-*               - "TC=0,0" dropped (zero anyway); duplicate .MODEL PMOS01/DD and the duplicate
-*                 SRLATCHRHP_BASIC_GEN definition removed; all sub-circuit and model names prefixed
-*                 "lsw17_" so this file can share a deck with other circuits' models.
+* Base      : TI "TPS22917 Unencrypted PSpice Transient Model", SLVMCE8 (https://www.ti.com/lit/zip/SLVMCE8),
+*             TPS22917_TRANS.LIB "Final 1.00" 14DEC2017 (the SLVMCE9A package carries the identical netlist).
 *             Pin order kept as TI's: CT GND ON QOD VIN VOUT.
 *
-* What the vendor model covers (TI usage note 1) and how it compares with SLVSDW8B
-* (tests/test_load_switches.py::test_model_* re-measure these against the datasheet every run):
-*   - Turn-on: CT pin = PMOS01 gate; gate pulled down by ITD ~3.3-4.5 uA (VIN table) until VSG = 0.5 V,
-*     then IGATE ~0.8-1.1 uA; the external CT capacitor goes CT->VIN (datasheet pin table, Table 6-1).
-*     -> tON / tR / SRON vs CT of Table 7.6 (tR 1.6 us/pF @3.6 V, 1.8 us/pF @5 V; tON 3.8 / 4 us/pF).
-*   - RON vs VIN: PMOS01 (kp 9.75, vto -0.5) + RVAR 0.22-52 mOhm (VIN table) -> Table 7.5 RON 25 C.
-*   - QOD: internal 144-195 Ohm (VIN table) switched to GND while disabled -> Table 7.5 "QOD 150 Ohm".
-*   - ON pin: comparator, rising threshold 0.62-0.71 V (VIN table), hysteresis 30-70 mV (Figure 7-5);
-*     smart pull-down RPD 750 kOhm connected while the comparator reads low (Table 7.5 RPD, Table 9-1);
-*     10 nA sink while high (Table 7.5 ION).
-*   - tOFF ~ 6 us internal delay (Table 7.6 tOFF 10 us); RCB comparator 0.2-0.64 A (VIN table, Table 7.5
-*     IRCB -0.5 A typ) with 10 us delay (tRCB) and reverse leakage source (IIN,RCB).
-*   - IQ 0.41-0.63 uA when on, ISD 2-9.6 nA when off (VIN tables, Figure 7-1/7-2).
+* (1) Syntax translation PSpice -> native ngspice-42 (no ngbehavior=ps):
+*     VSWITCH -> XSPICE aswitch log=TRUE limit=TRUE (same Von/Voff/Ron/Roff); E/G TABLE -> B-source pwl()
+*     (same breakpoints); E VALUE IF() -> B-source; RVAR POLY(2) -> B-source product; TC=0,0 dropped; duplicate
+*     .MODEL PMOS01 / DD and SRLATCHRHP definitions removed; all names prefixed lsw17_.
+*     Every ideal logic step (gates, latch, comparators, enables) is written as 0.5*(1+tanh(x/w)), w = 50 mV
+*     on the 0/1 V logic nodes and 1 mV on comparator inputs (same thresholds/levels; ngspice otherwise stalls
+*     with "timestep too small" at switching events that PSpice steps over).  The ideal N = 0.01 / 0.1 logic
+*     diodes get xti=0 eg=0 (their IS(T) scaling overflows away from TNOM).
+* (2) REPLACED: the turn-on (slew) block.  Measured in ngspice with the TI netlist in the datasheet test circuit
+*     (CT 1 nF to VIN, CL 1 uF, RL 10 Ohm): tR 0.58 ms / tON 0.89 ms at VIN 3.6 V against Table 7.6 1.6 / 3.8 ms,
+*     and 0.37 / 0.45 ms with CT open against 0.065 / 0.12 ms (load-limited ramp of a PMOS whose gate IS the CT
+*     pin).  The CT ramp, VOUT reference and pass element below reproduce Table 7.6 (details at the block).
+*     test_model_turn_on_matches_table_7_6 checks tR, tON and SRON at 3.6 V and 5 V every run.
+* (3) FIXED vendor artifact: TI's F1 sank its IIN,RCB leakage (~0.3 uA) out of VOUT permanently; it is now
+*     gated by the RCB latch, as Table 7.5 specifies IIN,RCB only for VOUT > VIN.
+* (5) FIXED by the independent verifier (2026-10-19): (a) the slew block used the instantaneous VIN for its
+*     constants, which made a VIN sag regenerative (24 A into 445 uF); it now uses VIN low-passed with 1 ms;
+*     (b) S3 (CT reset while disabled) 1 -> 100 Ohm for trapezoidal-integration robustness.  Details at both.
+* (6) REPLACED for numerics (2026-10-19): TI's QOD path (RVAR U1 + aswitch S4) by one B-source with the same
+*     I-V (VIN table x enable log law), because with QOD tied to VOUT the floating node between them stalled
+*     ngspice at logic edges.  Details at B_U1_U2_QOD.
+* (4) ADDED parameters (defaults leave the behaviour unchanged):
+*     ron_add  extra pass resistance (Ohm) added to TI's RVAR U4: the tests use it to apply the Table 7.5 RON
+*              max-vs-temperature rows (temperature is not modelled, vendor note 2).
+*     isd_out  VIN -> VOUT leakage (A) while disabled: the tests apply the Table 7.5 ISD,VIN maximum (100 nA to
+*              85 C) as a worst-case leak into a floating output (TI returns ISD to GND only).
 *
-* What is NOT modelled (vendor note 2 and own review):
-*   - Temperature effects (vendor note 2).  The test file applies the datasheet RON max-vs-temperature rows
-*     (Table 7.5) through the ADDED "ron_add" parameter below for the thermal / IR-drop corners only.
-*   - Off-state leakage into VOUT: the vendor model returns ISD to GND, not to VOUT.  ADDED parameter
-*     "isd_out" (A) injects a VIN->VOUT current while the switch is disabled, so a test can apply the
-*     Table 7.5 ISD,VIN maximum (100 nA to 85 C, 250 nA to 105 C) as a worst-case floating-output leak.
-*   - Reverse blocking while DISABLED: the body diode stays connected until the 0.5 A RCB comparator trips,
-*     so small reverse currents with the switch off are not blocked as the "always-ON RCB" feature claims.
-*     Only matters if VOUT > VIN; no test in this suite relies on off-state reverse blocking.
-*   - Thermal shutdown / thermal model, ESD structures, package parasitics, CT capacitor voltage rating.
-*   - Part-to-part spread: the datasheet gives only typical tR/tON/QOD/RPD values; corners vary the
-*     external parts (netlist tolerances), VIN and the ADDED hooks only.
-* ADDED (not in the TI netlist, default values leave the vendor behaviour unchanged):
-*   ron_add  extra series resistance (Ohm) added to TI's RVAR U4 in the pass path, default 0
-*   isd_out  worst-case off-state leakage VIN->VOUT (A), active only while the internal enable is low, default 0
+* Kept from TI and checked against SLVSDW8B (tests/test_load_switches.py::test_model_*):
+*   RON vs VIN: full-on channel 1/(9.75 (VIN-0.5)) + RVAR 0.22-52 mOhm table -> 77 mOhm @3.6 V, 76 @5 V
+*     (Table 7.5: 90 typ / 110 max and 80 typ / 100 max at 25 C).
+*   QOD: 144-195 Ohm (VIN table) switched to GND while disabled -> 145 Ohm (Table 7.5 "QOD 150 Ohm").
+*   ON pin: comparator rising 0.62-0.71 V (VIN table), hysteresis 30-70 mV (Figure 7-5), inside the
+*     guaranteed VIL max 0.35 / VIH min 1.0 V (Table 7.3); smart pull-down 750 kOhm while the comparator reads
+*     low, 10 nA sink while high (Table 7.5 RPD, ION; Table 9-1).
+*   tOFF: ~6 us internal delay (Table 7.6 tOFF 10 us typ).  RCB: 0.2-0.64 A comparator (Table 7.5 IRCB -0.5 A typ),
+*     10 us delay (tRCB).  IQ 0.41-0.63 uA on, ISD 2-9.6 nA off (VIN tables, Figures 7-1 / 7-2).
+*
+* NOT modelled: temperature (vendor note 2; see ron_add / isd_out); reverse blocking while DISABLED (the body
+*   diode stays connected until the 0.5 A RCB comparator trips; only matters if VOUT > VIN, which no test here
+*   relies on); thermal shutdown / thermal model; ESD structures; package parasitics; CT capacitor voltage rating;
+*   part-to-part spread (the datasheet gives typical tR/tON/QOD/RPD only).  The CT-open turn-on is only
+*   approximate (C_int fitted to tON: tR comes out about 25 % fast); the CT-to-VIN vs CT-to-GND difference during
+*   VIN hot-plug is not represented (S3 holds CT at VIN while disabled).
 * =====================================================================================================
 
 .subckt LSW_TPS22917 CT GND ON QOD VIN VOUT params: ron_add=0 isd_out=0
@@ -102,13 +103,23 @@ V_U1_U2_V2      U1_U2_N75775 0 1n
 *    the path, so RON, RCB, QOD, IQ/ISD and the ON-pin logic remain the vendor's.  (A first version drove a
 *    PMOS gate from an error amplifier; it was numerically stiff, so the loop was removed.)
 *  - C_int = 33 pF (CT->VIN): Table 7.6 CT-open tON 120 us @3.6 V / 100 us @5 V = tON_k * C_int.
-B_SL_ICT        CT GND I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * min(max(V(VIN),0),10)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02))
+B_SL_ICT        CT GND I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * min(max(V(SL_VINF),0),10)/V(SL_TONK) * min(1, max(0, (V(SL_SWEND)-V(VIN)+V(CT))/0.02))
 C_SL_INT        CT VIN 33p
-B_SL_TONK       SL_TONK 0 V = pwl(V(VIN), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
-B_SL_SRK        SL_SRK 0 V = pwl(V(VIN), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
+B_SL_TONK       SL_TONK 0 V = pwl(V(SL_VINF), 0,3e6, 1,3e6, 1.2,3.4e6, 1.8,3.6e6, 3.6,3.8e6, 5,4e6, 5.5,4e6)
+B_SL_SRK        SL_SRK 0 V = pwl(V(SL_VINF), 0,1.1e-6, 1,1.1e-6, 1.2,1.0e-6, 1.8,1.1e-6, 3.6,1.9e-6, 5,2.3e-6, 5.5,2.3e-6)
 B_SL_VTOT       SL_VTOT 0 V = V(SL_TONK) * V(SL_SRK)
 B_SL_SWEND      SL_SWEND 0 V = V(VIN) + 0.5
-B_SL_VRAW       SL_VRAW 0 V = V(SL_VTOT)/min(max(V(VIN), 0.5), 10) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(VIN))
+* FIXED (verifier, 2026-10-19): the slew constants (tON_k, SRON_k, Vtot, the 0.9 VIN delay term and the CT
+* sink current) used the instantaneous VIN.  Vtot = tON_k*SRON_k falls faster with VIN than 0.9*VIN, so
+* dVref/dVIN was about -0.9: a VIN sag RAISED Vref, which drew more current and sagged VIN further.  With the
+* nominal 49 uF load the 82 uF of VSYS bulk kept it stable, but a CT-open ramp was inflated and a 445 uF load
+* ran away to 24 A.  They now use VIN low-passed with 1 ms (SL_VINF), so the switch sets the slew from the
+* supply level and a fast sag of its own making cannot feed back; the swing (VIN - CT) and the full-on test
+* still use the real VIN.  Constant-VIN behaviour (Table 7.6 correlation) is unchanged.
+B_SL_VINB       SL_VINB 0 V = V(VIN,GND)
+R_SL_VINF       SL_VINB SL_VINF 1Meg
+C_SL_VINF       SL_VINF 0 1n
+B_SL_VRAW       SL_VRAW 0 V = V(SL_VTOT)/min(max(V(SL_VINF), 0.5), 10) * (V(VIN)-V(CT)) - (V(SL_VTOT) - 0.9*V(SL_VINF))
 * soft start of the ramp (softplus, 50 mV knee, about 30 us at 1.9 V/ms): the real slew starts smoothly and a
 * hard corner only produces a numerical current spike in the output capacitance
 B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(min(V(SL_VRAW)/0.05, 40)))
@@ -116,12 +127,26 @@ B_SL_VREF       SL_VREF 0 V = V(SL_VRAW) > 1 ? V(SL_VRAW) : 0.05*ln(1 + exp(min(
 * PMOS01 (1/(kp*(VIN - |vto|)), kp 9.75, vto -0.5); fully on (k_full = 1) once Vref passes VIN, where it is a
 * plain bidirectional resistor.  It sits where TI's PMOS sat (source node after S10 -> VOUT), so TI's RVAR
 * (pass resistance table), current sense H1 and the RCB switch S10 stay in series with it.
+* the pass element follows the internal enable through a 2 us RC (Table 7.6: tOFF 10 us typ), so its current
+* never steps in nanoseconds (that stalls ngspice on TI's RCB sense node)
+R_SL_ENP        U1_N03821 SL_ENP 2k
+C_SL_ENP        SL_ENP 0 1n
 B_SL_KF         SL_KF 0 V = min(1, max(0, (V(SL_VREF) - V(VIN))/0.05))
 B_SL_RCH        SL_RCH 0 V = 1/(9.75*min(max(V(VIN) - 0.5, 0.05), 10))
-B_SL_PASS       U1_U2_N71809 VOUT I = (0.5+0.5*tanh((V(U1_N03821)-0.5)/0.05)) * (V(SL_KF)*(V(U1_U2_N71809) - V(VOUT)) +
+B_SL_PASS       U1_U2_N71809 VOUT I = (0.5+0.5*tanh((V(SL_ENP)-0.5)/0.1)) * (V(SL_KF)*(V(U1_U2_N71809) - V(VOUT)) +
 +                 (1 - V(SL_KF))*max(0, min(V(SL_VREF), V(U1_U2_N71809)) - V(VOUT))) / V(SL_RCH)
-X_U1_U2_U1      QOD U1_U2_N16813094 U1_U2_N16813178 0 lsw17_RVAR params: RREF=1
-a_U1_U2_S4      %vd(U1_N03821 0) %gd(U1_U2_N16813094 GND) lsw17_S4
+* REPLACED (numerics, 2026-10-19): TI's QOD path was RVAR U1 (a B voltage source = R x its own sensed current,
+* R = the E2 table) in series with aswitch S4 (1 mOhm on / 1 GOhm off, log law over enable 0.1..0.9) to GND.
+* With QOD tied to VOUT (U21: QOD on OLED_VIN, as in SLVSDW8B Figure 8-1) VOUT sits across that series string while
+* the switch is on, and the node between RVAR and S4 is held only by the 1 GOhm off resistance and the RVAR's
+* current-controlled source.  At every logic edge (ON comparator trip, VOUT crossing the 22 mV RCB reset level)
+* ngspice cuts the step to ~1e-17 s and Newton chatters on that node (accepted points up to 96 V on a 4.2 V
+* rail): "Timestep too small" or a hang, also with reltol 1e-3 / Gear.  The same I-V as ONE element with no
+* internal node: I = V(QOD) / (R_E2(VIN) + R_S4(enable)), R_S4 = r_off * (r_on/r_off)^x, x = (0.9 - V(enable))/0.8
+* clipped to 0..1, i.e. the aswitch's own log law with TI's r_on 1 mOhm / r_off 1 GOhm / cntl 0.1 / 0.9.
+* Checked against the TI pair: QOD current at VOUT = 1 V identical to 6 digits for VIN 0.5..5.5 V, the QOD
+* current onset after ON falls within 10 ns, off-state leakage 1.2 vs 0.9 nA (1 GOhm either way).
+B_U1_U2_QOD     QOD GND I = V(QOD,GND)/(V(U1_U2_N16813178) + 1e9*exp(ln(1e-12)*min(max((0.9 - V(U1_N03821))/0.8, 0), 1)))
 a_U1_U2_S10     %vd(U1_U2_REVERSE_CTRL 0) %gd(U1_U2_N16803039 U1_U2_N71809) lsw17_S10
 X_U1_U2_U4      VIN U1_U2_N145001 U1_U2_N16813658 0 lsw17_RVAR params: RREF=1
 * ADDED isd_out: off-state leakage VIN->VOUT while the internal enable (U1_N03821) is low
@@ -147,9 +172,13 @@ X_U1_U1_U44     ON_INT_PRE U1_N03821 U1_U1_N427944 lsw17_AND2_BASIC_GEN params: 
 a_U1_U1_S1      %vd(U1_U1_N427964 0) %gd(U1_U1_ON_A 0) lsw17_S1
 a_U1_S4         %vd(ON_INT_PRE GND) %gd(ON GND) lsw17_S4ON
 * ---------------- switch models (TI DRIVER_*/CONTROL_*/CHANNEL_* VSWITCH -> aswitch, same values)
-.model lsw17_S3   aswitch(cntl_off=0.8 cntl_on=0.2 r_off=1e9   r_on=1    log=TRUE limit=TRUE)
+* S3 r_on 1 -> 100 Ohm (verifier): TI's 1 Ohm dumps the CT capacitor (charged to VIN + 0.5 V at the end of the
+* ramp) as a ~4.7 A, 1 ns spike at every turn-off, and ngspice's trapezoidal step control then stalls at the
+* turn-off edge for some loads (e.g. the DNP C43 fitted).  100 Ohm resets 1 nF in ~0.5 us; SLVSDW8B specifies
+* no CT discharge, and nothing observable here depends on CT resetting faster than that.
+.model lsw17_S3   aswitch(cntl_off=0.8 cntl_on=0.2 r_off=1e9   r_on=100  log=TRUE limit=TRUE)
 .model lsw17_S11  aswitch(cntl_off=0   cntl_on=1   r_off=1e9   r_on=0.1  log=TRUE limit=TRUE)
-.model lsw17_S4   aswitch(cntl_off=0.9 cntl_on=0.1 r_off=1e9   r_on=1m   log=TRUE limit=TRUE)
+* (lsw17_S4, TI's QOD switch: cntl_off 0.9 cntl_on 0.1 r_off 1e9 r_on 1m log, now inside B_U1_U2_QOD)
 .model lsw17_S10  aswitch(cntl_off=1   cntl_on=0   r_off=1e9   r_on=0.1m log=TRUE limit=TRUE)
 .model lsw17_S5   aswitch(cntl_off=0.1 cntl_on=0.8 r_off=1e9   r_on=1    log=TRUE limit=TRUE)
 .model lsw17_S2   aswitch(cntl_off=0.2 cntl_on=0.8 r_off=100e6 r_on=1m   log=TRUE limit=TRUE)
@@ -168,7 +197,9 @@ VF_U1_U2_F1     1 2 0V
 .ends lsw17_DRIVER_F1
 
 .model lsw17_PMOS01 pmos (level=1 vto=-0.5 kp=9.75 lambda=0.001)
-.model lsw17_DD d (is=1e-15 n=0.01 tt=1e-11)
+* xti=0 eg=0 (ADDED): these ideal N=0.01/0.1 diodes are logic/clamp elements; ngspice's IS(T) scaling
+* (T/Tnom)^(XTI/N) * exp(EG/(N k)...) would overflow at any temperature other than TNOM
+.model lsw17_DD d (is=1e-15 n=0.01 tt=1e-11 xti=0 eg=0)
 
 .subckt lsw17_SRLATCHRHP_BASIC_GEN s r q qb params: vdd=1 vss=0 vthresh=0.5
 * reset has priority
@@ -187,7 +218,7 @@ rqb qbr qb 1
 cdummy1 q 0 1n
 cdummy2 qb 0 1n
 .ic v(qint)={vss}
-.model lsw17_d_d1 d (is=1e-15 tt=1e-11 rs=0.05 n=0.1)
+.model lsw17_d_d1 d (is=1e-15 tt=1e-11 rs=0.05 n=0.1 xti=0 eg=0)
 .ends lsw17_SRLATCHRHP_BASIC_GEN
 
 .subckt lsw17_COMPHYS_BASIC_GEN INP INM HYS OUT params: VDD=1 VSS=0 VTHRESH=0.5

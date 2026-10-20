@@ -91,11 +91,12 @@ Boc oc GND V = 0.5*(1 + tanh((V(imx) - iocp)/0.02))
 Bdg GND dg I = 1n*( V(oc)*(1 - V(dg))*0.6931/tdeg - (1 - V(oc))*V(dg)/200n )
 Cdg dg GND 1n
 Rdg dg GND 1G
-* retry timer: 'flt' jumps to 1 when dg > 0.5, then ramps down linearly and re-enables after tretry
+* retry timer: 'flt' jumps to 1.05 when dg > 0.5, then ramps down linearly at 0.55/tretry, so it crosses 0.5 (re-enable)
+* exactly tretry after the trip (verifier fix: the ramp was 0.5/tretry, i.e. a 1.1 x tretry retry interval)
 Bdgs dgsx GND V = 0.5*(1 + tanh((V(dg) - (0.5 - 0.4*V(dgs)))/0.02))
 Rdgs dgsx dgs 1k
 Cdgs dgs GND 1p
-Bflt GND flt I = 1n*( V(dgs)*(1.05 - V(flt))/5n - (1 - V(dgs))*(0.5/tretry)*tanh(V(flt)/0.01) )
+Bflt GND flt I = 1n*( V(dgs)*(1.05 - V(flt))/5n - (1 - V(dgs))*(0.55/tretry)*tanh(V(flt)/0.01) )
 Cflt flt GND 1n
 Rflt flt GND 1G
 Bok ok GND V = 0.5*(1 - tanh((V(flt) - 0.5)/0.02))

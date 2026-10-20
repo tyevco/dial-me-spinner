@@ -11,11 +11,28 @@ Load currents are datasheet figures of the +3V3 consumers (nRF52840 PS v1.1, W25
 SSD1351 / NHD panel spec, DRV8837 SLVSBA4F, DRV5032 ti.com/lit/ds/symlink/drv5032.pdf) and the architecture.md
 section 8.2 sleep budget. VSYS is applied at the main-board link connector: the harness drop belongs to the link
 harness tests (it is ~mV at the +3V3 load currents used here).
+
+Independent verification (second pass) changed: U1's VIN/EN connections now come from the netlist (an EN or VIN
+miswire shows up in every simulation, not only in the topology assert); the U1 pinout is checked against DS section 7;
+the Monte Carlo batch no longer couples its copies through shared ESR nodes (capacitors whose +3V3 pin is pin 2 had
+an un-suffixed '0_cNN_esr' node); start-up uses voltage-dependent MLCC capacitance (the 0 V capacitance is ~2x the
+3.3 V value, so the fixed-C deck under-stated the inrush: 0.71 -> 0.94 A); COUT minimum is the DS 17.1 / Fig. 1
+1 uF effective (stricter than the 0.7 uF of section 8); tolerances come from the MPN letter everywhere; TJ uses the
+JEDEC theta-JA; reverse bias (VOUT > VIN) on VSYS collapse is checked against the DS abs max.
+
+LDO-1 (2026-10): SPEC 3 now reads 'Iq ≤ 2 µA typ / 4 µA max' (quoted and checked against SPEC.md by spec_ldo_iq), so
+test_quiescent_current_max_vs_spec is a guard instead of a strict xfail; the model's no-load input current is IQ at
+every accuracy / temperature / VIN corner (it was IQ + 12 nA for a +2 % part). SYS_REG: firmware sets 4.4 V (0x0A = 0x20);
+the checks keep the 4.5 V POR default (the only other allowed value) as the abs-worst corner, and the DC sweep also
+reads the 4.4 V +/-2 % window.
 """
 
 from __future__ import annotations
 
+import itertools
 import math
+import os
+import random
 import re
 
 import numpy as np
@@ -33,23 +50,44 @@ NRF_TR_VDD_MAX = 60e-3   # nRF52840 PS recommended operating conditions: tR_VDD 
 TMAG_RAMP_MIN = 3.0e3    # TMAG5273 SLYS045C: VCC ramp >= 3 V/ms, else firmware must run one W&S cycle after POR
 WS_VIH_K = 0.6           # WS2812C-2020-V6 VIH = 0.6 x VDD (Worldsemi PCN 30 Sep 2025; 0.55 x VDD in DS V1.0)
 NRF_VOH_DROP = 0.4       # nRF52840 PS: VOH >= VDD - 0.4 V (standard drive)
-COUT_MIN_STAB = 0.7e-6   # DS9080-09 section 8, VOUT pin: >= 0.7 uF effective capacitance required for stability
+COUT_MIN_STAB = 1.0e-6   # DS9080-09 17.1 "minimum output capacitance ... 1 uF, considering the temperature and voltage
+#                          coefficient" and Fig. 1 "COUT (Effective Capacitance >= 1 uF)"; section 8 says 0.7 uF
+#                          effective - the stricter DS statement is used
 ESR_MIN = 1e-3           # DS9080-09 section 18: output capacitor ESR >= 1 mohm
 TJ_MAX = 125.0           # DS9080-09 section 12: recommended junction temperature range -40..125 C
-THETA_JA = 100.7         # DS9080-09 section 13: theta-JA(EVB), 4-layer 70x50 mm board (the main board is 4-layer)
-SPEC_IQ_MAX = 2e-6       # SPEC.md section 3: "LDO ... Iq <= 2 uA"
-BATOCP_DEFAULT = 1.0     # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A (POR default per power research; firmware
+THETA_JA = 189.4         # DS9080-09 section 13: theta-JA (JEDEC) TSOT-23-5. The 100.7 C/W theta-JA(EVB) needs Richtek's
+#                          high-conductivity 70x50 mm board; the main board is a crowded 64 mm disc, so use JEDEC
+VIN_MAX = 5.5            # DS9080-09 section 12: recommended input voltage 1.2-5.5 V
+REV_MAX = 0.3            # DS9080-09 section 10 absolute maximum: VOUT to VIN -6.5 .. +0.3 V
+PINOUT = {"1": "VIN", "2": "GND", "3": "EN", "4": "NC", "5": "VOUT"}   # DS9080-09 sections 7/8, TSOT-23-5
+SYS_OVP_K = 1.05         # BQ25180 SLUSE99C 8.3.6: SYS_OVP rising threshold ~105 % of the SYS target
+RON_BAT = 0.055          # BQ25180 SLUSE99C 7.5 RON_BAT 55 mohm typ (BATFET, battery -> SYS)
+VBSUP1 = 0.04            # BQ25180 SLUSE99C 7.5 VBSUP1: SYS supplemented from BAT below VBAT - 40 mV
+BATOCP_SET = 1.5         # BQ25180 IBAT_OCP after firmware init (CHARGECTRL1 0x92 = 1.5 A, firmware.md 13.1)
+RON_LSW = 0.08           # TPS22917 RON 80 mohm typ (power research / TPS22917 DS) - U2 in a VLED short
+SPEC_LDO_IQ = "Iq ≤ 2 µA typ / 4 µA max"   # SPEC.md section 3, LDO bullet, quoted exactly (LDO-1; it read
+#                          "Iq <= 2 uA" before, which a DS9080-09 max part breaks). spec_ldo_iq() checks the SPEC text
+SPEC_IQ_TYP = 2e-6       # SPEC.md section 3: Iq <= 2 uA typ (DS9080-09 Table 14 IQ 2 uA typ)
+SPEC_IQ_MAX = 4e-6       # SPEC.md section 3: Iq <= 4 uA max (DS9080-09 Table 14 IQ 4 uA max)
+BATOCP_DEFAULT = 1.0    # BQ25180 SLUSE99C 7.5 IBAT_OCP code 01 = 1 A (POR default per power research; firmware
 #                          later writes 1.5 A, so start-up happens at 1 A)
 BQ_ILIM_500_MAX = 0.498  # BQ25180 SLUSE99C 7.5 ILIM 500 mA code: 498 mA max (TMR_ILIM 0xCD, firmware.md)
-SYS_REG = 4.5            # BQ25180 SYS_REG = 4.5 V on USB (architecture 6.5 / firmware register table)
+SYS_REG_FW = 4.4         # BQ25180 SYS_REG (0x0A) = 0x20, SYS_REG_CTRL 001: SYS 4.4 V on USB (firmware.md 13.1 row 8,
+#                          SPEC 3 / 5.4; hardware/sim LED-DATA-V3, LDO-2)
+SYS_REG_POR = 4.5        # SYS_REG_CTRL 010: the BQ25180 POR default (USB before firmware init) and the only other value
+#                          firmware.md 13.1 allows (never 011-111 while the LEDs may run; bq25180.c asserts it)
+SYS_REG = SYS_REG_POR    # the checks use the 4.5 V window: a higher SYS is the conservative corner for every one of them
+#                          (U1 VIN range, VSYS cap DC bias and slew, WS2812C VIH, VCI max, dissipation, reverse bias)
 SYS_REG_ACC = 0.02       # BQ25180 SLUSE99C 7.5 VSYS_REG accuracy +/-2 %
 VBUVLO = 3.0             # BQ25180 BUVLO setting 3.0 V (CHARGECTRL1 0x92): lowest VSYS on battery
 SAG = 0.3                # power research design rule: total system peak keeps the cell sag below 0.3 V
 
 # battery and USB corners for VSYS as the charger delivers it: VBAT 3.0 / 3.7 / 4.2 V (SYS = VBAT on battery);
-# on USB SYS is regulated to 4.5 V +/-2 % (VBUS 5.0 / 5.5 V); at VBUS 4.5 V SYS = VBUS - IIN*RON_IN (<= 4.5 V),
-# which lies inside the same 4.41-4.59 V window.
+# on USB SYS is regulated to SYS_REG +/-2 % (VBUS 5.0 / 5.5 V): 4.312-4.488 V with the firmware's 4.4 V, 4.41-4.59 V at
+# the 4.5 V POR default / allowed alternative (the abs-worst window, VSYS_USB_MAX = 4.59 V); at VBUS 4.5 V
+# SYS = VBUS - IIN*RON_IN (<= 4.5 V), which lies inside the same windows.
 VSYS_BATT = [3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.7, 4.2]
+VSYS_USB_FW = [round(SYS_REG_FW * (1 - SYS_REG_ACC), 3), SYS_REG_FW, round(SYS_REG_FW * (1 + SYS_REG_ACC), 3)]
 VSYS_USB = [round(SYS_REG * (1 - SYS_REG_ACC), 3), SYS_REG, round(SYS_REG * (1 + SYS_REG_ACC), 3)]
 VSYS_USB_MAX = VSYS_USB[-1]
 TEMPS = [-10, 25, 60]
@@ -67,6 +105,10 @@ HIGH = dict(ACC=0.02, RDSK=1, LREG=0.01, LINE=0.0035, IQ="4u", ILIM=0.98, IFB=0.
 SLEEP = 22.2e-6   # architecture.md 8.2 sleep column, +3V3 consumers: nRF 3.0, TMAG 3.0, IMU 1.5, DRV5032 1.6,
 #                   2x DRV8837 0.1, OLED 12, flash 1.0 uA
 TX = 14.8e-3 + 3.3e-3   # nRF52840 PS v1.1: ITX,PLUS8dBM,DCDC 14.8 mA + ICPU0 (64 MHz from flash) 3.3 mA
+ACTIVE_MIN = 3.3e-3     # lowest +3V3 load while the system is awake: nRF52840 PS ICPU0 3.3 mA (CPU only)
+DIM_VSYS = 7.7e-3 + 2e-3   # VSYS-side load in the dimmest awake state at low battery: OLED + 13 V boost 7.7 mA
+#                            (architecture.md 8.2 "Fidget dim") + the <= 2 mA red low-battery LED cue (firmware.md LED
+#                            derating, VBAT < 3.53 V: all other LEDs off)
 OTHERS = {        # added on top of TX for the peak step
     "W25Q128 page program": 25e-3,   # W25Q128JV Rev F 9.4 ICC5 max
     "TMAG5273 active": 3.0e-3,       # TMAG5273 SLYS045C active LP_LN=1, typ
@@ -143,6 +185,40 @@ def cap_esr(d, ref, f=ESR_F):
     return float(np.interp(math.log10(f), [math.log10(x) for x in fs], [mlcc(d, ref)["esr"][x] for x in fs]))
 
 
+def cap_corners(d, refs):
+    """All 2^n tolerance corners as signs (-1/+1) - applied with cap_tol (MPN letter), not the value-string default."""
+    refs = list(refs)
+    for signs in itertools.product((-1, 1), repeat=len(refs)):
+        yield dict(zip(refs, signs))
+
+
+def cap_draws(d, refs, n, seed):
+    """n uniform tolerance draws as signs in [-1, 1] (scaled by cap_tol when used)."""
+    rng = random.Random(seed)
+    for _ in range(n):
+        yield {r: rng.uniform(-1, 1) for r in refs}
+
+
+# --------------------------------------------------------------------------------------------- SPEC text
+SPEC_MD = os.path.join(spicelib.HW, "design", "SPEC.md")
+
+
+def spec_ldo_iq():
+    """(typ, max) LDO Iq in A as SPEC.md section 3 states it ('* **LDO**: ... Iq ≤ 2 µA typ / 4 µA max, ...'), and it
+    must still be the SPEC_LDO_IQ text these tests quote: a SPEC change fails here instead of moving a bound silently."""
+    with open(SPEC_MD, encoding="utf-8") as f:
+        text = f.read()
+    sec = re.search(r"(?ms)^## 3\. .*?(?=^## )", text)
+    assert sec, f"{SPEC_MD}: section 3 not found"
+    ldo = re.search(r"(?m)^\* \*\*LDO\*\*:.*$", sec.group(0))
+    assert ldo, "SPEC.md section 3: no '* **LDO**:' bullet"
+    assert SPEC_LDO_IQ in ldo.group(0), f"SPEC.md section 3 LDO bullet no longer says {SPEC_LDO_IQ!r}: {ldo.group(0)!r}"
+    m = re.search(r"Iq ≤ ([0-9.]+) µA typ / ([0-9.]+) µA max", ldo.group(0))
+    typ, mx = float(m.group(1)) * 1e-6, float(m.group(2)) * 1e-6
+    assert (typ, mx) == pytest.approx((SPEC_IQ_TYP, SPEC_IQ_MAX)), (typ, mx)
+    return typ, mx
+
+
 # --------------------------------------------------------------------------------------------- netlist access
 def ldo_ref(d):
     refs = d.find("RT9080")
@@ -162,6 +238,36 @@ def ldo_vnom(d):
 def nets(d):
     f = d.funcs[ldo_ref(d)]
     return f["VIN"], f["EN"], f["VOUT"], f["GND"]
+
+
+def en_node(d, vsys_node):
+    """U1's EN node from the netlist. The decks drive the VSYS net, so VIN must sit on it; EN tied to VIN follows VSYS,
+    EN on GND is simulated as off; anything else has no driver model here and fails loudly."""
+    u = ldo_ref(d)
+    vin, en, _, gnd = nets(d)
+    assert vin == "VSYS" and gnd == "GND", f"{u}: VIN on {vin!r}, GND on {gnd!r} - the decks drive VSYS"
+    if en == vin:
+        return vsys_node
+    if en == gnd:
+        return "0"
+    raise AssertionError(f"{u}: EN on {en!r}, which these decks do not drive")
+
+
+def pin_functions(d, ref):
+    """{pin number: pin function} of a part as the netlist has it (unconnected pins included)."""
+    return {p: f for lst in d.nets.values() for r, p, f in lst if r == ref}
+
+
+def rewire(d, ref, func, net):
+    """Fault injection: move one pin (by function) of a part to another net. spicelib.Design has no API for a wrong
+    connection, so this edits the parsed netlist of this Design instance only."""
+    pin = next(p for p, f in pin_functions(d, ref).items() if f == func)
+    old = d.pins[ref][pin]
+    d.nets[old] = [e for e in d.nets[old] if not (e[0] == ref and e[1] == pin)]
+    d.nets.setdefault(net, []).append((ref, pin, func))
+    d.pins[ref][pin] = net
+    d.funcs[ref][func] = net
+    return d
 
 
 def out_caps(d):
@@ -200,35 +306,46 @@ def params(corner, temp, vnom, slow=1):
     return " ".join(f"{k}={v}" for k, v in p.items())
 
 
-def ldo_lines(d, vsys_node, corner=TYP, temp=25, slow=1, cap_sign=None, suffix=""):
+def ldo_lines(d, vsys_node, corner=TYP, temp=25, slow=1, cap_sign=None, suffix="", vdep=False):
     """U1 with its +3V3 capacitors (DC-bias / TCC / tolerance derated, ESR at 100 kHz) behind a 0 V sense source.
 
-    cap_sign: {ref: -1..+1} tolerance position per capacitor (default 0 = nominal).
-    suffix: makes node and element names unique so several copies fit in one deck (Monte Carlo batches).
+    VIN must be on VSYS (driven by the deck); EN follows its netlist net (see en_node).
+    cap_sign: {ref: -1..+1} tolerance position per capacitor (default 0 = nominal), scaled by the MPN tolerance.
+    suffix: makes node and element names unique so several copies fit in one deck (Monte Carlo batches). Every node
+        except ground gets it: passives() puts the ESR mid-node on the GND side for capacitors whose +3V3 pin is
+        pin 2 ('0_c33_esr'), and those must not be shared between copies.
+    vdep: voltage-dependent capacitance C(V) from the Samsung DC-bias curve (for large swings: start-up, collapse);
+        otherwise the capacitance is fixed at its DC-bias value at VNOM (small-signal decks).
     """
     vnom = ldo_vnom(d)
     _, _, vout, _ = nets(d)
     n_out = d.node(vout)
+    n_en = en_node(d, vsys_node)
     caps = out_caps(d)
-    scale = {r: cap_factor(d, r, vnom, temp, (cap_sign or {}).get(r, 0.0)) for r in caps}
+    scale = {r: cap_factor(d, r, 0.0 if vdep else vnom, temp, (cap_sign or {}).get(r, 0.0)) for r in caps}
     esr = {r: cap_esr(d, r) for r in caps}
     lines = [f"VSENSE{suffix} {vsys_node} n_u1vin{suffix} 0",
-             f"XU1{suffix} n_u1vin{suffix} {vsys_node} {n_out}{suffix} 0 LDO3V3_RT9080 params: "
+             f"XU1{suffix} n_u1vin{suffix} {n_en} {n_out}{suffix} 0 LDO3V3_RT9080 params: "
              + params(corner, temp, vnom, slow)]
     for ln in d.passives(nets={vout, "GND"}, scale=scale, esr=esr):
         tok = ln.split()
+        name = tok[0]
         tok[0] += suffix
-        tok[1:3] = [t + suffix if t.startswith("n_") else t for t in tok[1:3]]
+        tok[1:3] = [t if t == "0" else t + suffix for t in tok[1:3]]
+        if vdep and name.startswith("C") and name[1:] in scale:
+            pts = ", ".join(f"{v:g},{1 + p / 100:.4f}" for v, p in mlcc(d, name[1:])["dcb"])
+            tok[3] = f"C='{tok[3]}*pwl(abs(v({tok[1]},{tok[2]})), {pts})'"
         lines.append(" ".join(tok))
     return lines, n_out + suffix
 
 
-def check_clean(res):
-    """ngspice ran without unrecovered errors (gmin-stepping retries that end in 'completed' are fine)."""
+def check_clean(res, exc=AssertionError):
+    """ngspice ran without unrecovered errors (gmin-stepping retries that end in 'completed' are fine).
+    xfail tests pass exc=RuntimeError so that a simulator failure cannot masquerade as the expected check failure."""
     log = res["_log"]
     errs = [e for e in res["_errors"] if not ("gmin stepping failed" in e.lower() and "stepping completed" in log)]
-    assert not errs, errs[:5]
-    assert not res.get("_missing"), res.get("_missing")
+    if errs or res.get("_missing"):
+        raise exc(f"ngspice errors {errs[:5]}, missing measures {res.get('_missing')}")
 
 
 def pwl(points):
@@ -236,15 +353,21 @@ def pwl(points):
 
 
 # ============================================================================================= tests
-def test_netlist_topology(main):
-    """U1 is an RT9080 fed from VSYS with EN tied to VIN, output on +3V3 (SPEC 3, main_power sheet)."""
+def test_netlist_topology(main, check):
+    """U1 is an RT9080 fed from VSYS with EN tied to VIN, output on +3V3 (SPEC 3, main_power sheet); the symbol's pin
+    numbers match the DS TSOT-23-5 pinout (the simulations use pin names, so a symbol pin-number error would otherwise
+    pass every other test); VSYS stays inside the DS input range even at the charger's SYS over-voltage threshold."""
     u = ldo_ref(main)
     vin, en, vout, gnd = nets(main)
     assert (vin, en, vout, gnd) == ("VSYS", "VSYS", "+3V3", "GND"), (u, vin, en, vout, gnd)
+    assert pin_functions(main, u) == PINOUT, f"{u} pinout {pin_functions(main, u)} != DS9080-09 section 7 {PINOUT}"
+    assert "SOT-23-5" in main.comps[u]["fields"].get("Footprint", ""), main.comps[u]["fields"].get("Footprint")
     assert ldo_vnom(main) == pytest.approx(3.3)
     assert out_caps(main), "no output capacitors on +3V3"
     for r in out_caps(main) + caps_to_gnd(main, "VSYS"):
         mlcc(main, r)   # every capacitor has derating data
+    check("VSYS max (SYS_OVP rising, SYS_REG +2 %) vs U1 VIN range", SYS_OVP_K * VSYS_USB_MAX, None, VIN_MAX, "V",
+          f"{DS} section 12 VIN 1.2-5.5 V; BQ25180 SLUSE99C 8.3.6 SYS_OVP ~105 % of target, 7.5 VSYS_REG +/-2 %")
 
 
 def test_model_matches_datasheet_figures(check):
@@ -310,9 +433,9 @@ def test_model_matches_datasheet_figures(check):
 
 
 def test_spec_section3_ldo_requirements(main, check):
-    """SPEC 3: 'LDO >= 200 mA, Iq <= 2 uA, dropout <= 300 mV at 200 mA ... Input 10 uF, output 10 uF + 100 nF'.
-    Dropout with the DS max-dropout part at 60 C; capacitors from the netlist (nominal, and effective at the input
-    against the DS 1 uF input recommendation)."""
+    """SPEC 3: 'LDO: ≥ 200 mA, Iq ≤ 2 µA typ / 4 µA max, dropout ≤ 300 mV at 200 mA ... Input 10 µF, output
+    10 µF + 100 nF' (Iq: test_quiescent_current_*). Dropout with the DS max-dropout part at 60 C; capacitors from the
+    netlist (nominal, and effective at the input against the DS 1 uF input recommendation)."""
     deck = spicelib.Deck("LDO SPEC dropout 200 mA")
     deck.include(LIB)
     c = dict(LOW, ACC=0, LINE=0, ILIM=0.98, IFB=0.72)
@@ -354,7 +477,8 @@ def test_nominal_regulation(main, check):
 
 @pytest.mark.parametrize("temp", TEMPS)
 def test_dc_supply_and_temperature_corners(main, check, temp):
-    """+3V3 over every VSYS the charger can deliver (VBAT 3.0-4.2 V, USB 4.41-4.59 V), at -10/25/60 C.
+    """+3V3 over every VSYS the charger can deliver (VBAT 3.0-4.2 V; USB 4.312-4.488 V at the firmware's SYS_REG 4.4 V
+    and 4.41-4.59 V at the 4.5 V POR default / allowed alternative), at -10/25/60 C.
 
     Worst-low corner (-2 %, max dropout, max load/line regulation, peak load) against the consumers' minimums:
     W25Q128JV 2.7 V and the WS2812C data-high requirement VDD >= 0.6*VSYS + 0.4 V (nRF VOH = VDD - 0.4 V).
@@ -370,12 +494,12 @@ def test_dc_supply_and_temperature_corners(main, check, temp):
         deck += lines
         deck += f"ILOAD {n_out} 0 {load}"
         deck.dc("VSYS", 2.9, 4.65, 0.005)
-        for k, v in enumerate(VSYS_BATT + VSYS_USB):
+        for k, v in enumerate(VSYS_BATT + VSYS_USB_FW + VSYS_USB):
             deck.meas(f"dc v{tag}{k} FIND v({n_out}) AT={v}")
         r = deck.run()
         check_clean(r)
         res[tag] = r
-    for k, v in enumerate(VSYS_BATT + VSYS_USB):
+    for k, v in enumerate(VSYS_BATT + VSYS_USB_FW + VSYS_USB):
         need = max(W25Q_VMIN, WS_VIH_K * v + NRF_VOH_DROP)
         check(f"+3V3 min @ VSYS {v} V, {temp} C, peak load {i_peak * 1e3:.1f} mA", res["lo"][f"vlo{k}"], need, None, "V",
               "W25Q128JV Rev F 9.2 VCC >= 2.7 V; WS2812C-V6 VIH 0.6*VDD (PCN) + nRF52840 PS VOH = VDD-0.4 V")
@@ -383,23 +507,17 @@ def test_dc_supply_and_temperature_corners(main, check, temp):
               "SSD1351 VCI <= 3.5 V (NHD spec); nRF/W25Q/TMAG/LIS2DW12 <= 3.6 V")
 
 
-@pytest.mark.parametrize("ramp,vfinal,label", [
-    (10e-6, 4.2, "battery hot-plug"),
-    (10e-6, VSYS_USB_MAX, "USB, fast SYS"),
-    (1e-3, VSYS_USB_MAX, "USB, 1 ms SYS ramp"),
-    (20e-3, VBUVLO, "slow ramp to BUVLO"),
-])
-def test_startup_vsys_ramp(main, check, ramp, vfinal, label):
-    """Power-up with EN = VIN = VSYS ramping from 0 V (typ soft start, worst-high accuracy corner, 60 C)."""
-    vnom = ldo_vnom(main)
+def _startup_run(d, ramp, vfinal, corner, temp, cap_sign, label):
+    vnom = ldo_vnom(d)
     t0 = 10e-6
     tstop = t0 + ramp + 2e-3
     deck = spicelib.Deck(f"LDO start-up {label}")
     deck.include(LIB)
     deck += "VSYS n_vsys 0 " + pwl([(0, 0), (t0, 0), (t0 + ramp, vfinal)])
-    lines, n_out = ldo_lines(main, "n_vsys", corner=HIGH, temp=60)
+    lines, n_out = ldo_lines(d, "n_vsys", corner=corner, temp=temp, vdep=True,
+                             cap_sign={r: cap_sign for r in out_caps(d)})
     deck += lines
-    deck += f"RLOAD {n_out} 0 {vnom / peak_load(main):.6g}"   # consumers as a resistor at their peak current
+    deck += f"RLOAD {n_out} 0 {vnom / peak_load(d):.6g}"   # consumers as a resistor at their peak current
     deck.tran(f"{max(ramp / 2000, 0.2e-6):.3g}", f"{tstop:.6g}", extra=f"{max(ramp / 500, 1e-6):.3g}")
     deck.meas(f"tran t17 WHEN v({n_out})=1.7 RISE=1")
     vtop = min(vnom, vfinal - 0.1)
@@ -410,14 +528,34 @@ def test_startup_vsys_ramp(main, check, ramp, vfinal, label):
     deck.meas("tran iinpk MAX i(VSENSE)")
     r = deck.run()
     check_clean(r)
-    check(f"[{label}] tR_VDD (0 -> 1.7 V)", r["t17"] - t0, 0, NRF_TR_VDD_MAX, "s",
+    return r, t0, vtop
+
+
+@pytest.mark.parametrize("ramp,vfinal,label", [
+    (10e-6, 4.2, "battery hot-plug"),
+    (10e-6, VSYS_USB_MAX, "USB, fast SYS"),
+    (1e-3, VSYS_USB_MAX, "USB, 1 ms SYS ramp"),
+    (20e-3, VBUVLO, "slow ramp to BUVLO"),
+])
+def test_startup_vsys_ramp(main, check, ramp, vfinal, label):
+    """Power-up with EN = VIN = VSYS ramping from 0 V. MLCCs use their voltage-dependent capacitance (C(0 V) is about
+    twice C(3.3 V)), so the soft start is current-limit controlled. Three corners, each worst for its check:
+    inrush = typ ILIM (the DS gives no max) with every capacitor at +tol / -10 C; rise time and ramp rate = DS min ILIM
+    and max dropout part with +tol / -10 C; overshoot and final value = +2 % part with -tol / 60 C."""
+    rin, t0, _ = _startup_run(main, ramp, vfinal, HIGH, -10, +1, f"{label} inrush")
+    rtm, _, vtop = _startup_run(main, ramp, vfinal, LOW, -10, +1, f"{label} timing")
+    rov, _, _ = _startup_run(main, ramp, vfinal, HIGH, 60, -1, f"{label} overshoot")
+    check(f"[{label}] tR_VDD (0 -> 1.7 V), DS min ILIM, max C", rtm["t17"] - t0, 0, NRF_TR_VDD_MAX, "s",
           "nRF52840 PS recommended operating conditions tR_VDD <= 60 ms")
-    check(f"[{label}] +3V3 peak during start-up", r["vmax"], None, VCI_MAX, "V", "SSD1351 VCI <= 3.5 V (NHD spec)")
-    check(f"[{label}] +3V3 after start-up", r["vend"], W25Q_VMIN, VCI_MAX, "V", "W25Q128JV 9.2 >= 2.7 V; SSD1351 VCI <= 3.5 V")
-    check(f"[{label}] LDO input current peak", r["iinpk"], None, BATOCP_DEFAULT, "A",
-          "BQ25180 SLUSE99C IBAT_OCP 1 A (POR value, before firmware sets 1.5 A); model uses typ ILIM, DS gives no max")
-    if ramp <= 1e-3:   # rail rise set by the LDO soft start (or a >= 3 V/ms SYS ramp)
-        check(f"[{label}] +3V3 ramp rate 10-90 %", 0.8 * vtop / (r["t90"] - r["t10"]),
+    check(f"[{label}] +3V3 peak during start-up", rov["vmax"], None, VCI_MAX, "V", "SSD1351 VCI <= 3.5 V (NHD spec)")
+    check(f"[{label}] +3V3 after start-up", min(rov["vend"], rtm["vend"]), W25Q_VMIN, None, "V", "W25Q128JV 9.2 >= 2.7 V")
+    check(f"[{label}] +3V3 after start-up (max)", max(rov["vend"], rin["vend"]), None, VCI_MAX, "V",
+          "SSD1351 VCI <= 3.5 V (NHD spec)")
+    check(f"[{label}] LDO input current peak (current-limit controlled, typ ILIM, C(V) at +tol)", rin["iinpk"], None,
+          BATOCP_DEFAULT, "A", "BQ25180 SLUSE99C IBAT_OCP 1 A (POR value, before firmware sets 1.5 A); "
+          f"{DS} Table 14 gives ILIM >= 0.61 A and no max")
+    if ramp <= 1e-3:   # rail rise set by the LDO soft start / current limit (or a >= 3 V/ms SYS ramp)
+        check(f"[{label}] +3V3 ramp rate 10-90 %, DS min ILIM, max C", 0.8 * vtop / (rtm["t90"] - rtm["t10"]),
               TMAG_RAMP_MIN, None, "V/s", "TMAG5273 SLYS045C VCC ramp >= 3 V/ms")
 
 
@@ -471,7 +609,8 @@ def test_load_steps_slow_loop_sensitivity(main, check):
 
 def _vsys_slew_usb(main, base):
     """Fastest SYS rise on USB plug-in: BQ25180 ILIM (500 mA code, 498 mA max) into the smallest VSYS capacitance
-    of both boards (DC bias at 4.5 V, -tolerance, 60 C), ignoring every load (all of which slow it down)."""
+    of both boards (DC bias at SYS_REG 4.5 V, the POR default: more bias than the firmware's 4.4 V, so less C;
+    -tolerance, 60 C), ignoring every load (all of which slow it down)."""
     c = 0.0
     for d in (main, base):
         for r in caps_to_gnd(d, "VSYS"):
@@ -522,24 +661,24 @@ def _local_ceff_min(d):
     loc = local_out_caps(d)
     vb = ldo_vnom(d) * 1.02
     worst = math.inf
-    for corner in d.extremes(loc):
+    for corner in cap_corners(d, loc):
         for temp in (-10, 60):
-            c = sum(d.value(r) * cap_factor(d, r, vb, temp, 0) * corner[r] for r in loc)
+            c = sum(d.value(r) * cap_factor(d, r, vb, temp, corner[r]) for r in loc)
             worst = min(worst, c)
     return worst, loc
 
 
 def test_output_capacitor_stability(main, check):
-    """DS9080-09 stability conditions with the real capacitors: >= 0.7 uF effective at U1 (DC bias, tolerance, TCC),
+    """DS9080-09 stability conditions with the real capacitors: >= 1 uF effective at U1 (DC bias, tolerance, TCC),
     and every output capacitor's ESR >= 1 mohm over the loop band (10 kHz - 1 MHz, Samsung data)."""
     c_loc, loc = _local_ceff_min(main)
     check(f"COUT effective at U1 ({'+'.join(loc)}), worst corner", c_loc, COUT_MIN_STAB, None, "F",
-          f"{DS} section 8 VOUT pin: >= 0.7 uF effective for stability")
+          f"{DS} 17.1 / Fig. 1: >= 1 uF effective incl. voltage and temperature coefficient (section 8: 0.7 uF)")
     # whole rail, Monte Carlo over all output capacitor tolerances (200 draws), both temperatures
     caps = out_caps(main)
     vb = ldo_vnom(main) * 1.02
-    c_all = min(sum(main.value(r) * cap_factor(main, r, vb, t, 0) * mc[r] for r in caps)
-                for mc in main.monte_carlo(caps, 200, seed=7) for t in (-10, 60))
+    c_all = min(sum(main.value(r) * cap_factor(main, r, vb, t, mc[r]) for r in caps)
+                for mc in cap_draws(main, caps, 200, seed=7) for t in (-10, 60))
     check(f"COUT effective on +3V3 ({len(caps)} caps), MC min", c_all, 1e-6, None, "F",
           f"{DS} Fig. 1 typical application: COUT effective capacitance >= 1 uF")
     for r in caps:
@@ -558,7 +697,7 @@ def test_load_step_monte_carlo(main, check):
     worst_lo = {VBUVLO: math.inf, VSYS_USB_MAX: math.inf}
     worst_hi = -math.inf
     for vsys, temp in ((VBUVLO, 60), (VSYS_USB_MAX, -10)):
-        draws = list(main.monte_carlo(caps, n, seed=5 if vsys == VBUVLO else 6))
+        draws = list(cap_draws(main, caps, n, seed=5 if vsys == VBUVLO else 6))
         for b0 in range(0, n, batch):
             deck = spicelib.Deck("LDO MC load step")
             deck.include(LIB)
@@ -568,8 +707,7 @@ def test_load_step_monte_carlo(main, check):
                 corner = dict(ACC=round(rng.uniform(-0.02, 0.02), 5), RDSK=round(rng.uniform(1, 0.53 / 0.31), 4),
                               LREG=round(rng.uniform(0.005, 0.01), 5), LINE=round(rng.uniform(-0.0035, 0.0035), 6),
                               IQ="4u", ILIM=0.98, IFB=0.72)
-                sign = {r: (mc[r] - 1) / cap_tol(main, r) for r in caps}
-                lines, n_out = ldo_lines(main, "n_vsys", corner=corner, temp=temp, cap_sign=sign, suffix=f"_k{k}")
+                lines, n_out = ldo_lines(main, "n_vsys", corner=corner, temp=temp, cap_sign=mc, suffix=f"_k{k}")
                 deck += lines
                 deck += f"IS_k{k} {n_out} 0 {SLEEP}"
                 deck += f"IL_k{k} {n_out} 0 " + pwl([(0, 0), (200e-6, 0), (201e-6, i_peak - SLEEP),
@@ -588,11 +726,11 @@ def test_load_step_monte_carlo(main, check):
     check("MC +3V3 max after release", worst_hi, None, VCI_MAX, "V", "SSD1351 VCI <= 3.5 V (NHD spec)")
 
 
-def _iq_deck(d, corner):
+def _iq_deck(d, corner, vsys=3.7, temp=25):
     deck = spicelib.Deck("LDO Iq")
     deck.include(LIB)
-    deck += "VSYS n_vsys 0 3.7"
-    lines, n_out = ldo_lines(d, "n_vsys", corner=corner)
+    deck += f"VSYS n_vsys 0 {vsys}"
+    lines, n_out = ldo_lines(d, "n_vsys", corner=corner, temp=temp)
     deck += lines
     deck.op()
     deck.print_op("i(VSENSE)", f"v({n_out})")
@@ -600,20 +738,44 @@ def _iq_deck(d, corner):
 
 
 def test_quiescent_current_typical(main, check):
-    """No load, VBAT 3.7 V: the LDO's own draw from VSYS (DS IQ, typical part) against SPEC 3."""
+    """No load, VBAT 3.7 V: the LDO's own draw from VSYS (DS IQ, typical part) against the SPEC 3 typical figure
+    ('Iq ≤ 2 µA typ'). The DS max part against the SPEC max: test_quiescent_current_max_vs_spec."""
+    spec_ldo_iq()
     r = _iq_deck(main, TYP).run()
     check_clean(r)
-    check("LDO quiescent current, typ part, no load", r["op_0"], 0, SPEC_IQ_MAX * 1.001, "A",
-          f"SPEC.md 3 LDO Iq <= 2 uA ({DS} Table 14 IQ 2 uA typ)")
+    # the Iq reading only means something if U1 is actually on and regulating (an off LDO also draws ~0)
+    check("+3V3 in regulation during the Iq measurement", r["op_1"], ldo_vnom(main) * 0.98, ldo_vnom(main) * 1.02,
+          "V", f"{DS} Table 14 accuracy +/-2 %")
+    check("LDO quiescent current, typ part, no load", r["op_0"], 0, SPEC_IQ_TYP * 1.001, "A",
+          f"SPEC.md 3 LDO {SPEC_LDO_IQ} (typ) ({DS} Table 14 IQ 2 uA typ)")
 
 
-@pytest.mark.xfail(strict=True, reason="DESIGN ISSUE: SPEC 3 asks for LDO Iq <= 2 uA, but DS9080-09 Table 14 guarantees "
-                                       "only 4 uA max (2 uA is typical); a max part breaks the SPEC sleep budget")
+IQ_MAX_VSYS = (3.7, VSYS_BATT[-1], VSYS_USB_MAX)   # battery mid / full, USB at SYS_REG 4.5 V + 2 % (U1 regulating)
+
+
 def test_quiescent_current_max_vs_spec(main, check):
-    r = _iq_deck(main, LOW).run()
-    check_clean(r)
-    check("LDO quiescent current, DS max part, no load", r["op_0"], 0, SPEC_IQ_MAX * 1.001, "A",
-          f"SPEC.md 3 LDO Iq <= 2 uA vs {DS} Table 14 IQ 4 uA max")
+    """LDO-1. SPEC 3 now reads 'Iq ≤ 2 µA typ / 4 µA max' (DS9080-09 Table 14: IQ 2 uA typ / 4 uA max). Until
+    2026-10 it said 'Iq ≤ 2 µA' and this test was a strict xfail: a DS max part draws 4 uA. Now a guard: a DS max-IQ part
+    at no load, at both accuracy extremes (-2 % with max dropout / line regulation, and +2 %), -10/25/60 C and VSYS
+    3.7 / 4.2 / 4.59 V, worst input current against the SPEC max. The typical part against 2 uA typ:
+    test_quiescent_current_typical. The DS gives IQ at 25 C only and the model holds it constant over temperature and
+    VIN (no DS data), so the -10/60 C rows rest on the model; the real ground current at the sleep load is a bring-up
+    measurement (LDO-6)."""
+    spec_ldo_iq()
+    vnom = ldo_vnom(main)
+    rows = []
+    for tag, corner in (("-2 % part", LOW), ("+2 % part", HIGH)):
+        for temp in TEMPS:
+            for vsys in IQ_MAX_VSYS:
+                r = _iq_deck(main, corner, vsys, temp).run()
+                check_clean(r)
+                # an off or drop-out LDO would read a different (lower) current: U1 must be on and regulating
+                assert r["op_1"] > 0.95 * vnom, f"U1 not regulating in the Iq deck ({tag}, {temp} C, {vsys} V): {r}"
+                rows.append((r["op_0"], tag, temp, vsys))
+    i_q, tag, temp, vsys = max(rows)
+    check(f"LDO quiescent current, DS max part, no load, max of {len(rows)} corners (at {tag}, {temp} C, VSYS {vsys} V; "
+          f"all {min(rows)[0] * 1e6:.4f}-{i_q * 1e6:.4f} uA)", i_q, 0, SPEC_IQ_MAX * 1.001, "A",
+          f"SPEC.md 3 LDO {SPEC_LDO_IQ} (max; LDO-1) vs {DS} Table 14 IQ 4 uA max")
 
 
 def _thermal(d, vsys, temp_amb, corner=TYP):
@@ -638,7 +800,95 @@ def test_thermal(main, check):
     """Worst dissipation: USB SYS_REG max, every consumer at peak, 60 C ambient."""
     tj, p, _ = _thermal(main, VSYS_USB_MAX, 60)
     check(f"RT9080 TJ at {p * 1e3:.0f} mW, TA 60 C", tj, None, TJ_MAX, "C",
-          f"{DS} section 12 TJ <= 125 C, theta-JA(EVB) 100.7 C/W (section 13)")
+          f"{DS} section 12 TJ <= 125 C, theta-JA (JEDEC) 189.4 C/W (section 13)")
+
+
+# --------------------------------------------------------------------------------------------- reverse bias
+def _reverse_run(main, base, case):
+    """VSYS falls faster than +3V3 can follow: U1 sees VOUT > VIN and the +3V3 capacitors discharge into VSYS through
+    the PMOS body diode. +3V3: +2 % part at 60 C (highest rail), every capacitor at +tol with C(V) (most hold-up),
+    lowest awake load. VSYS: both boards' VSYS capacitors at -tol, DC bias at the starting voltage, 60 C (fastest fall).
+    """
+    v0 = SYS_REG if case == "usb unplug" else 3.7
+    c_vsys = sum(dd.value(r) * cap_factor(dd, r, v0, 60, -1) for dd in (main, base) for r in caps_to_gnd(dd, "VSYS"))
+    # The rail powers up from 0 V first (ngspice cannot start 16 voltage-dependent capacitors from a 3.3 V operating
+    # point: 'timestep too small' at the first step), the event happens at t_ev once everything has settled.
+    t_ev = 1e-3
+    up = f"PWL(0 0 10u {v0})"
+    deck = spicelib.Deck(f"LDO reverse bias {case}")
+    deck.include(LIB)
+    deck += [".model SWREV SW(VT=0.5 VH=0.01 RON=1m ROFF=1G)",
+             f"VOPEN nopen 0 PWL(0 1 {t_ev} 1 {t_ev + 0.1e-6} 0)",
+             f"CVSYS n_vsys 0 {c_vsys:.6g}"]
+    if case == "usb unplug":
+        # USB path opens; the BATFET supplements SYS (ideal diode) once SYS < VBAT - VBSUP1, VBAT at BUVLO
+        deck += [f"VUSB nusb 0 {up}", "SUSB nusb n_vsys nopen 0 SWREV",
+                 # BATFET in supplement mode: conducts through RON_BAT once SYS < VBAT - VBSUP1 (smooth ideal diode)
+                 f"BSUP 0 n_vsys I=0.5*(({VBUVLO - VBSUP1}-v(n_vsys)) + sqrt(({VBUVLO - VBSUP1}-v(n_vsys))**2 + 1e-8))"
+                 f"/{RON_BAT}", f"IVS n_vsys 0 {DIM_VSYS}"]
+        tstop = t_ev + 8e-3
+    elif case == "batocp trip":
+        # a VSYS overload at the BATOCP setting (e.g. a shorted motor lead) switched on at t_ev: the BATFET opens
+        deck += [f"VBAT nbat 0 {up}", f"RBAT nbat nbf {RON_BAT}", "SBAT nbf n_vsys nopen 0 SWREV",
+                 f"RVS n_vsys nvs {3.7 / BATOCP_SET:.6g}", "SVS nvs 0 nsc 0 SWREV",
+                 f"VSC nsc 0 PWL(0 0 {t_ev - 1e-6} 0 {t_ev - 0.9e-6} 1)"]
+        tstop = t_ev + 1e-3
+    else:
+        # a WS2812C shorted VDD-GND behind U2 (RON) at t_ev; BATOCP opens the BATFET 10 us later
+        deck += [f"VBAT nbat 0 {up}", f"RBAT nbat nbf {RON_BAT}", "SBAT nbf n_vsys nbt 0 SWREV",
+                 f"VBT nbt 0 PWL(0 1 {t_ev + 10e-6} 1 {t_ev + 10.1e-6} 0)",
+                 "SSH n_vsys nsh nsc 0 SWREV", f"VSC nsc 0 PWL(0 0 {t_ev} 0 {t_ev + 0.1e-6} 1)", f"RSH nsh 0 {RON_LSW}"]
+        tstop = t_ev + 1e-3
+    lines, n_out = ldo_lines(main, "n_vsys", corner=HIGH, temp=60, vdep=True, cap_sign={r: 1 for r in out_caps(main)})
+    deck += lines
+    # awake-floor load as a resistor (an ideal current source would drag the unpowered rail negative at t = 0)
+    deck += [f"RLOAD {n_out} 0 {ldo_vnom(main) / ACTIVE_MIN:.6g}", f"BDIF ndif 0 V=v({n_out})-v(n_vsys)"]
+    deck.tran("0.1u", f"{tstop:.6g}", extra="1u")
+    deck.meas(f"tran vpre FIND v({n_out}) AT={t_ev - 2e-6}")
+    deck.meas(f"tran vrev MAX v(ndif) FROM={t_ev - 2e-6} TO={tstop:.6g}")
+    deck.meas(f"tran irev MIN i(VSENSE) FROM={t_ev - 2e-6} TO={tstop:.6g}")
+    deck.meas("tran tclose WHEN v(ndif)=0 FALL=1")   # +3V3 back below VSYS: the reverse window is over
+    r = deck.run()
+    # Once +3V3 has decayed back onto VSYS, U1 re-enters dropout at VIN ~ VOUT with VSYS sitting on the supplement
+    # source, and ngspice can stall there ('timestep too small'). The measures still cover everything up to the stall,
+    # so a stall AFTER tclose does not affect the peak; a stall before it (or any other error) is a real failure.
+    stall = [e for e in r["_errors"] if "timestep too small" in e.lower()]
+    if stall and "tclose" in r:
+        t_stall = float(re.search(r"time = ([-+0-9.eE]+)", stall[0]).group(1))
+        if t_stall > r["tclose"]:
+            r["_errors"] = [e for e in r["_errors"] if e not in stall]
+    if "tclose" not in r:   # the window may legitimately still be open at tstop (or never reopen after a collapse)
+        r["_errors"] = [e for e in r["_errors"] if "tclose" not in e]
+        r["_missing"] = [m for m in r.get("_missing", []) if m != "tclose"]
+    check_clean(r, exc=RuntimeError)   # a simulator failure must not pass as an expected (xfail) check failure
+    if not r["vpre"] > 0.97 * ldo_vnom(main):
+        raise RuntimeError(f"+3V3 not settled before the event: {r['vpre']}")
+    return r
+
+
+def test_reverse_bias_usb_unplug_at_buvlo(main, base, check):
+    """Normal operation, worst case: USB unplugged while charging a flat cell (VBAT at BUVLO), display awake. VSYS
+    drops from SYS_REG to VBAT - VBSUP1 while +3V3 is held up by its capacitors; the firmware LED derating
+    (VBAT < 3.53 V: LEDs off) keeps the VSYS-side load small enough that U1 stays inside its abs max."""
+    r = _reverse_run(main, base, "usb unplug")
+    check(f"[USB unplug, VBAT = BUVLO, dim awake] U1 VOUT - VIN max (reverse I {-min(r['irev'], 0) * 1e3:.1f} mA)",
+          r["vrev"], None, REV_MAX, "V", f"{DS} section 10 abs max VOUT - VIN <= 0.3 V")
+
+
+LDO3_ACCEPTED = ("DESIGN ISSUE (accepted risk, rev A): LDO-3 / architecture risk R38(a). A VSYS collapse with VSYS-side "
+                 "load drives U1 to VOUT - VIN ~0.89 V (BATOCP trip on a VSYS overload) / ~1.72 V (WS2812C shorted "
+                 "behind U2), above the DS9080-09 0.3 V abs max: the +3V3 capacitors discharge ~0.32 / ~4.1 A into VSYS "
+                 "through the PMOS body diode, the only reverse-current path (no +3V3 -> VSYS Schottky fitted). "
+                 "Accepted for rev A (~0.1 mJ per event); the fix, if needed, is a low-leakage Schottky at U1")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=LDO3_ACCEPTED)
+@pytest.mark.parametrize("case", ["batocp trip", "led short"])
+def test_reverse_bias_on_vsys_collapse(main, base, check, case):
+    """Fault conditions: VSYS is pulled down by a VSYS-side fault while the charger disconnects the battery."""
+    r = _reverse_run(main, base, case)
+    check(f"[{case}] U1 VOUT - VIN max (reverse I {-min(r['irev'], 0):.2f} A)", r["vrev"], None, REV_MAX, "V",
+          f"{DS} section 10 abs max VOUT - VIN <= 0.3 V")
 
 
 # ============================================================================================= fault injection
@@ -651,17 +901,17 @@ def test_fault_output_cap_left_off(main, check):
     c_loc, _ = _local_ceff_min(main)
     with pytest.raises(AssertionError):
         check("FAULT C3 left off: COUT effective at U1 (must fail)", c_loc, COUT_MIN_STAB, None, "F",
-              f"{DS} section 8 VOUT pin: >= 0.7 uF effective")
+              f"{DS} 17.1 / Fig. 1: >= 1 uF effective")
 
 
 @pytest.mark.fault
 def test_fault_output_cap_wrong_value(main, check):
-    """C3 entered as 1 uF instead of 10 uF: the 0603 X5R loses ~56 % at 3.3 V, so U1 sees < 0.7 uF."""
+    """C3 entered as 1 uF instead of 10 uF: the 0603 X5R loses ~56 % at 3.3 V, so U1 sees < 1 uF effective."""
     main.override("C3", "1u")
     c_loc, _ = _local_ceff_min(main)
     with pytest.raises(AssertionError):
         check("FAULT C3 = 1u: COUT effective at U1 (must fail)", c_loc, COUT_MIN_STAB, None, "F",
-              f"{DS} section 8 VOUT pin: >= 0.7 uF effective")
+              f"{DS} 17.1 / Fig. 1: >= 1 uF effective")
 
 
 @pytest.mark.fault
@@ -684,6 +934,40 @@ def test_fault_wrong_ldo_variant(main, check):
         check(f"FAULT RT9080-28: +3V3 min @ VSYS {VSYS_USB_MAX} V (must fail)", r["op_0"],
               max(W25Q_VMIN, WS_VIH_K * VSYS_USB_MAX + NRF_VOH_DROP), None, "V",
               "WS2812C-V6 VIH 0.6*VDD + nRF VOH = VDD-0.4 V")
+
+
+@pytest.mark.fault
+def test_fault_en_strapped_to_gnd(main, check):
+    """EN tied to GND instead of VIN (wrong connection on the sheet): +3V3 never comes up. The decks take EN from the
+    netlist, so the regulation check itself must catch it (not only the topology assert)."""
+    rewire(main, ldo_ref(main), "EN", "GND")
+    deck = spicelib.Deck("LDO fault EN on GND")
+    deck.include(LIB)
+    deck += "VSYS n_vsys 0 3.7"
+    lines, n_out = ldo_lines(main, "n_vsys")
+    deck += lines
+    deck += f"RLOAD {n_out} 0 {ldo_vnom(main) / TX:.6g}"   # TX load as a resistor (a current source drags an off rail <0)
+    deck.op()
+    deck.print_op(f"v({n_out})")
+    r = deck.run()
+    check_clean(r)
+    with pytest.raises(AssertionError):
+        check("FAULT EN on GND: +3V3 at VBAT 3.7 V (must fail)", r["op_0"], W25Q_VMIN, None, "V",
+              "W25Q128JV 9.2 VCC >= 2.7 V")
+
+
+@pytest.mark.fault
+def test_fault_symbol_pinout_swapped(main, check):
+    """Symbol with the VIN and VOUT pad numbers swapped (VIN on pad 5): every net looks right by pin NAME, so only the
+    DS pinout check in test_netlist_topology can catch it."""
+    u = ldo_ref(main)
+    swap = {"1": "5", "5": "1"}
+    for net, lst in main.nets.items():
+        main.nets[net] = [(r, swap.get(p, p) if r == u else p, f) for r, p, f in lst]
+    main.pins[u]["1"], main.pins[u]["5"] = main.pins[u]["5"], main.pins[u]["1"]
+    assert nets(main) == ("VSYS", "VSYS", "+3V3", "GND")   # by name nothing changed
+    with pytest.raises(AssertionError, match="pinout"):
+        test_netlist_topology(main, check)
 
 
 @pytest.mark.fault

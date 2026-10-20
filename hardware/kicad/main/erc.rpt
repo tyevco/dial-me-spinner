@@ -1,4 +1,4 @@
-ERC report (2026-10-19T02:16:53+0000, Encoding UTF8)
+ERC report (2026-10-19T10:07:09+0000, Encoding UTF8)
 Report includes: Errors, Warnings, Exclusions
 
 ***** Sheet /
@@ -8,6 +8,10 @@ Report includes: Errors, Warnings, Exclusions
 ***** Sheet /MCU, flash & debug/
 
 ***** Sheet /OLED display & 13 V boost/
+[pin_to_pin]: Pins of type Open collector and Power output are connected
+    ; error
+    @(53.34 mm, 200.66 mm): Symbol U21 Pin 5 [QOD, Open collector, Line]
+    @(53.34 mm, 198.12 mm): Symbol U21 Pin 6 [VOUT, Power output, Line]
 
 ***** Sheet /LED ring/
 
@@ -15,4 +19,4 @@ Report includes: Errors, Warnings, Exclusions
 
 ***** Sheet /Detent actuator & home sensor/
 
- ** ERC messages: 0  Errors 0  Warnings 0
+ ** ERC messages: 1  Errors 1  Warnings 0

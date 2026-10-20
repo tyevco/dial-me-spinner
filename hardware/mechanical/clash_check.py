@@ -8,7 +8,8 @@ Checks, each as an OpenSCAD intersection exported to STL (empty = no clash):
   press  base items vs the floating assembly + rotor moved down by STOP_TRAVEL (0.50)
   rest   base items vs the floating assembly + rotor at rest
   pair   FA-internal pairs: board-bottom parts vs actuator / hub / harness / coax, harness and
-         coax vs everything they pass, board-top parts vs bracket / light box / cover
+         coax vs everything they pass, board-top parts vs bracket / light box / cover, NFC coil and
+         tail vs the board, its top parts (J11 joint included), bracket, glass, light box and cover
 Per-part names for board-part clashes come from calcs.py section 11 (analytic, exact for the
 rotor and the hub, sampled for the actuator).
 """
@@ -39,6 +40,10 @@ PAIRS = [
     ("battery_leads", "fa_lower_plate"),
     ("detent@click", "hub+nut"), ("detent@free", "hub+nut"), ("oled_bracket", "hub+nut"),
     ("detent@click", "main_board"), ("detent@free", "main_board"),
+    ("nfc_tail", "main_board"), ("nfc_tail", "main_top_parts"), ("nfc_tail", "oled_bracket"), ("nfc_tail", "oled_glass"),
+    ("nfc_tail", "light_box"), ("nfc_tail", "top_cover"),
+    ("nfc_coil", "main_top_parts"), ("nfc_coil", "oled_bracket"), ("nfc_coil", "oled_glass"), ("nfc_coil", "light_box"),
+    ("nfc_coil", "top_cover"),
 ]
 
 

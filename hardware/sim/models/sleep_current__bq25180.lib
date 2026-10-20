@@ -21,7 +21,10 @@
 *   IBAT_SHIP 3.2 uA typ / 4.5 uA max, VBAT 3.6 V, push-button function enabled (average current), 0..85 C
 *            (Table 7.5). Split the same way: core = IBAT_SHIP - 1.2 uA, plus the pulsed TS/MR source.
 *   SYS pull-down: "enabled once the device enters shipmode and after disconnecting the BATFET" (§8.3.4.1
-*            Table 8-2). Its resistance is not specified: 1 kohm is assumed; it only sets VSYS = 0.
+*            Table 8-2); RSYS_PD 25 ohm typ at VSYS = 3.6 V (Table 7.5 "SYS pull down resistance").
+*            [verifier: the earlier "not specified, 1 kohm assumed" was wrong; it only sets VSYS = 0 either way]
+*   ILKG     SCL / SDA / /INT leakage as in battery-only mode (the pins exist in ship mode too; their pull-ups
+*            sit on the unpowered +3V3, so this is 0 in practice -- it also keeps those nodes in the deck).
 *   BATFET off: open.
 *
 * MAXC = 0 typical, 1 datasheet maximum. No temperature data inside 0..85 C beyond the max -> constant.
@@ -47,10 +50,14 @@ Bint intn vss I = 'ilkg * tanh(v(intn,vss)/0.1)'
 .subckt SC_BQ25180_SHIP in sys bat tsmr scl sda intn vss params: MAXC=0
 .param iship = {MAXC > 0.5 ? 4.5u : 3.2u}
 .param its   = {60u * 4m / (4m + 196m)}
+.param ilkg  = {MAXC > 0.5 ? 1u : 0}
 Iqcore bat vss DC {iship - its}
 Its bat tsmr DC {its}
 Vclamp nclamp vss 2.8
 Dclamp tsmr nclamp DBQCLAMPS
-Rsyspd sys vss 1k
+Rsyspd sys vss 25
+Bscl scl vss I = 'ilkg * tanh(v(scl,vss)/0.1)'
+Bsda sda vss I = 'ilkg * tanh(v(sda,vss)/0.1)'
+Bint intn vss I = 'ilkg * tanh(v(intn,vss)/0.1)'
 .model DBQCLAMPS D(IS=1e-14 N=1)
 .ends SC_BQ25180_SHIP

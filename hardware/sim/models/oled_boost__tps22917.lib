@@ -25,13 +25,19 @@
 *                  at VIN 3.6 V, 25 C; max 0.14 ohm at -40..85 C, the test passes the corner).
 *                  Current flows only VIN -> VOUT: reverse current blocking (9.4) is treated as ideal.
 *   Turn off       ramp node is reset with tau ~1 us when ON goes low (Table 7.6 tOFF 10 us typ).
-*   QOD            150 ohm to GND while disabled (Table 7.5 "QOD"); the netlist leaves QOD open here.
+*   QOD            150 ohm to GND while disabled (Table 7.5 "QOD").  On this board U21 QOD (pin 5) is tied to
+*                  VOUT = OLED_VIN (hardware/sim SLP-1 / LSW-1 fix), so OLED_VIN is pulled to 0 V whenever
+*                  ON is low (C38 4.7 uF: OLED_VIN passes the TPS61040 ~1.5 V UVLO within ~1 ms of ON falling).
 *   Supply current IQ,VIN 0.5 uA enabled, ISD,VIN 10 nA disabled (Table 7.5 typ).
 *
 * NOT modelled: RCB trip current / 10 us activation time (reverse current is simply blocked), RON
 *   variation with VIN (the test passes RON for the VIN/temperature corner), thermal limits, ON-pin
 *   hysteresis, the slight VIN dependence of CINT, the CT pin's own clamp (the internal ramp node may
 *   exceed the 7 V CT rating of Table 7.3 in this model; it is a timing state, not a pin voltage claim).
+*
+* FIXED by the independent verifier (2026-10-19): I_CT, tON_k and the delay VDEL used the instantaneous VIN,
+*   which made a VIN sag regenerative (18.7 A into 445 uF from 4.2 V behind 0.3 Ohm); they now use VIN
+*   low-passed with 1 ms (vinf).  Details at the block.
 *
 * Pins: VIN GND ON CT QOD VOUT   (datasheet pin order 1..6)
 * =====================================================================================================
@@ -44,16 +50,29 @@ Cen en 0 1n
 * ---- ON pin smart pull-down while low
 Bpd ON GND I = V(en) < 0.5 ? V(ON,GND)/{RPD} : 0
 * ---- VIN-dependent slew current and delay voltage (Table 7.6)
-Bvin vinc 0 V = min(max(V(VIN,GND), 1.8), 5.0)
+* FIXED (verifier, 2026-10-19): I_CT, tON_k and VDEL used the instantaneous VIN.  The CT capacitor holds the
+* swing (VIN - V(CT)) through a fast VIN change and VDEL rises with VIN (slope 0.46 above 3.6 V, 1.0 below), so
+* a VIN sag RAISED the ramp target (VIN - CT - VDEL): more current, more sag.  From 4.2 V behind 0.3 Ohm into
+* 445 uF + 20 Ohm it ran away to 18.7 A with VIN down to 1.1 V (C x SRON is ~0.9 A).  They now use VIN low-passed
+* with 1 ms (vinf), as in load_switches__tps22917.lib; the full-on clamp and the CT stop still use the real VIN.
+* Constant-VIN behaviour (Table 7.6 tR / tON) is unchanged.  Bvini pulls vinf onto VIN during the first ~3 us
+* of a transient: the OLED tests start with uic, where vinf would otherwise start at 0 V.
+Bvinb vinb 0 V = V(VIN,GND)
+Rvinf vinb vinf 1Meg
+Cvinf vinf 0 1n
+Bvini vinb vinf I = (V(vinb) - V(vinf))*10m*(0.5 - 0.5*tanh((time - 3u)/0.3u))
+Bvin vinc 0 V = min(max(V(vinf), 1.8), 5.0)
 Bict ict 0 V = V(vinc) < 3.6 ? 1.1u + (V(vinc)-1.8)*(0.8u/1.8) : 1.9u + (V(vinc)-3.6)*(0.4u/1.4)
 Btk tonk 0 V = V(vinc) < 3.6 ? 3.6e6 + (V(vinc)-1.8)*(0.2e6/1.8) : 3.8e6 + (V(vinc)-3.6)*(0.2e6/1.4)
 Bdel vdel 0 V = V(ict)*V(tonk) - 0.9*V(vinc)
-* ---- CT ramp: sink I_CT from CT (external C37 returns to VIN), stop when fully on; reset when off
+* ---- CT ramp: sink I_CT from CT (external C37 returns to VIN), stop when fully on; reset when off.
+*      The stop fades out over 50 mV, 0.5 V past the end of the ramp (VOUT = VIN there already): a hard switch
+*      left CT parked on the threshold and made ngspice chatter once the circuit went idle (verifier fix).
 Cint CT VIN {CINT}
-Bct CT GND I = V(en) > 0.5 ? (V(VIN,CT) < V(vdel) + V(VIN,GND) + 0.5 ? V(ict) : 0) : -V(VIN,CT)*1m
+Bct CT GND I = V(en) > 0.5 ? V(ict)*min(max((V(vdel) + V(VIN,GND) + 0.5 - V(VIN,CT))/0.05, 0), 1) : -V(VIN,CT)*1m
 * ---- pass element: forward only, follows the ramp target, RON when fully on
 Bout VIN VOUT I = V(en) > 0.5 ? max(min(max(V(VIN,CT) - V(vdel), 0), V(VIN,GND)) - V(VOUT,GND), 0)/{RON} : 0
-* ---- QOD (open on this board) and supply current
+* ---- QOD (tied to VOUT = OLED_VIN on this board) and supply current
 Bqod QOD GND I = V(en) < 0.5 ? V(QOD,GND)/{RQOD} : 0
 Rqod QOD GND 1G
 Biq VIN GND I = V(en) > 0.5 ? {IQON} : {ISD}

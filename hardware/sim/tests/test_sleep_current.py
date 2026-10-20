@@ -62,8 +62,14 @@ def arch_sleep_budget() -> dict:
                     out[key + "_desk"] = float(md.group(1))
                     out["_dec"][key + "_desk"] = len(md.group(2) or "")
                 if key == "oled":
-                    mm = re.search(r"maximum\s+([0-9.]+)\s*[–-]\s*([0-9.]+)\s*µA", cells[-1])
-                    out["oled_max"] = float(mm.group(2))
+                    # "maximum 46 µA at 25 °C, 72 µA at 60 °C" (per temperature), or the older "maximum 35–40 µA"
+                    mm = re.search(r"maximum\s+([0-9.]+)\s*µA\s+at\s+25\s*°C,?\s*([0-9.]+)\s*µA\s+at\s+60\s*°C",
+                                   cells[-1])
+                    if mm:
+                        out["oled_max"], out["oled_max_60"] = float(mm.group(1)), float(mm.group(2))
+                    else:
+                        mm = re.search(r"maximum\s+([0-9.]+)\s*[–-]\s*([0-9.]+)\s*µA", cells[-1])
+                        out["oled_max"] = out["oled_max_60"] = float(mm.group(2))
                 break
     missing = {k for _, k in keys} - set(out)
     assert not missing, f"architecture.md §8.2 sleep rows not found: {missing}"
@@ -76,21 +82,42 @@ def arch_sleep_budget() -> dict:
     m = re.search(r"Desk, typical day:.*?([0-9]+) h asleep.*?\|\s*([0-9.]+)\s*mAh/day\s*\|.*?\(([0-9]+)[–-]([0-9]+) days\)",
                   s83)
     out["desk_sleep_h"], out["desk_mAh_day"], out["desk_days_min"] = float(m.group(1)), float(m.group(2)), float(m.group(3))
+    out["desk_idle_h"] = float(re.search(r"Desk, typical day:.*?([0-9]+) h connected idle", s83).group(1))
     m = re.search(r"([0-9.]+)[–-]([0-9.]+)\s*%/month", s83)
     out["selfdis_pct"] = (float(m.group(1)), float(m.group(2)))
     return out
 
 
-def fw_gpio_sleep_states(main) -> dict:
-    """nRF pin -> (net, state) from the 'Sleep config' column of docs/firmware.md §1.3, checked against the netlist."""
+def _fw_rows():
+    """docs/firmware.md §1.3 GPIO table -> [(doc pins, listed nets, sleep-config text)]."""
     txt = open(FW_MD, encoding="utf-8").read()
     sec = _section(txt, "### 1.3 GPIO configuration", "Rules the firmware has to respect")
-    states = {}
+    rows = []
     for line in sec.splitlines():
         if not re.match(r"\| P[01]\.[0-9]{2}", line):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        sleep = cells[-1].replace("*", "")
+        listed = re.sub(r"([A-Z_]+?)([0-9]+)[–-]([0-9]+)",
+                        lambda mm: " ".join(f"{mm.group(1)}{k}" for k in range(int(mm.group(2)), int(mm.group(3)) + 1)),
+                        cells[1])
+        rows.append((re.findall(r"P[01]\.[0-9]{2}", cells[0]), re.findall(r"[A-Z][A-Z0-9_+]*", listed),
+                     cells[-1].replace("*", "")))
+    return txt, rows
+
+
+def _u10_gpios_on(main, net) -> list:
+    return sorted(f for f, n in main.funcs["U10"].items() if n == net and re.fullmatch(r"P[01]\.[0-9]{2}", f))
+
+
+def fw_gpio_sleep_states(main, mismatches=None) -> dict:
+    """nRF pin -> (net, state) from the 'Sleep config' column of docs/firmware.md §1.3.
+
+    Keyed by NET (the firmware configures a function, wherever the netlist puts it), so a pin move in nets.py
+    does not silently assign a state to the wrong net; doc-vs-netlist pin disagreements are appended to
+    `mismatches` for test_gpio_sleep_states_from_firmware_doc (verifier change: was keyed by doc pin number)."""
+    txt, rows = _fw_rows()
+    states = {}
+    for pins, nets, sleep in rows:
         s = sleep.lower()
         if "driven low" in s or "driven, low" in s or s.startswith("low"):
             st = "OUT_LOW"
@@ -100,14 +127,11 @@ def fw_gpio_sleep_states(main) -> dict:
             st = "HIGHZ"
         else:
             raise AssertionError(f"firmware.md §1.3: cannot classify sleep config {sleep!r}")
-        listed = re.sub(r"([A-Z_]+?)([0-9]+)[–-]([0-9]+)",
-                        lambda mm: " ".join(f"{mm.group(1)}{k}" for k in range(int(mm.group(2)), int(mm.group(3)) + 1)),
-                        cells[1])
-        for pin in re.findall(r"P[01]\.[0-9]{2}", cells[0]):
-            net = main.funcs["U10"][pin]
-            if not net.startswith("unconnected"):
-                assert net in listed, f"firmware.md §1.3 row {cells[0]} lists {cells[1]}, netlist has {pin} = {net}"
-            states[pin] = (net, st)
+        for net in nets:
+            for pin in _u10_gpios_on(main, net):
+                states[pin] = (net, st)
+                if pin not in pins and mismatches is not None:
+                    mismatches.append(("pin", net, "/".join(pins), pin))
     # QSPI pins are set by the qspi_sleep pinctrl state (firmware.md §3.1 pinctrl): CSN keeps bias-pull-up.
     blk = re.search(r"qspi_sleep:\s*qspi_sleep\s*\{(.*?)\n\s*\};\s*\n", txt, re.S).group(1)
     csn = next(ln for ln in blk.splitlines() if "QSPI_CSN" in ln)
@@ -117,17 +141,32 @@ def fw_gpio_sleep_states(main) -> dict:
     return states
 
 
+def fw_sense_wake_pins(main) -> dict:
+    """nRF pin -> (net, 'low' | 'high') for every net whose firmware.md §1.3 sleep config is a SENSE wake source."""
+    _, rows = _fw_rows()
+    out = {}
+    for pins, nets, sleep in rows:
+        m = re.search(r"sense (low|high)", sleep.lower())
+        if m:
+            for net in nets:
+                for pin in _u10_gpios_on(main, net):
+                    out[pin] = (net, m.group(1))
+    assert out, "firmware.md §1.3: no SENSE wake pins found"
+    return out
+
+
 # ======================================================================================= simulation
 class SleepSim:
     """One DC operating point of both boards in SLEEP (System ON idle) or SHIP mode."""
 
     def __init__(self, main, base, vbat=3.7, temp=25.0, maxc=0, mode="sleep", scale=None, kgnd=0.0,
-                 u20_en_net=None, tmag_tsleep=0.1, sw1_closed=False, pcm_ua=None):
+                 u20_en_net=None, tmag_tsleep=0.1, sw1_closed=False, pcm_ua=None, u21_qod_open=False):
         self.main, self.base = main, base
         self.vbat, self.temp, self.maxc, self.mode = vbat, temp, maxc, mode
         self.scale = scale or {}
         self.kgnd = kgnd
         self.u20_en_net = u20_en_net
+        self.u21_qod_open = u21_qod_open     # what-if only: U21 QOD left unconnected (the pre-LSW-1 schematic)
         self.tmag_tsleep = tmag_tsleep
         self.sw1_closed = sw1_closed or "SW1" in base._shorted
         self.pcm_ua = arch_sleep_budget()["pcm"] if pcm_ua is None else pcm_ua
@@ -218,7 +257,8 @@ class SleepSim:
                  f"params: MAXC={MX} KGND={self.kgnd}")
         self._ic(deck, "U2", "leds", [p("U2", "VIN"), p("U2", "ON"), "__G__", p("U2", "VOUT"), p("U2", "QOD")],
                  "SC_TPS22917_OFF", f"params: MAXC={MX}")
-        self._ic(deck, "U21", "oled", [p("U21", "VIN"), p("U21", "ON"), "__G__", p("U21", "VOUT"), p("U21", "QOD")],
+        u21_qod = "n_u21_qod_open" if self.u21_qod_open else p("U21", "QOD")
+        self._ic(deck, "U21", "oled", [p("U21", "VIN"), p("U21", "ON"), "__G__", p("U21", "VOUT"), u21_qod],
                  "SC_TPS22917_OFF", f"params: MAXC={MX}")
         en = m.node(self.u20_en_net) if self.u20_en_net else p("U20", "EN")
         self._ic(deck, "U20", "oled", [p("U20", "VIN"), en, p("U20", "SW"), p("U20", "FB")], "SC_TPS61040",
@@ -258,9 +298,12 @@ class SleepSim:
         nodes = set()
         for n1, n2, _ in self.res_all.values():
             nodes.update(n for n in (n1, n2) if n != "0")
-        for net in self.WATCH:
+        for k, net in enumerate(self.WATCH):
             nd = self.main.node(net) if net in self.main.nets else self.base.node(net)
             nodes.add(nd)
+            # keep every watched node in the circuit even if a fault removes its last element (else ngspice
+            # rejects the probe): 1e15 ohm, i.e. 1000x above the rshunt every node already has (verifier fix)
+            deck += f"Rwatch_{k} {nd} 0 1e15"
         for nd in sorted(nodes):
             probes.append((f"v:{nd}", f"v({nd})"))
         for el, (src, sign) in self.ammeters.items():
@@ -324,15 +367,41 @@ def nominal():
 
 
 # ======================================================================================= tests: setup / sanity
+# Known drift between docs/firmware.md §1.3 and the netlist (verifier, 2026-10-19 04:55 netlist): nets.py moved
+# CHG_INT_N from P0.09 to P1.03 and put an NFC antenna (NFC1/NFC2 -> J11, C16/C17) on P0.09/P0.10.
+FW_DOC_DRIFT = {("pin", "CHG_INT_N"), ("uncovered", "NFC1"), ("uncovered", "NFC2")}
+FW_DOC_ISSUE = ("DESIGN ISSUE (documentation): docs/firmware.md §1.3 predates nets.py moving CHG_INT_N from P0.09 "
+                "to P1.03 and adding the NFC antenna on P0.09/P0.10 (NFC1/NFC2): the table still lists P1.03 as "
+                "'not connected / reset default' (followed literally, the charger /INT wake is lost in sleep), has no "
+                "row for NFC1/NFC2, and §1.2/§2.x still apply nfct-pins-as-gpios for 'P0.09 = CHG_INT_N'. Fix: update "
+                "the §1.3 rows (P1.03 CHG_INT_N SENSE low; P0.09/P0.10 NFC antenna), the UICR/DTS snippets and the "
+                "bring-up table.")
+
+
 def test_gpio_sleep_states_from_firmware_doc(main, check):
-    """The firmware sleep pin table covers every connected nRF GPIO, and its nets match the netlist."""
-    st = fw_gpio_sleep_states(main)
+    """The firmware sleep pin table covers every connected nRF GPIO, and its pin numbers match the netlist.
+    Only the exact known drift above is tolerated as an expected failure; any other mismatch fails."""
+    mism = []
+    st = fw_gpio_sleep_states(main, mism)
     gpios = {f: n for f, n in main.funcs["U10"].items() if re.fullmatch(r"P[01]\.[0-9]{2}", f)}
     skip = {"P0.00", "P0.01", "P0.18"}            # LFXO crystal pins and nRESET (no sleep-config row)
     uncovered = sorted(f for f, n in gpios.items() if f not in st and f not in skip and not n.startswith("unconnected"))
-    check("connected nRF GPIOs without a firmware.md §1.3 sleep state", len(uncovered), hi=0, unit="pins",
-          source="docs/firmware.md §1.3 GPIO configuration vs netlist U10")
+    issues = {("pin", m[1]) for m in mism} | {("uncovered", gpios[f]) for f in uncovered}
+    failed = []
+    for name, val, src in (
+            ("connected nRF GPIOs without a firmware.md §1.3 sleep state", len(uncovered),
+             f"docs/firmware.md §1.3 GPIO configuration vs netlist U10 {[(f, gpios[f]) for f in uncovered]}"),
+            ("firmware.md §1.3 pin numbers that disagree with the netlist", len(mism),
+             f"docs/firmware.md §1.3 vs hardware/design/nets.py {mism}")):
+        try:
+            check(name, val, hi=0, unit="pins", source=src)
+        except AssertionError as e:
+            failed.append(e)
     assert st["P1.01"][1] == "OUT_HIGH" and st["P1.02"][1] == "OUT_LOW" and st["P1.04"][1] == "OUT_LOW"
+    if failed:
+        if issues <= FW_DOC_DRIFT:
+            pytest.xfail(FW_DOC_ISSUE)
+        raise failed[0]
 
 
 def test_sleep_operating_point_is_consistent(nominal, main, check):
@@ -343,9 +412,9 @@ def test_sleep_operating_point_is_consistent(nominal, main, check):
     check("+3V3 at VBAT 3.7 V", sim.v(r, "+3V3"), lo=3.3 * 0.98, hi=3.3 * 1.02, unit="V",
           source="RT9080 DS9080-09 EC table VOUT accuracy ±2 %")
     check("LED_PWR_EN (U2 ON) in sleep", sim.v(r, "LED_PWR_EN"), hi=0.35, unit="V",
-          source="TPS22917 SLVSDW8B §7.5 VIL(ON) 0.35 V max")
+          source="TPS22917 SLVSDW8B §7.3 Recommended Operating Conditions VIL(ON) 0.35 V max")
     check("OLED_VCC_EN (U21 ON) in sleep", sim.v(r, "OLED_VCC_EN"), hi=0.35, unit="V",
-          source="TPS22917 SLVSDW8B §7.5 VIL(ON) 0.35 V max")
+          source="TPS22917 SLVSDW8B §7.3 Recommended Operating Conditions VIL(ON) 0.35 V max")
     check("MOT_NSLEEP in sleep", sim.v(r, "MOT_NSLEEP"), hi=0.25 * sim.v(r, "+3V3"), unit="V",
           source="DRV8837 SLVSBA4F §6.5 VIL 0.25 x VCC min")
     check("VLED held off by U2 QOD", sim.v(r, "VLED"), hi=0.1, unit="V",
@@ -385,18 +454,18 @@ def test_sleep_breakdown_and_top_contributors(nominal, budget, check):
     assert top[0][1] > 0
 
 
-D21_ISSUE = ("DESIGN ISSUE: TPS61040 U20 has EN tied to its own VIN (OLED_VIN). In sleep the panel's VCI->VCC ESD "
-             "path lifts +13V_OLED to about 2.7 V; the B5819W rectifier D21 then leaks backwards (CJ typ 4.9 uA at "
-             "25 C, 27 uA at 60 C) into the floating OLED_VIN, U20 wakes at its 1.5 V UVLO and burns it (DC model, "
-             "no credit for hiccup energy returned to +13V_OLED; with ideal recycling still >= +2.2 uA at 25 C). "
-             "Fix: hold U20 EN low in sleep (own GPIO + pull-down, asserted only once OLED_VIN is up since "
-             "EN <= VIN + 0.3 V), or a low-IR rectifier.")
+# Sleep budget (rev A, accepted): with the boost off (U21 QOD tied to OLED_VIN, SLP-1/LSW-1), the panel's VCI->VCC
+# ESD path holds +13V_OLED at about 2.7 V and the B5819W rectifier D21 leaks backwards all the time (CJ typ curve:
+# 5.4 uA at 25 C, 30 uA at 60 C): +3V3 -> panel ESD -> D21 -> L20 -> U21 QOD -> GND. architecture.md 8.2 now budgets
+# it in the OLED line (17.6 uA; total 38 uA). Before the fix the design drew 36.9 uA (U20 hiccuping at UVLO). Rev-B
+# options that remove it: a low-IR rectifier, or U20 EN on its own GPIO with U21 QOD open (32.18 uA,
+# test_boost_fix_whatif_en_held_low).
 
 
-@pytest.mark.xfail(strict=True, reason=D21_ISSUE)
 @pytest.mark.parametrize("vbat", [3.0, 3.7, 4.2])
 def test_sleep_total_within_budget_vs_vbat(main, base, budget, vbat, check):
-    """Total battery drain in SLEEP (typ, 25 C) against the itemised architecture.md §8.2 sleep budget."""
+    """Total battery drain in SLEEP (typ, 25 C) against the itemised architecture.md §8.2 sleep budget.
+    Guards the accepted rev-A budget (36.0 / 37.4 / 37.5 µA at VBAT 3.0 / 3.7 / 4.2 V vs the 38.0 µA sum)."""
     sim, r = simulate(main, base, vbat=vbat)
     check(f"sleep battery current at VBAT {vbat} V (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget), unit="µA",
           source="docs/architecture.md §8.2 sleep column (sum of lines)")
@@ -413,44 +482,73 @@ def test_sleep_temperature_sweep(main, base, budget, temp, check):
     check(f"D21 reverse current at {temp:+.0f} C", ua(r["id21"]), unit="µA", source="informational")
 
 
-@pytest.mark.parametrize("temp", [-10.0, pytest.param(25.0, marks=pytest.mark.xfail(strict=True, reason=D21_ISSUE)),
-                                  pytest.param(60.0, marks=pytest.mark.xfail(strict=True, reason=D21_ISSUE))])
+@pytest.mark.parametrize("temp", [-10.0, 25.0, 60.0])
 def test_boost_is_really_off_in_sleep(main, base, temp, check):
-    """With OLED_VCC_EN low the boost must be in shutdown: U20 may draw only ISD + EN leakage (both max)."""
+    """Guards fix SLP-1/LSW-1 (U21 QOD tied to OLED_VIN). With OLED_VCC_EN low, the boost must be in shutdown:
+    U20 may draw only ISD + EN leakage (both max, 2.0 uA). QOD now holds OLED_VIN at 0.1 / 0.8 / 4.5 mV, and U20
+    draws 0.100 / 0.101 / 0.105 uA at -10 / 25 / 60 C, so the margin is about 1.9 uA. With QOD open it drew 4.96 uA
+    at 25 C and 27.3 uA at 60 C (UVLO hiccup)."""
     sim, r = simulate(main, base, temp=temp)
     check(f"OLED_VIN in sleep at {temp:+.0f} C", sim.v(r, "OLED_VIN"), unit="V", source="informational")
     check(f"U20 TPS61040 current in sleep at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=1.0 + 1.0, unit="µA",
-          source="TPS61040 SLVS413L §7.5 ISD 1 µA max + II 1 µA max; architecture §6.3 'boost input draws 0 µA'")
+          source="TPS61040 SLVS413L §5.5 ISD 1 µA max + II 1 µA max; architecture §6.3 'boost input draws 0 µA'")
+
+
+@pytest.mark.parametrize("temp", [-10.0, 25.0, 60.0])
+def test_boost_enable_pin_in_shutdown_in_sleep(main, base, temp, check):
+    """Guards fix SLP-1/LSW-1 (U21 QOD tied to OLED_VIN). This is the state check behind the current check above
+    (verifier addition): TPS61040 shutdown needs EN <= VIL 0.4 V. EN = OLED_VIN is held at 0.1 / 0.8 / 4.5 mV at
+    -10 / 25 / 60 C, a margin of at least 0.395 V. With QOD open it was 1.46-1.53 V. The current check alone passed
+    at -10 C even though the boost was enabled there too (D21 leaks less when cold)."""
+    sim, r = simulate(main, base, temp=temp)
+    en = main.pin("U20", "EN")
+    check(f"U20 EN in sleep at {temp:+.0f} C", 0.0 if en == "0" else r["v"][en], hi=0.4, unit="V",
+          source="TPS61040 SLVS413L §5.5 VIL 0.4 V max (shutdown, ISD condition EN = GND); architecture §6.3 boost off")
 
 
 def test_boost_fix_whatif_en_held_low(main, base, budget, check):
-    """What-if for the D21 finding (not the schematic): U20 EN held low in sleep instead of tied to OLED_VIN."""
+    """What-if (not the schematic): the EN-low alternative to the SLP-1 fix. U21 QOD is left open, as before the
+    LSW-1 change, and U20 EN is held low (own GPIO + pull-down, SLP-1/SLP-V2 proposal) instead of tied to OLED_VIN.
+
+    Re-targeted after the schematic fixed SLP-1 differently (U21 QOD tied to OLED_VIN). On that circuit EN low
+    changes nothing: QOD already holds EN = OLED_VIN at about 0 V, and the totals are identical (37.37 uA at 25 C
+    either way). The original deck had therefore become a copy of the real-design total, and it failed that
+    total's budget. This deck keeps the alternative it was written for. OLED_VIN floats up to +13V_OLED, D21 sees
+    VR of about 0 V, and its reverse leakage falls from 5.4 uA (QOD fix) to 0.19 uA. The result, 32.18 uA, is the
+    same as on the pre-fix netlist. The test records that this rev-B alternative meets the architecture 8.2 budget
+    (now 38.0 µA, accepted for rev A with the D21 leak in the OLED line); the built fix draws 37.37 µA, 5.19 µA
+    above this alternative."""
     for temp in (-10.0, 25.0, 60.0):
-        sim, r = simulate(main, base, temp=temp, u20_en_net="GND")
-        check(f"[what-if EN low] U20 current at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=2.0, unit="µA",
-              source="TPS61040 SLVS413L §7.5 ISD 1 µA max + II 1 µA max")
-        check(f"[what-if EN low] sleep battery current at {temp:+.0f} C", ua(r["ibat"]), unit="µA",
+        sim, r = simulate(main, base, temp=temp, u20_en_net="GND", u21_qod_open=True)
+        check(f"[what-if EN low, QOD open] U20 current at {temp:+.0f} C", ua(r["contrib"]["XU20"]), hi=2.0,
+              unit="µA", source="TPS61040 SLVS413L §5.5 ISD 1 µA max + II 1 µA max")
+        check(f"[what-if EN low, QOD open] sleep battery current at {temp:+.0f} C", ua(r["ibat"]), unit="µA",
               source="informational")
-    sim, r = simulate(main, base, u20_en_net="GND", maxc=1)
-    check("[what-if EN low] OLED + boost sleep current, datasheet max, 25 C", ua(r["by_cat"]["oled"]), unit="µA",
-          source="informational (architecture §8.2 claims 35–40 µA max)")
-    sim, r = simulate(main, base, u20_en_net="GND")
-    check("[what-if EN low] sleep battery current (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget),
+    sim, r = simulate(main, base, u20_en_net="GND", u21_qod_open=True, maxc=1)
+    check("[what-if EN low, QOD open] OLED + boost sleep current, datasheet max, 25 C", ua(r["by_cat"]["oled"]),
+          unit="µA", source="informational (architecture §8.2 claims 35–40 µA max)")
+    sim, r = simulate(main, base, u20_en_net="GND", u21_qod_open=True)
+    sim0, r0 = simulate(main, base)
+    check("[what-if EN low, QOD open] D21 reverse current (typ, 25 C)", ua(r["id21"]), unit="µA",
+          source=f"informational (schematic, U21 QOD tied to OLED_VIN: {ua(r0['id21']):.2f} µA)")
+    check("sleep current cost of the built SLP-1 fix (QOD tied) over the EN-low alternative (typ, 25 C)",
+          ua(r0["ibat"] - r["ibat"]), unit="µA", source="informational (D21 reverse leakage sunk by U21 QOD)")
+    check("[what-if EN low, QOD open] sleep battery current (typ, 25 C)", ua(r["ibat"]), hi=_budget_total(budget),
           unit="µA", source="docs/architecture.md §8.2 sleep column (sum of lines)")
 
 
-OLED_MAX_ISSUE = ("DESIGN ISSUE: OLED sleep at datasheet maxima exceeds the architecture's '35-40 uA maximum': "
-                  "D21 back-feed (see D21 finding), plus TPS61040 ISD/II/switch-leakage maxima and SSD1351 ISLP_VCC "
-                  "that the budget omits (about 42 uA even with U20 EN held low).")
+# OLED sleep at datasheet maxima (rev A, accepted): 45.4 µA at 25 C and 70.0 µA at 60 C, budgeted in architecture
+# 8.2 as 46 / 72 µA. Most of the rise over the old 35-40 µA is the D21 back-feed above (typ-curve 5.4 / 29.9 µA, no
+# low-VR max in the datasheet); 1.7 µA is SSD1351 ISLP_VCC scaled from its 16 V test point (43.7 µA without it).
 
 
-@pytest.mark.xfail(strict=True, reason=OLED_MAX_ISSUE)
 @pytest.mark.parametrize("temp", [25.0, 60.0])
 def test_oled_sleep_within_architecture_max(main, base, budget, temp, check):
-    """architecture.md §8.2 / §6.3: OLED sleep 'maximum 35-40 µA' -- datasheet-max IC currents."""
+    """architecture.md §8.2 / §6.3: OLED sleep maximum (datasheet-max IC currents) at 25 °C and at 60 °C."""
     sim, r = simulate(main, base, temp=temp, maxc=1)
     check(f"OLED + boost sleep current, datasheet max, {temp:+.0f} C", ua(r["by_cat"]["oled"]),
-          hi=budget["oled_max"], unit="µA", source="docs/architecture.md §8.2 OLED row 'maximum 35–40 µA'")
+          hi=budget["oled_max"] if temp <= 25 else budget["oled_max_60"], unit="µA",
+          source="docs/architecture.md §8.2 OLED row 'maximum …'")
 
 
 def test_sleep_max_corner(main, base, budget, check):
@@ -544,8 +642,11 @@ def test_ship_mode_max_vs_self_discharge(main, base, budget, check):
 def test_desk_day_runtime_claim(nominal, budget, check):
     """architecture §8.3 'Desk, typical day ... ≈ 4 weeks (28-29 days)' recomputed with the simulated sleep floor."""
     sim, r = nominal
-    h = budget["desk_sleep_h"]
-    mah_day = budget["desk_mAh_day"] - h * _budget_total(budget) * 1e-3 + h * ua(r["ibat"]) * 1e-3
+    # The simulated excess over the itemised floor (display off, +3V3 up) applies in the connected-idle hours
+    # too: architecture §8.1 desk idle has the display and LEDs off, and its 57 µA column carries the same OLED,
+    # LDO, divider, BQ and PCM lines as the sleep column (verifier fix: the sleep hours alone were adjusted).
+    h = budget["desk_sleep_h"] + budget["desk_idle_h"]
+    mah_day = budget["desk_mAh_day"] + h * (ua(r["ibat"]) - _budget_total(budget)) * 1e-3
     days = budget["usable_mAh"] / mah_day
     check("desk typical-day runtime with simulated sleep current", days, lo=budget["desk_days_min"], unit="days",
           source="docs/architecture.md §8.3 'Desk, typical day ... (28–29 days)'")
@@ -564,6 +665,32 @@ def test_wake_source_loads(main, base, check):
           source="informational (R56 100 kΩ + base R3/R4 path)")
     check("BTN_N while held", sim.v(r, "BTN_N"), hi=0.3 * sim.v(r, "+3V3"), unit="V",
           source="nRF52840 PS v1.1 §6.9.3.1 VIL 0.3 x VDD max")
+
+
+def _wake_idle_checks(main, sim, r, check, tag=""):
+    """Every SENSE wake input must idle at its inactive level, or the MCU never stays in System ON idle and the
+    whole sleep figure is void (DETECT stays asserted). Returns {net: (V, ok)}."""
+    vdd = sim.v(r, "+3V3")
+    out = {}
+    for pin, (net, pol) in sorted(fw_sense_wake_pins(main).items()):
+        v = r["v"].get(main.node(net), 0.0)
+        if pol == "low":     # wakes on low -> must idle >= VIH
+            check(f"{tag}{net} ({pin}, SENSE low) idle level in sleep", v, lo=0.7 * vdd, unit="V",
+                  source="nRF52840 PS v1.1 §6.9.3.1 VIH 0.7 x VDD min; firmware.md §1.3 sleep config")
+            out[net] = (v, v >= 0.7 * vdd)
+        else:                # wakes on high -> must idle <= VIL
+            check(f"{tag}{net} ({pin}, SENSE high) idle level in sleep", v, hi=0.3 * vdd, unit="V",
+                  source="nRF52840 PS v1.1 §6.9.3.1 VIL 0.3 x VDD max; firmware.md §1.3 sleep config")
+            out[net] = (v, v <= 0.3 * vdd)
+    return out
+
+
+@pytest.mark.parametrize("maxc", [0, 1], ids=["typ", "max-leakage"])
+def test_wake_inputs_idle_inactive(main, base, maxc, check):
+    """Verifier addition: the sleep current is only valid if no wake source is asserted. Pull-ups (R52, R55, R56)
+    against the datasheet-max pin leakage (TMAG IOZ, BQ25180 ILKG, BSS138 IDSS)."""
+    sim, r = simulate(main, base, maxc=maxc)
+    _wake_idle_checks(main, sim, r, check, f"[{'max' if maxc else 'typ'}] ")
 
 
 # ======================================================================================= fault injection
@@ -595,9 +722,10 @@ def test_fault_oled_res_pulldown_100k(main, base, budget, check):
     main.override("R20", "100k")
     sim, r = simulate(main, base)
     i = ua(r["by_cat"]["oled"])
-    check("FAULT R20=100k: OLED sleep current (typ) exceeds the architecture maximum (detected)", i,
-          lo=budget["oled_max"], unit="µA", source="docs/architecture.md §8.2 OLED row 'maximum 35–40 µA'")
-    assert i > budget["oled_max"]
+    # the typical sleep line is the detector: the 25 °C datasheet-max line sits only ~1 µA below this fault's 47 µA
+    check("FAULT R20=100k: OLED sleep current (typ) exceeds the architecture typical OLED line (detected)", i,
+          lo=budget["oled"], unit="µA", source="docs/architecture.md §8.2 OLED row, sleep column")
+    assert i > budget["oled"] + 10
 
 
 @pytest.mark.fault
@@ -609,3 +737,18 @@ def test_fault_sw1_common_pair_swapped(main, base, budget, check):
     check("FAULT SW1 always closed: ship-mode drain exceeds architecture §8.2 (detected)", round(i, 1),
           lo=budget["ship"] + 0.1, unit="µA", source="docs/architecture.md §8.2 'Ship mode ... ≈ 6.2 µA'")
     assert round(i, 1) > budget["ship"]
+
+
+@pytest.mark.fault
+@pytest.mark.parametrize("ref,net", [("R56", "BTN_N"), ("R52", "TMAG_INT_N"), ("R55", "CHG_INT_N")])
+def test_fault_wake_pullup_left_off(main, base, ref, net, check):
+    """Verifier addition (mutation run: these were NOT caught before): a wake-input pull-up left off leaves an
+    open-drain / switch node floating on a SENSE-low pin -> spurious wake or a stuck DETECT, so the MCU never
+    sleeps. The idle-level check must flag it (a floating node resolves to 0 V through rshunt in .op)."""
+    main.remove(ref)
+    sim, r = simulate(main, base)
+    v = r["v"][main.node(net)]
+    vih = 0.7 * sim.v(r, "+3V3")
+    check(f"FAULT {ref} left off: {net} idles below VIH (detected)", v, hi=vih, unit="V",
+          source="nRF52840 PS v1.1 §6.9.3.1 VIH 0.7 x VDD min")
+    assert v < vih

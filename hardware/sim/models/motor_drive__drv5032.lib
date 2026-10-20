@@ -16,14 +16,19 @@
 *   - Supply current: ICC(PK) = 2 typ / 2.7 max mA during tACTIVE, about 0.5 uA otherwise (so the
 *     average at tS = 50 ms is about 1.6 uA, Table 6.5).
 *   - Field input: node BMT in volts = mT (1 V = 1 mT), driven by the test.
+*   - Output type (Table 4-1, verifier addition): od = 0 push-pull (FA, FB, DU, FD, DG); od = 1 open-drain
+*     (FC, AJ, ZE): no high-side driver, and in the off state an output leakage IOZ = 100 nA max into OUT
+*     (Table 6.5 open-drain IOZ, 5 typ / 100 max nA at 5.5 V). This lets the tests catch an open-drain
+*     variant fitted on a net without a pull-up (FC differs from FA only in the output type).
 *
 * NOT modelled: the magnetic hysteresis spread of individual parts (use bop/brp params), temperature
-*   drift of BOP/BRP (Figures 6-4/6-5), the analog front end, output slew (CMOS, ns range).
+*   drift of BOP/BRP (Figures 6-4/6-5), the analog front end, output slew (CMOS, ns range), the unipolar
+*   variants' polarity selectivity (DU, FD, DG: use only with the field sign they respond to).
 *   Before the first sample the latch starts LOW (a false "home" for <= tON after power-up).
 * =====================================================================================================
 
 .subckt DRV5032 VCC OUT GND BMT params: ts=50m tact=40u ton=55u bop=3 brp=1.5 roh=350 rol=300 icc_pk=2.7m
-+ icc_slp=0.5u
++ icc_slp=0.5u od=0 ioz=100n
 * sample window: first one ends at ton, then every ts
 Vsmp smp GND PULSE(0 1 {ton - tact} 100n 100n {tact - 200n} {ts})
 * comparator with hysteresis on the held state 'st' (1 = output high = no magnet)
@@ -35,9 +40,10 @@ Bst GND st I = 1n*V(smp)*(V(nw) - V(st))/1u
 Cst st GND 1n
 Rstl st GND 1T
 Bss ss GND V = 0.5*(1 + tanh((V(st) - 0.5)/0.02))
-* push-pull output stage
-Bhi VCC OUT I = V(ss)*V(VCC,OUT)/{roh}
+* output stage: push-pull (od = 0) or open-drain with IOZ leakage in the off state (od = 1)
+Bhi VCC OUT I = (1 - {od})*V(ss)*V(VCC,OUT)/{roh}
 Blo OUT GND I = (1 - V(ss))*V(OUT,GND)/{rol}
+Blk OUT GND I = {od}*V(ss)*{ioz}*tanh(V(OUT,GND)/0.05)
 * supply current
 Bcc VCC GND I = {icc_slp} + {icc_pk}*V(smp)
 .ends DRV5032

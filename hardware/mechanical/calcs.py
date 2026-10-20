@@ -41,6 +41,7 @@ GUIDE_A = (60.0, 180.0, 300.0)
 GUIDE_RS = (29.0, 30.0, 29.0)             # theta-180 guide at r 30 (DEV, clears the pack end)
 STOP_TRAVEL = 0.50
 CUP_TOP, FA_Z0, FA_Z1 = 14.3, 12.8, 14.3
+FA_BOSS_Z0 = 12.0                         # plate under-boss (overload stop face) at each guide
 BB_Z1 = 11.1
 HEAD_TOP = 14.8                           # stop-screw head top (base-fixed)
 ROT_HUB_TOP = 26.0                        # wave washer + 316 cap ring on the collar
@@ -261,8 +262,11 @@ def tip_force(r_press, W_dev, edge_dist):
 # ---------------------------------------------------------------------------
 # 11. Geometry helpers for the per-part clearance tables
 # ---------------------------------------------------------------------------
+NFC_ECHO = {}     # NFC coil/tail constants and tail profile echoed by view="prims" (section 13)
+
+
 def load_prims():
-    """run OpenSCAD view="prims" and parse the echoed primitives."""
+    """run OpenSCAD view="prims" and parse the echoed primitives (and the NFC constants into NFC_ECHO)."""
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "p.echo")
         subprocess.run(["openscad", "-o", out, "-D", 'view="prims"', os.path.join(HERE, "dial_spinner.scad")],
@@ -273,7 +277,41 @@ def load_prims():
                 prims.append(json.loads(ln[len("ECHO: PRIM = "):]))
             elif ln.startswith("ECHO: ROTOR_CONST = "):
                 rc = json.loads(ln[len("ECHO: ROTOR_CONST = "):])
+            elif ln.startswith("ECHO: NFC_CONST = "):
+                NFC_ECHO["const"] = json.loads(ln[len("ECHO: NFC_CONST = "):])
+            elif ln.startswith("ECHO: NFC_TAIL_PROF = "):
+                NFC_ECHO["prof"] = json.loads(ln[len("ECHO: NFC_TAIL_PROF = "):])
     return prims, rc
+
+
+def sdf_part(X, p):
+    """signed distance of points X (N,3) to a board-part box (oriented in its footprint frame)."""
+    o, U, V = part_frame(p)
+    d = X[:, :2] - o
+    L = np.c_[d @ U, d @ V, X[:, 2]]
+    u0, u1, v0, v1 = p["box"]
+    c = np.array([(u0 + u1) / 2, (v0 + v1) / 2, p["z0"] + p["h"] / 2])
+    h = np.array([(u1 - u0) / 2, (v1 - v0) / 2, p["h"] / 2])
+    q = np.abs(L - c) - h
+    return np.linalg.norm(np.maximum(q, 0), axis=1) + np.minimum(q.max(axis=1), 0)
+
+
+def agm_KE(k):
+    """complete elliptic integrals K(k), E(k) by the arithmetic-geometric mean."""
+    a, b, c, s, n = 1.0, math.sqrt(1 - k * k), k, 0.5 * k * k, 0
+    while abs(c) > 1e-15:
+        a, b, c = (a + b) / 2, math.sqrt(a * b), (a - b) / 2
+        n += 1
+        s += 2 ** (n - 1) * c * c
+    K = math.pi / (2 * a)
+    return K, K * (1 - s)
+
+
+def loop_mutual(a, d):
+    """mutual inductance (H) of two coaxial circular loops of radius a (m) at axial distance d (m)."""
+    k = math.sqrt(4 * a * a / (4 * a * a + d * d))
+    K, E = agm_KE(k)
+    return 4e-7 * math.pi * a * ((2 / k - k) * K - 2 / k * E)
 
 
 def rotor_polys(rc, dz=0.0):
@@ -398,6 +436,58 @@ def sdf_prim(X, pr):
 def chain_length(pr):
     pts = np.array(pr[2], float)
     return float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
+
+
+# wire chain -> the parts it is plugged into, per end ("first" = first chain point, "last" = last)
+WIRE_ENDS = {"harness": {"first": ("J3", "J3_plug"), "last": ("J1", "J1_plug")},
+             "coax": {"first": (), "last": ("U10", "U10_uFL")},
+             "battery_leads": {"first": (), "last": ("J2", "J2_plug")}}
+WIRE_TERM_MM = 3.0     # the last 3 mm of a wire into its own connector are its intended approach
+
+
+def trim_chain(pr, mm, end):
+    """the chain prim with `mm` of path length removed at its first or last end."""
+    pts = [np.array(q, float) for q in pr[2]]
+    if end == "first":
+        pts = pts[::-1]
+    left = mm
+    while len(pts) > 2 and np.linalg.norm(pts[-1] - pts[-2]) <= left:
+        left -= np.linalg.norm(pts[-1] - pts[-2])
+        pts.pop()
+    seg = pts[-1] - pts[-2]
+    pts[-1] = pts[-2] + seg * max(0.0, 1 - left / np.linalg.norm(seg))
+    if end == "first":
+        pts = pts[::-1]
+    return [pr[0], pr[1], [q.tolist() for q in pts]] + list(pr[3:])
+
+
+# wires that span base -> FA: (last base-fixed chain point, first FA-fixed chain point), as in dial_spinner.scad
+# HARN_PTS (J3 plug back .. bottom slot) and COAX_PTS (antenna riser foot .. bottom slot); the free span between
+# them sags linearly (in path length) by up to STOP_TRAVEL on a press
+WIRE_FLEX = {"harness": (0, 3), "coax": (2, 6)}
+
+
+def pressed_wire(pr, travel):
+    """the wire chain with its FA-borne part moved down by `travel` and the free span interpolated."""
+    if pr[1] not in WIRE_FLEX:
+        return pr
+    i0, i1 = WIRE_FLEX[pr[1]]
+    pts = np.array(pr[2], float)
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    f = np.clip((s - s[i0]) / (s[i1] - s[i0]), 0, 1)
+    pts[:, 2] -= travel * f
+    return [pr[0], pr[1], pts.tolist()] + list(pr[3:])
+
+
+def wires_for(ref, wires):
+    """the wire prims to test a part against: a wire's own end connector only sees the wire minus its approach."""
+    out = []
+    for w in wires:
+        for end, refs in WIRE_ENDS.get(w[1], {}).items():
+            if ref in refs:
+                w = trim_chain(w, WIRE_TERM_MM, end)
+        out.append(w)
+    return out
 
 
 def under_spider(x, y):
@@ -528,7 +618,7 @@ def main(plots=True):
     ring_rows = []
     ring_curves = {}
     T_SHOE = 1.6
-    for off, label in ((0.0, "full click (16.5 mN*m)"), (1.5, "default 9.5 mN*m (1.5 mm)")):
+    for off, label in ((0.0, "full click (16.5 mN*m)"), (1.5, "1.5 mm offset (9.5 mN*m)")):
         t1 = detent_torque(off)
         for shoe in (0.0, T_SHOE):
             ts, ths, peaks, tset = ring_down(I_r, t1, mb, m_shoe_mnm=shoe, theta0_deg=6.0)
@@ -801,22 +891,24 @@ def main(plots=True):
         c_hub = float(min(sdf_prim(X, pr).min() for pr in hub_axi))
         c_ac, n_ac = nearest(X, act_click)
         c_af, n_af = nearest(X, act_free)
-        skip = ("harness",) if p["ref"].startswith("J1") else ()
-        skip += ("coax",) if p["ref"].startswith("U10") else ()
-        c_w, n_w = nearest(X, wires, skip)
+        c_w, n_w = nearest(X, wires_for(p["ref"], wires))
         vals = [c_rot, c_hub, c_ac, c_af, c_w]
         if min(vals) < 1.0:
             rmin, rmax, z0, z1 = part_rz(p)
             rows.append((p["ref"], p["value"][:16], f"r {rmin:.1f}-{rmax:.1f}", f"z {z0:.2f}-{z1:.2f}",
                          f"{c_rot:+.2f}", f"{c_hub:+.2f}", f"{c_ac:+.2f} {n_ac}", f"{c_af:+.2f} {n_af}",
                          f"{c_w:+.2f} {n_w}"))
-            if min(vals) < 0.3:
+            if min(c_rot, c_ac, c_af) < 0.3 or min(c_hub, c_w) < 0.0:
                 flagged.append(p["ref"])
     table(rows, ["ref", "value", "r", "z", "rotor", "hub/spacer", "actuator@click", "actuator@free", "harness/coax"])
-    print(f"Parts below 0.3 mm (action needed): {', '.join(flagged) if flagged else 'none'}")
+    print("Action needed: < 0.3 mm to a moving item (rotor, actuator), or any overlap with the hub or a wire (same body:")
+    print("contact is acceptable; a wire's own connector is tested without its last 3 mm of approach).")
+    print(f"Parts needing action: {', '.join(flagged) if flagged else 'none'}")
 
-    print("\nBase-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap).")
-    rows = []
+    print("\nBase-board TOP parts: rotor at rest / pressed (exact), FA spider plate pressed (plan overlap -> z gap),")
+    print("wires (harness, coax, battery leads; at rest and pressed; sampled).")
+    base_wires = [P["harness"], P["coax"], P["battery_leads"]]
+    rows, base_flag = [], []
     for p in bp["base"]["parts"]:
         if p["side"] != "T":
             continue
@@ -830,12 +922,47 @@ def main(plots=True):
         rmin, rmax, z0, z1 = part_rz(p)
         if p["ref"] == "SW1":
             c_pl = c_pl0 = None
-        if min(c_rp, c_pl if c_pl is not None else 9) < 1.5:
+        c_w = {}
+        for w in wires_for(p["ref"], base_wires):      # rest, and pressed with the spindle end of the wire moved down
+            for k, wp in (("rest", w), ("pressed", pressed_wire(w, STOP_TRAVEL))):
+                d = float(sdf_prim(X, wp).min())
+                if d < c_w.get(k, (np.inf, ""))[0]:
+                    c_w[k] = (d, w[1])
+        if min(c_rp, c_pl if c_pl is not None else 9, c_w["pressed"][0]) < 1.5:
             rows.append((p["ref"], p["value"][:14], f"r {rmin:.1f}-{rmax:.1f}", f"top z {top:.2f}", f"{c_rr:+.2f}",
-                         f"{c_rp:+.2f}", "-" if c_pl0 is None else f"{c_pl0:+.2f}", "-" if c_pl is None else f"{c_pl:+.2f}"))
-    table(rows, ["ref", "value", "r", "height", "rotor rest", "rotor pressed", "plate rest", "plate pressed"])
+                         f"{c_rp:+.2f}", "-" if c_pl0 is None else f"{c_pl0:+.2f}", "-" if c_pl is None else f"{c_pl:+.2f}",
+                         f"{c_w['rest'][0]:+.2f} {c_w['rest'][1]}", f"{c_w['pressed'][0]:+.2f} {c_w['pressed'][1]}"))
+        if min(c_rp, c_pl if c_pl is not None else 9) < 0.3 or c_w["pressed"][0] < 0.0:
+            base_flag.append(p["ref"])
+    table(rows, ["ref", "value", "r", "height", "rotor rest", "rotor pressed", "plate rest", "plate pressed",
+                 "wires rest", "wires pressed"])
     print("SW1 is handled by the pre-gap (section 7).  Rule from SPEC: parts under a spoke/hub <= 1.0 mm tall "
           f"(gap {FA_Z0 - BB_Z1:.1f} rest, {FA_Z0 - BB_Z1 - STOP_TRAVEL:.1f} pressed).")
+    print("Wires pressed: the harness/coax end in the spindle slot moves down 0.50, the free span to its base anchor "
+          "(J3 plug / antenna riser) sags linearly.")
+    print(f"Base parts needing action (rotor/plate < 0.3 mm, wire overlap): {', '.join(base_flag) or 'none'}")
+    # battery leads (base-fixed) under the FA spider: plan footprint of the Ø1.8 chain vs the plate / under-bosses
+    lead = np.array(P["battery_leads"][2], float)
+    lr = P["battery_leads"][3]
+    worst = (np.inf, None)
+    for a, b in zip(lead[:-1], lead[1:]):
+        for t in np.linspace(0, 1, max(2, int(np.linalg.norm(b - a) / 0.1) + 1)):
+            q = a + t * (b - a)
+            ring = [(q[0] + lr * math.cos(k * math.pi / 4), q[1] + lr * math.sin(k * math.pi / 4)) for k in range(8)]
+            if not any(under_spider(x, y) for x, y in ring + [(q[0], q[1])]):
+                continue
+            near_boss = any(math.hypot(q[0] - rg * math.cos(math.radians(ga)), q[1] - rg * math.sin(math.radians(ga)))
+                            < 3.2 + lr for rg, ga in zip(GUIDE_RS, GUIDE_A))
+            gap = (FA_BOSS_Z0 if near_boss else FA_Z0) - STOP_TRAVEL - (q[2] + lr)
+            if gap < worst[0]:
+                worst = (gap, q)
+    if worst[1] is None:
+        print("Battery leads: never under the FA spider plate.")
+    else:
+        q = worst[1]
+        print(f"Battery leads under the FA spider: min gap to the plate pressed {worst[0]:+.2f} mm at "
+              f"r {math.hypot(q[0], q[1]):.1f}, theta {math.degrees(math.atan2(q[1], q[0])) % 360:.0f}, z {q[2]:.2f}"
+              f"{'  <- action needed' if worst[0] < 0.3 else ''}")
 
     print("\nMain-board TOP parts under the OLED bracket rim/spokes (z 31.8-32.8) and the glass (z 33.0):")
     top_rows = []
@@ -911,9 +1038,142 @@ def main(plots=True):
           f"{0.4 * 20 ** 3 / (3 * 20000 * 0.8 * 3 ** 3 / 12):.3f} mm (PA12 0.5 strip was "
           f"{0.4 * 20 ** 3 / (3 * 1700 * 0.5 * 3 ** 3 / 12):.2f} mm); plate capture <= 0.02 (shimmed rails).")
 
+    nfc_section(bp, P, rc)
     if plots:
         make_plots(curves, ring_curves, press, radii, I_r, W_dev, edge3, edge_arc, floor)
     return 0
+
+
+def nfc_section(bp, P, rc):
+    """13. NFC coil (sheet on the cover ceiling) and its tail to J11: geometry, inductance, tuning, clearances."""
+    hr("13. NFC tag coil and tail to J11 (geometry from the model; L and tuning are estimates)")
+    (n_ri, n_ro, cu0, cu1, nz0, nt, pocket_r, ceil_z, jx, jy, jphi, ju0, ju1, jv0, jv1, jtop,
+     tw, tbr, trv, tv0, tzb, root_r, tongue_l, rel_u, rel_v0, rel_v1, rel_roof,
+     oled_w, oled_l, oled_yc, oled_z0, oled_t, rim_z0, rim_z1, lb_ri, lb_z1, dif_ri) = NFC_ECHO["const"]
+    prof = np.array(NFC_ECHO["prof"], float)
+    MB_Z1 = MB_Z0 + 1.6
+    IN1_Z = MB_Z1 - 0.035 - 0.2104          # In1 GND plane (JLC 4-layer 1.6 mm, 7628 prepreg) [assume stack-up]
+    j_r = math.hypot(jx, jy)
+    print(f"Coil sheet (black-coverlay 2-layer PI flex, TVP): ID {2 * n_ri:.1f} / OD {2 * n_ro:.1f} x {nt:.2f} mm at z "
+          f"{nz0:.2f}-{nz0 + nt:.2f}, bonded (0.05 PSA) to the cover pocket ceiling z {ceil_z:.2f} (pocket r <= {pocket_r:.2f}).")
+    print(f"Copper band r {cu0:.2f}-{cu1:.2f} ({cu1 - cu0:.2f} wide): 4 turns 0.20/0.15 or 3 turns 0.25/0.25 [TVP].")
+    print(f"Tail: tongue cut from the sheet at theta {math.degrees(math.atan2(jy, jx)) % 360:.0f}, {tw:.1f} wide "
+          f"(3.4 over the J11 pads), inner fold radius {tbr:.2f}; root (fold line) at r {root_r:.2f}, vertical run r "
+          f"{trv:.2f}-{trv + nt:.2f}, board run at z {tzb - nt / 2:.2f}-{tzb + nt / 2:.2f} onto J11 (r {j_r:.2f}).")
+    # tail centreline in the J11 frame (v, z): board run from the joint body, then the folded profile to the root
+    path_vz = np.vstack([[tv0, tzb], prof])
+    L_tail = float(np.linalg.norm(np.diff(path_vz, axis=0), axis=1).sum())
+    print(f"Tail path joint -> root {L_tail:.1f} mm; developed tongue (J11 inner end -> root) {tongue_l:.1f} mm, so the "
+          f"tongue slot in the flat sheet runs r {root_r - tongue_l:.1f}-{root_r:.1f}.")
+
+    # ---- inductance (modified Wheeler, circular spiral) and the image in the In1 GND plane
+    mu0 = 4e-7 * math.pi
+    d_out, d_in = 2 * cu1 * 1e-3, 2 * cu0 * 1e-3
+    d_avg, rho = (d_out + d_in) / 2, (d_out - d_in) / (d_out + d_in)
+    h_pl = (nz0 + nt / 2 - IN1_Z) * 1e-3
+    M1 = loop_mutual(d_avg / 2, 2 * h_pl)
+    w0 = 2 * math.pi * 13.56e6
+    C_INT = 4e-12                            # nRF52840 NFC pad capacitance [nRF52840 PS]
+    print(f"\nInductance [estimate]: modified Wheeler (circular, c1 1.00, c2 2.46, c4 0.20), d_avg {d_avg * 1e3:.1f} mm; "
+          f"image in the In1 GND plane {h_pl * 1e3:.2f} mm below (z {IN1_Z:.2f}): -N^2 x {M1 * 1e9:.1f} nH.")
+    rows = []
+    for n in (3, 4):
+        L0 = mu0 * n * n * d_avg / 2 * (math.log(2.46 / rho) + 0.20 * rho * rho)
+        Le = L0 - n * n * M1
+        c0 = 2 / (w0 * w0 * L0) - C_INT
+        ce = 2 / (w0 * w0 * Le) - C_INT
+        rows.append((n, f"{L0 * 1e6:.2f}", f"{Le * 1e6:.2f}", f"{c0 * 1e12:.0f}", f"{ce * 1e12:.0f}"))
+    table(rows, ["turns", "L free uH", "L over GND plane uH", "C16/C17 for free L pF", "C16/C17 over plane pF"])
+    L180 = 2 / (w0 * w0 * (180e-12 + C_INT))
+    print(f"C16/C17 = 180 pF tune {L180 * 1e6:.2f} uH (Ctune = 2/(w^2 L) - Cint, coil self-capacitance ignored).  Start with")
+    print("4 turns; measure L in the closed device (LCR, 13.56 MHz) and retune C16/C17 (section 15 #21).  The plane also")
+    print("shields part of the phone's field: if the read range is short, a 0.1 mm ferrite sheet under the copper band")
+    print("(fits the 0.1 mm gap to the glass) restores it and needs C16/C17 ~ 95-110 pF (display-study.md section 3).")
+
+    # ---- clearance samples
+    th = np.radians(np.arange(0, 360, 0.5))
+    rr = np.linspace(cu0, cu1, 6)
+    R_, T_ = np.meshgrid(rr, th)
+    cu_pts = np.vstack([np.c_[R_.ravel() * np.cos(T_.ravel()), R_.ravel() * np.sin(T_.ravel()), np.full(R_.size, z)]
+                        for z in (nz0, nz0 + nt)])
+    glass = ["box", "glass", [-oled_w / 2, oled_yc - oled_l / 2, oled_z0], [oled_w, oled_l, oled_t]]
+    back = ["box", "back", [-oled_w / 2, oled_yc - oled_l / 2, oled_z0 - 0.01], [oled_w, oled_l, 0.01]]
+    a = math.radians(jphi)
+    U, V = np.array([math.cos(a), math.sin(a)]), np.array([-math.sin(a), math.cos(a)])
+    o = np.array([jx, jy])
+    tail = []                                        # samples on both faces of the ribbon (offset +-t/2 along its normal)
+    for (v0_, z0_), (v1_, z1_) in zip(path_vz[:-1], path_vz[1:]):
+        sl = math.hypot(v1_ - v0_, z1_ - z0_)
+        nv, nz = -(z1_ - z0_) / sl, (v1_ - v0_) / sl
+        for t in np.linspace(0, 1, 12):
+            v_, z_ = v0_ + t * (v1_ - v0_), z0_ + t * (z1_ - z0_)
+            half = tw / 2 if v_ >= tv0 + 0.65 else (ju1 - (ju1 - tw / 2) * (v_ - tv0) / 0.65)
+            for side in (-1, 1):
+                vv, zz = v_ + side * nt / 2 * nv, z_ + side * nt / 2 * nz
+                for u_ in np.linspace(-half, half, 11):
+                    xy = o + u_ * U + vv * V
+                    tail.append((xy[0], xy[1], zz))
+    tail = np.array(tail)
+    rim = [["box", "rim_left", [-(oled_w - 0.4) / 2, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
+           ["box", "rim_right", [(oled_w - 0.4) / 2 - 2.0, oled_yc - (oled_l - 0.4) / 2, rim_z0], [2.0, oled_l - 0.4, rim_z1 - rim_z0]],
+           ["box", "rim_bottom", [-(oled_w - 0.4) / 2, oled_yc - (oled_l - 0.4) / 2, rim_z0], [oled_w - 0.4, 2.0, rim_z1 - rim_z0]],
+           ["box", "rim_top", [-(oled_w - 0.4) / 2, oled_yc + (oled_l - 0.4) / 2 - 2.0, rim_z0], [oled_w - 0.4, 2.0, rim_z1 - rim_z0]]]
+    lbox = ["annz", "light_box_inner_wall", lb_ri, lb_ri + 0.6, 31.7, lb_z1]
+    leds = [p for p in bp["main"]["parts"] if p["side"] == "T" and "WS2812" in p["value"]]
+    tops = [p for p in bp["main"]["parts"] if p["side"] == "T" and p["ref"] != "J11"]
+
+    def nearest_part(X, parts):
+        best = (np.inf, "")
+        for p_ in parts:
+            d = float(sdf_part(X, p_).min())
+            if d < best[0]:
+                best = (d, p_["ref"])
+        return best
+
+    gpts = np.array([[sx * oled_w / 2, oled_yc + sy * oled_l / 2] for sx in (-1, 1) for sy in (-1, 1)])
+    r_corner = float(np.hypot(gpts[:, 0], gpts[:, 1]).max())
+    mid = {th_: cu0 - (oled_w / 2 if th_ in (0, 180) else (oled_l / 2 + oled_yc if th_ == 90 else oled_l / 2 - oled_yc))
+           for th_ in (0, 90, 180, 270)}
+    ring_poly = rotor_polys(rc)[0]
+    Rz = np.c_[np.repeat(rr, 2), np.tile([nz0, nz0 + nt], len(rr))]
+    c_ring = float(sdf_poly2(Rz, ring_poly).min())
+    led_d, led_ref = nearest_part(cu_pts, leds)
+    nut = P["nut"]
+    rows = [
+        ("copper band - OLED glass top (they overlap in plan at the 2 lower corners)", f"{nz0 - (oled_z0 + oled_t):+.2f}",
+         f"plan overlap {max(0.0, r_corner - cu0):.2f} (glass corner r {r_corner:.2f})"),
+        ("copper band - display back plane z 33.0 (metal back, if the panel has one)",
+         f"{float(sdf_prim(cu_pts, back).min()):+.2f}", "at the corners; elsewhere the copper is outside the glass"),
+        ("copper band inner edge - glass edge, plan, at theta 0/90/180/270", "/".join(f"{mid[k]:.1f}" for k in (0, 90, 180, 270)), ""),
+        ("copper band - main-board top copper (z 30.7)", f"{nz0 - MB_Z1:+.2f}", "F.Cu pours allowed there (SPEC)"),
+        ("copper band - In1 GND plane", f"{nz0 - IN1_Z:+.2f}", "solid plane under the whole coil"),
+        (f"copper band - nearest LED ({led_ref}, WS2812 lead frame)", f"{led_d:+.2f}", "3D"),
+        ("copper band - light-box inner wall (r 27)", f"{float(sdf_prim(cu_pts, lbox).min()):+.2f}", "plastic"),
+        ("copper band - diffuser inner face", f"{dif_ri + 0.02 - cu1:+.2f}", "radial, plastic"),
+        ("copper band - 316L ring / track magnets (behind the board)", f"{c_ring:+.2f}", "3D, (r, z) section"),
+        ("copper band - brass M4 nut", f"{float(sdf_prim(cu_pts, nut).min()):+.2f}", "3D, inside the coil"),
+        ("coil sheet - cover ceiling (PSA layer) / pocket wall", f"{ceil_z - nz0 - nt:+.2f}", f"wall {pocket_r - n_ro:+.2f} radial"),
+    ]
+    table(rows, ["coil pair (mm)", "clearance", "note"])
+    up = tail[:, 2] > tzb + 0.3                      # folds and vertical run (above the board run)
+    t_glass = float(sdf_prim(tail, glass).min())
+    t_rim = float(min(sdf_prim(tail[up], r_).min() for r_ in rim))
+    t_lb = float(sdf_prim(tail, lbox).min())
+    t_part, t_ref = nearest_part(tail, tops)
+    rows = [
+        ("tail - OLED glass edge (near edge of the vertical run)", f"{t_glass:+.2f}", "both on the FA, flex"),
+        ("tail vertical run - bracket rim outer face", f"{t_rim:+.2f}", "lateral"),
+        ("tail board run - rim relief roof (z %.1f)" % rel_roof, f"{rel_roof - (tzb + nt / 2):+.2f}",
+         f"without the relief {rim_z0 - (tzb + nt / 2):+.2f}"),
+        ("J11 joint top (z %.2f) - rim relief roof" % jtop, f"{rel_roof - jtop:+.2f}", f"without the relief {rim_z0 - jtop:+.2f}"),
+        ("tail - light-box inner wall", f"{t_lb:+.2f}", ""),
+        (f"tail - nearest other top part ({t_ref})", f"{t_part:+.2f}", "3D"),
+        ("tail top fold - cover ceiling", f"{ceil_z - (prof[-1][1] + nt / 2):+.2f}", "at the root"),
+    ]
+    table(rows, ["tail pair (mm)", "clearance", "note"])
+    print("Press stroke: the coil, its tail, J11, the bracket, the glass and the cover all ride on the FA, so nothing")
+    print("in this section moves relative to anything else; the rotor is below the main board (rotor check CLEAR).")
+
 
 
 def make_plots(curves, ring_curves, press, radii, I_r, W_dev, edge3, edge_arc, floor):

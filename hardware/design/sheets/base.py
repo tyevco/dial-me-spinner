@@ -116,21 +116,23 @@ def build(d):
 
     d.group("Charger and power path (BQ25180, I2C 0x6A)",
             "IN 2.2u/25V, SYS 10u/25V, BAT 4.7u: each within 1 mm of its ball and of the D2 GND ball.\n"
-            "SYS = VSYS (4.5 V on USB, VBAT on battery). /INT, SCL, SDA pull-ups are on the main board.")
+            "SYS = VSYS (4.4 V on USB, SYS_REG set by firmware; VBAT on battery). /INT, SCL, SDA pull-ups are on the main board.")
     d.add("U1", "dial_spinner:BQ25180YBGR", "BQ25180YBGR", BQ_FP,
           pins={"A2": "VBUS", "B2": "VSYS", "C2": "VBAT", "D2": "GND",
                 "B1": "I2C_SCL", "C1": "I2C_SDA", "A1": "CHG_INT_N", "D1": "CHG_TSMR"},
           fields={"MPN": "BQ25180YBGR", "Manufacturer": "Texas Instruments", "LCSC": "C3682423"})
-    d.add("C1", "Device:C", "2.2u/25V", C0603, pins={"1": "VBUS", "2": "GND"},
-          fields={"MPN": "CC0603KRX5R8BB225", "Manufacturer": "YAGEO", "LCSC": "C309478"})
+    # 0805 X7R: an 0603 X5R loses too much to DC bias at 5.5 V + temperature to keep the BQ25180's >= 1 uF
+    # effective CIN (hardware/sim test_usb_input, USB-3)
+    d.add("C1", "Device:C", "2.2u/25V", "Capacitor_SMD:C_0805_2012Metric", pins={"1": "VBUS", "2": "GND"},
+          fields={"MPN": "CC0805KKX7R8BB225", "Manufacturer": "YAGEO", "LCSC": "C277470"})
     d.add("C2", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
           fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
     d.add("C3", "Device:C", "4.7u", C0603, pins={"1": "VBAT", "2": "GND"},
           fields={"MPN": "CL10A475KO8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19666"})
 
     d.group("Battery connector J2 and NTC RT1 (TS/MR)",
-            "J2 pin 1 = BAT+, pin 2 = GND. PH lead polarity varies by vendor:\n"
-            "check every pack! J2 (~5.5 mm tall) needs a lower-plate cut-out.\n"
+            "J2 SM04B side-entry SH (2.95 mm): pins 1-2 = BAT+, 3-4 = GND (two 28 AWG leads\n"
+            "per rail). Packs are re-terminated: check the polarity of every pack.\n"
             "RT1 on TS/MR: top side, at the board edge farthest from U1\n"
             "(>= 10 mm), no copper shared with U1. Bottom side has no parts,\n"
             "so RT1 reads board temperature, not the cell. GND Kelvin to D2.\n"
@@ -146,7 +148,8 @@ def build(d):
           fields={"MPN": "NCP15XH103F03RC", "Manufacturer": "Murata", "LCSC": "C77131"})
 
     d.group("Centre press switch and ship-mode wake",
-            "SW1 at the board centre (top). Press: VBAT -> 1k -> SW1 -> SW_GATE (1M to GND, ~4 uA while held).\n"
+            "SW1 at the board centre (top). Press: VBAT -> 1k -> SW1 -> SW_GATE (100k to GND, ~42 uA while held;\n"
+            "the gates discharge within the BQ25180 deglitch on release).\n"
             "Q1A pulls TS/MR low (ship wake / 20 s HW reset); Q1B pulls BTN_N low (nRF SENSE wake). BTN_N pull-up is on main.")
     d.add("R3", "Device:R", "1k", R0402, pins={"1": "SW_HI", "2": "VBAT"},
           fields={"MPN": "0402WGF1001TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C11702"})
@@ -155,8 +158,10 @@ def build(d):
           datasheet="https://www.lcsc.com/datasheet/C318884.pdf",
           description="Tactile switch SPST-NO 5.1x5.1x1.5 mm, 160 gf (1.6 N), 0.2 mm travel",
           fields={"MPN": "TS-1187A-B-A-B", "Manufacturer": "XKB Connection", "LCSC": "C318884"})
-    d.add("R4", "Device:R", "1M", R0402, pins={"1": "SW_GATE", "2": "GND"},
-          fields={"MPN": "0402WGF1004TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C26083"})
+    # 100k, not 1M: the Q1 gates (~90-150 pF) must discharge within the BQ25180 deglitch after a release, or TS/MR
+    # sits between the press threshold and the NTC voltage and reads a false temperature (hardware/sim test_charger_ts)
+    d.add("R4", "Device:R", "100k", R0402, pins={"1": "SW_GATE", "2": "GND"},
+          fields={"MPN": "0402WGF1003TCE", "Manufacturer": "UNI-ROYAL", "LCSC": "C25741"})
     q_fields = {"MPN": "BSS138DW-7-F", "Manufacturer": "Diodes Incorporated", "LCSC": "C154900"}
     q_ds = "https://www.diodes.com/assets/Datasheets/ds30203.pdf"
     d.add("Q1", "Transistor_FET:Q_Dual_NMOS_S1G1D2S2G2D1", "BSS138DW", "Package_TO_SOT_SMD:SOT-363_SC-70-6",
@@ -165,15 +170,14 @@ def build(d):
           pins={"5": "SW_GATE", "3": "BTN_N", "4": "GND"}, unit=2, datasheet=q_ds, fields=q_fields)
 
     d.group("Board-to-board link (to main board through the spindle)",
-            "JST SH 12-way vertical; identical pinout on the main board (SPEC §2). C4 sits next to J3.\n"
-            "Only 1.7 mm (~1.2 mm pressed) under the FA lower plate: J3 + mated SHR plug need a plate\n"
-            "cut-out (the harness exits through it into the spindle).")
+            "JST SH 12-way SIDE-entry (SM12B, 2.95 mm) at r 15.5, θ 120°, entry facing the centre; identical pinout\n"
+            "on the main board (SPEC §2). C4 sits next to J3. The harness runs into the spindle's side slot.")
     d.add("J3", "Connector_Generic_MountingPin:Conn_01x12_MountingPin", "LINK",
           "Connector_JST:JST_SH_SM12B-SRSS-TB_1x12-1MP_P1.00mm_Horizontal",
           pins={**{str(k): v for k, v in LINK_PINOUT.items()}, "MP": "GND"},
           fields={"MPN": "SM12B-SRSS-TB(LF)(SN)", "Manufacturer": "JST", "LCSC": "C160411"})
-    d.add("C4", "Device:C", "10u", C0603, pins={"1": "VSYS", "2": "GND"},
-          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
+    d.add("C4", "Device:C", "10u/25V", C0603, pins={"1": "VSYS", "2": "GND"},
+          fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
 
     d.group("Test points and power flags",
             "PWR_FLAGs mark VBUS (USB-C) and GND\nas externally driven for ERC.")

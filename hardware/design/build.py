@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import os
+import re
 import subprocess
 import sys
 
@@ -69,16 +70,32 @@ def make_design(board, mods):
     return d
 
 
+# Intended connections that KiCad's pin-type matrix flags: (violation, {(ref, pin), ...}, reason).  A waived
+# violation is reported as "waived", never silently dropped; any other pins in the same violation keep it an error.
+ERC_WAIVERS = [
+    ("pin_to_pin", {("U21", "5"), ("U21", "6")},
+     "TPS22917 QOD tied straight to VOUT (SLVSDW8B Table 9-2) so OLED_VIN is held low when off (SPICE LSW-1)"),
+]
+
+
 def erc(out, project):
     sch = os.path.join(out, project + ".kicad_sch")
     rpt = os.path.join(out, "erc.rpt")
     subprocess.run(["kicad-cli", "sch", "erc", "--severity-all", "-o", rpt, sch], capture_output=True, text=True)
-    counts = {}
+    found = []
     with open(rpt, encoding="utf-8") as f:
         for line in f:
             if line.startswith("["):
-                key = line.split("]")[0] + "]"
-                counts[key] = counts.get(key, 0) + 1
+                found.append([line.split("]")[0][1:], set()])
+            elif found and line.startswith("    @("):
+                m = re.search(r"Symbol (\S+) Pin (\S+)", line)
+                if m:
+                    found[-1][1].add((m.group(1), m.group(2)))
+    counts = {}
+    for kind, pins in found:
+        waived = any(kind == w[0] and pins and pins <= w[1] for w in ERC_WAIVERS)
+        key = "waived " + kind if waived else f"[{kind}]"
+        counts[key] = counts.get(key, 0) + 1
     return rpt, counts
 
 

@@ -11,9 +11,14 @@ on:
 permissions:
   contents: read
 
+concurrency:   # a new push supersedes the running suite (it takes ~20 min)
+  group: sim-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   spice:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,9 +31,9 @@ jobs:
       - name: SPICE suite
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python -m pytest hardware/sim -q -rxs
+            python -m pytest hardware/sim -q -ra
           else
-            python -m pytest hardware/sim -q -rxs -m "not slow"
+            python -m pytest hardware/sim -q -ra -m "not slow"
           fi
       - name: Results to the job summary
         if: always()

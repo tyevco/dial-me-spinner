@@ -211,17 +211,20 @@ def build(d):
     d.group("Boost input: load switch VSYS -> OLED_VIN, CIN, inductor", _pad(
             "OLED_VCC_EN low (also through MCU reset, R25) -> U21 off: VCC floats, boost draws 0 uA.\n"
             "Without it a disabled boost still passes VSYS - Vf to VCC through L20 and D21.\n"
-            "U21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp, ~10 mA inrush into ~16 uF; QOD open.\n"
+            "U21 TPS22917: CT 1 nF from CT to VIN (C37) -> ~4 ms ramp. Inrush is set by the TPS61040 soft start\n"
+            "(it starts at its 1.5 V UVLO while U21 ramps): ~0.3 A for ~2 ms, 0.4 A peak.\n"
+            "QOD tied to OLED_VIN: when off, OLED_VIN is held at ~0 V (150 R) so the boost (EN = VIN) stays off;\n"
+            "otherwise D21 leakage from the panel's VCI->VCC ESD path floats it up and the boost hiccups in sleep.\n"
             "(Replaces the AO3401A/2N7002 disconnect, which had no real dV/dt control - review SCH-1.)\n"
             "LAYOUT: L20 and the SW node >= 10 mm from the TMAG5273 and the magnet track.", 180))
     d.add("U21", "Power_Management:TPS22917DBV", "TPS22917DBVR", "Package_TO_SOT_SMD:SOT-23-6",
-          pins={"VIN": "VSYS", "GND": "GND", "ON": "OLED_VCC_EN", "CT": "OLED_LSW_CT", "QOD": None, "VOUT": "OLED_VIN"},
+          pins={"VIN": "VSYS", "GND": "GND", "ON": "OLED_VCC_EN", "CT": "OLED_LSW_CT", "QOD": "OLED_VIN", "VOUT": "OLED_VIN"},
           fields={"MPN": "TPS22917DBVR", "Manufacturer": "Texas Instruments", "LCSC": "C2681320"})
     d.add("C37", "Device:C", "1n/50V", C0402, pins={"1": "OLED_LSW_CT", "2": "VSYS"},
           fields={"MPN": "0402B102K500NT", "Manufacturer": "FH", "LCSC": "C1523"})
-    d.add("C41", "Device:C", "10u", "Capacitor_SMD:C_0603_1608Metric", pins={"1": "VSYS", "2": "GND"},
+    d.add("C41", "Device:C", "10u/25V", "Capacitor_SMD:C_0603_1608Metric", pins={"1": "VSYS", "2": "GND"},
           description="U21 VIN bypass",
-          fields={"MPN": "CL10A106KP8NNNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C19702"})
+          fields={"MPN": "CL10A106MA8NRNC", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C96446"})
     d.add("C38", "Device:C", "4.7u/25V", C0805, rot=0, pins={"1": "GND", "2": "OLED_VIN"},
           description="Boost input capacitor (place at U20 VIN/GND)",
           fields={"MPN": "CL21A475KAQNNNE", "Manufacturer": "Samsung Electro-Mechanics", "LCSC": "C1779"})
@@ -233,7 +236,7 @@ def build(d):
 
     d.group("13 V boost: TPS61040, rectifier, FB divider", _pad(
             "VOUT = 1.233 V x (1 + 499k / 52.3k) = 13.00 V (0.5 % / 0.1 % divider); CFF C40 33 pF across R26 (tune 22-100 pF).\n"
-            "EN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.92 A (peak need 0.49 A).\n"
+            "EN tied to OLED_VIN: the input disconnect does the switching.  L 10 uH, Isat 0.72 A rated (0.92 A typ; peak need 0.49 A).\n"
             "LAYOUT: tight CIN-L-SW-GND and SW-D-COUT-GND loops; R26/R27/C40 at the FB pin, away from SW.", 150))
     d.add("R27", "Device:R", "52.3k 0.1%", R0402, pins={"1": "GND", "2": "OLED_BST_FB"},
           fields={"MPN": "RT0402BRD0752K3L", "Manufacturer": "YAGEO", "LCSC": "C852832"})

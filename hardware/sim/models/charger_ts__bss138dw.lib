@@ -31,7 +31,7 @@
 *     cds   Coss - Crss, 10 pF at 0 V .. 5.4 pF at 5 V (Fig. 10) -> 7.5 pF constant (mean over 0..3.3 V).
 *     cscale multiplies all three. Slow corner (set by the test from the EC table maxima at VDS = 10 V,
 *         "guaranteed by design": Ciss 50, Coss 25, Crss 8 pF): cgs = 50 - 8 = 42 pF, cds = 25 - 8 = 17 pF,
-*         cgd0 = 22.3 pF x 8 / 3.3 (the whole Crss curve scaled to 8 pF at 10 V) = 54 pF.
+*         cgd0 = 22.3 pF x 8 / 3.55 (the fitted Crss curve, 3.55 pF at 10 V, scaled to 8 pF) = 50 pF.
 *   idss  drain leakage, EC table IDSS 0.5 uA max (VDS = 50 V, 25 C); default 0 (no typ given).
 *         Applied as a constant bound at any VDS > ~0.1 V (conservative at 3.3 V; NOT temperature scaled).
 *   rgl   gate leakage resistor, EC table IGSS +-100 nA at VGS = +-20 V -> 200 MOhm (bound).

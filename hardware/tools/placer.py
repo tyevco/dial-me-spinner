@@ -23,6 +23,33 @@ def _bbox_mm(fp, margin=0.15):
             TO_MM(bb.GetRight()) + margin, TO_MM(bb.GetBottom()) + margin)
 
 
+def _boxes_mm(fp, margin=0.15, cell=0.5):
+    """Boxes covering a footprint for occupancy. A large part at an odd angle (the module at -55 deg) would block
+    twice its area as one axis-aligned box, so its courtyard is covered by one box per 0.5 mm row instead."""
+    ang = fp.GetOrientationDegrees() % 90.0
+    if fp.GetPadCount() < 20 or min(ang, 90.0 - ang) < 0.5:
+        return [_bbox_mm(fp, margin)]
+    fp.BuildCourtyardCaches()
+    poly = fp.GetCourtyard(pcbnew.B_CrtYd if fp.IsFlipped() else pcbnew.F_CrtYd)
+    if poly.OutlineCount() == 0:
+        return [_bbox_mm(fp, margin)]
+    l, t, r, b = _bbox_mm(fp, 0.0)
+    acc = MM(margin + cell * 0.71)  # a cell is kept when its centre is within margin + half its diagonal
+    boxes = []
+    y = t
+    while y < b:
+        xs = []
+        x = l
+        while x < r:
+            if poly.Contains(pcbnew.VECTOR2I(MM(x + cell / 2), MM(y + cell / 2)), -1, acc):
+                xs.append(x)
+            x += cell
+        if xs:
+            boxes.append((min(xs) - margin, y - margin, max(xs) + cell + margin, y + cell + margin))
+        y += cell
+    return boxes or [_bbox_mm(fp, margin)]
+
+
 def _overlap(a, b):
     return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
 
@@ -45,8 +72,8 @@ class Placer:
         return "B" if fp.IsFlipped() else "F"
 
     def mark(self, fp):
-        box = _bbox_mm(fp)
-        self.occupied[self.side(fp)].append((fp.GetReference(), box))
+        for box in _boxes_mm(fp):
+            self.occupied[self.side(fp)].append((fp.GetReference(), box))
         # through-hole / NPTH pads (e.g. Tag-Connect alignment holes) block the other side too
         if any(p.GetAttribute() != pcbnew.PAD_ATTRIB_SMD for p in fp.Pads()):
             other = "B" if self.side(fp) == "F" else "F"

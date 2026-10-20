@@ -10,7 +10,8 @@
 *   - Output, standard drive (S0S1): VOH,SD >= VDD - 0.4 V at 0.5 mA, VOL,SD <= 0.4 V at 0.5 mA,
 *     represented as an ideal VDD/0 source behind rout = 0.4 V / 0.5 mA = 800 Ohm (the guaranteed
 *     worst case; Nordic notes the real drop is far smaller).
-*   - Pad capacitance cpad = 3 pF (assumed, the PS table value is not verified here).
+*   - Pad capacitance cpad = 3 pF (PS GPIO electrical specification CPAD 3 pF typ; verified against the PS text
+*     by the motor_drive verifier, together with RPU / RPD = 11 / 13 / 16 kOhm min / typ / max).
 *   - Input thresholds VIH = 0.7*VDD min, VIL = 0.3*VDD max: applied in the test code, not in SPICE.
 *   - Optional internal pull resistor rpull (13 kOhm typ in the PS; param, default open = 1 GOhm)
 *     to VDD (pullup=1) or to GND (pullup=0).

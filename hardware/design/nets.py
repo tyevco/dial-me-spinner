@@ -29,7 +29,7 @@ MAIN_INTERSHEET = [
 MCU_PINS = {
     "P0.00": "XL1", "P0.01": "XL2",
     "P0.18": "NRESET", "SWDIO": "SWDIO", "SWDCLK": "SWDCLK", "P1.00": "SWO",
-    "D+": "USB_DP", "D-": "USB_DM", "VBUS": "VBUS",
+    "D+": "USB_DP", "D-": "USB_DM", "VBUS": "VBUS_NRF",   # VBUS_NRF: behind R12 (hot-plug overshoot)
     "VDD": "+3V3", "VDDH": "+3V3", "DCCH": None, "GND": "GND",
     "P0.17": "QSPI_CS", "P0.19": "QSPI_SCK", "P0.20": "QSPI_IO0", "P0.21": "QSPI_IO1",
     "P0.22": "QSPI_IO2", "P0.23": "QSPI_IO3",
@@ -39,13 +39,14 @@ MCU_PINS = {
     "P0.24": "TMAG_SCL", "P0.25": "TMAG_SDA", "P0.27": "TMAG_INT_N",
     "P0.08": "I2C_SCL", "P1.09": "I2C_SDA",
     "P1.12": "IMU_INT1", "P0.30": "IMU_INT2",
-    "P0.09": "CHG_INT_N", "P1.10": "BTN_N", "P0.02": "VSYS_SENSE",
+    "P1.03": "CHG_INT_N", "P1.10": "BTN_N", "P0.02": "VSYS_SENSE",
+    "P0.09": "NFC1", "P0.10": "NFC2",   # NFCT tag antenna (UICR NFCPINS left in NFC mode)
     "P0.26": "MOT_A_IN1", "P0.05": "MOT_A_IN2", "P0.07": "MOT_B_IN1", "P0.11": "MOT_B_IN2",
     "P1.15": "MOT_NSLEEP", "P1.14": "HOME_N",
     "P0.12": "BUZZ_A", "P1.08": "BUZZ_B",
     "P0.03": "TP_SPARE1", "P0.04": "TP_SPARE2", "P1.11": "TP_SPARE3", "P1.13": "TP_SPARE4",
-    "P0.10": None, "P0.28": None, "P0.29": None, "P0.31": None,
-    "P1.03": None, "P1.05": None, "P1.06": None, "P1.07": None,
+    "P0.28": None, "P0.29": None, "P0.31": None,
+    "P1.05": None, "P1.06": None, "P1.07": None,
 }
 
 INTERSHEET = MAIN_INTERSHEET

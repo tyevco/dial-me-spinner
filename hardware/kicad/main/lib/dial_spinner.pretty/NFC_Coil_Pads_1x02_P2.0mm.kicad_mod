@@ -1,0 +1,94 @@
+(footprint "NFC_Coil_Pads_1x02_P2.0mm"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "NFC coil flex-tail solder pads, 2 pads 1.2 x 2.0 mm at 2.0 mm pitch, no paste")
+	(tags "NFC antenna coil pads")
+	(property "Reference" ""
+		(at 0 -2.275 0)
+		(layer "F.SilkS")
+		(uuid "5c9174a9-378b-4e93-b1de-29dc72003cb1")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 2.275 0)
+		(layer "F.Fab")
+		(uuid "96954333-5787-41b0-bb39-f9c4470d4483")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "913871ae-4496-4d77-b4f6-fb61ea5c91e2")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "e1bec400-8179-4b42-b4bf-5cb5e7d4c25f")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_rect
+		(start -1.85 -1.25)
+		(end 1.85 1.25)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "041d5395-a36f-4619-97a6-8dea105d5457")
+	)
+	(fp_rect
+		(start -1.6 -1)
+		(end 1.6 1)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "ad239acc-54c8-4e32-8712-fced50e1aa7a")
+	)
+	(pad "1" smd roundrect
+		(at -1 0)
+		(size 1.2 2)
+		(layers "F.Cu" "F.Mask")
+		(roundrect_rratio 0.25)
+		(thermal_bridge_angle 45)
+		(uuid "114f1ae5-ea7f-496f-8408-632850ec8b37")
+	)
+	(pad "2" smd roundrect
+		(at 1 0)
+		(size 1.2 2)
+		(layers "F.Cu" "F.Mask")
+		(roundrect_rratio 0.25)
+		(thermal_bridge_angle 45)
+		(uuid "7fa98ef6-8e5d-410e-b097-15500eb6941e")
+	)
+	(embedded_fonts no)
+)

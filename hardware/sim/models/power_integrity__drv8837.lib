@@ -9,12 +9,15 @@
 * MODELLED:
 *   Full-on drive (both outputs static, d = 1): VM current = VM / RCOIL, where RCOIL = coil + rDS(on)
 *     (HS + LS 280 typ / 330 max mOhm, 6.5). The coil resistance is NOT from a datasheet: the motor
-*     (VIC-TECH VSM08102 class) has no verified datasheet here; firmware.md 5.3 uses 20.3 Ohm including
-*     rDS(on) (about 20 Ohm per phase, detent research). The test passes RCOIL.
+*     (VIC-TECH VSM08102 class) has no verified datasheet here; firmware.md 5.3 (MD-3) uses
+*     20 Ohm x (1 + 0.00393 (T - 25 C)) + 0.33 Ohm including rDS(on) in its duty formula (20.33 Ohm at 25 C;
+*     about 20 Ohm per phase, detent research). The test passes RCOIL = 20.3 Ohm (the larger full-on current)
+*     and computes DUTY with the temperature-compensated value.
 *   PWM drive with slow decay (IN1/IN2 1,0 -> 1,1, firmware.md 5.3): the coil current ICOIL is ~constant
 *     over a 40 us PWM period (L/R >> 40 us is assumed), VM sees ICOIL while the bridge drives and 0 while it
-*     brakes. FPWM = 25 kHz (firmware), edges TEDGE = 30 ns (6.6 t11/t12 output rise/fall 30 typ /
-*     188 max ns -> the fast end is used). Both drivers share one PWM instance, so their edges are aligned
+*     brakes. FPWM = 25 kHz (firmware), edges TEDGE = 30 ns (6.6 t11/t12 output rise/fall 30 min /
+*     188 max ns -> the fast end is used; verifier: the DS columns are MIN/MAX, not typ/max).
+*     Both drivers share one PWM instance, so their edges are aligned
 *     (worst case for di/dt on VSYS).
 *   IDC: optional steady VM current (the PWM average) for operating-point runs.
 * NOT MODELLED: coil inductance / back-EMF (no motor datasheet), current ripple within a PWM period,
