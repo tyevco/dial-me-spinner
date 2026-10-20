@@ -987,6 +987,7 @@ module print_part(p) {
     else if (p == "spindle_hub") translate([0, 0, MB_Z0]) mirror([0, 0, 1]) spindle_hub();   // turned brass
     else if (p == "lower_spacer") translate([0, 0, -FA_Z1]) lower_spacer();      // turned brass
     else if (p == "cap_ring") translate([0, 0, -CAP_Z[0]]) cap_ring();           // 0.5 mm 316 sheet / washer
+    else if (p == "rotor_ring") translate([0, 0, -RING_Z0]) rotor_ring();        // turned 316L (drawing; knurl is a callout)
 }
 
 // ---------- labels ----------

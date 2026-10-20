@@ -9,7 +9,7 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `extract_board_parts.py` → `board_parts.scad` / `.json` | Component envelopes from `hardware/kicad/*/*.kicad_pcb` (KiCad 9 pcbnew); the NFC pads J11 become a solder-joint body. Re-run after any PCB change. |
 | `calcs.py` | Rotor inertia, spin-down (SKF model), detent LUT and ringing, balance, mass budget, springs / press pad / click force, TMAG aliasing, drop and pin pull-out, actuator force budget, per-part clearances read from the model (board parts vs rotor, hub, actuator and the harness, coax and battery leads), harness/coax/window/USB checks, NFC coil inductance and C16/C17 retune, coil and tail clearances (§13). Output: `calcs_output.txt`, `renders/calc_*.png` |
 | `check_clashes.sh [margin]` (→ `clash_check.py`) | CGAL interference check: rotor envelope, press travel, rest, FA-internal pairs (NFC coil and tail included) → `clash_report.txt` (legend: `clash_legend.txt`); margin > 0 checks the rotor envelope only (near misses) |
-| `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed; spindle, hub, spacer, cap ring are drawing aids for turned/cut metal) |
+| `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed; rotor ring, spindle, hub, spacer, cap ring are drawing aids for turned/cut metal: no tolerances, threads or knurl — quote from [`docs/mechanical.md`](../../docs/mechanical.md) §5 and §13) |
 | `parts_plate.scad` | Overview of the STLs → `renders/parts.png` |
 | `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib, ~7 min) |
 

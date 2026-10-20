@@ -800,7 +800,7 @@ Prices are rough 2026 single-unit estimates. "NM" means it must be non-magnetic.
 | 4 | Cap ring | 0.5 mm 316 sheet, OD 24.4 / ID 19.9 (laser-cut or a shim washer) | 2 | laser-cut service / shim-washer assortment | $1 | NM |
 | 5 | Track magnets | NdFeB **N52 Ø2 × 2 axial, NiCuNi** | 60 | supermagnete, first4magnets, AliExpress (one batch) | $3–6 | not K&J D11 (§6) |
 | 6 | Detent magnet | NdFeB **N52 Ø3 × 2 axial** | 3 | as above; near-equivalent [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8″ × 1/16″, slightly weaker) | $1 | |
-| 7 | Flywheel ring | 316L, 70/54/10, pockets, knurl, process order §5 | 1 | JLCCNC / PCBWay CNC / local | $15–40 | magnetism check |
+| 7 | Flywheel ring | 316L, 70/54/10, chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 inner, 48 magnet pockets at R_t 29.0, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`stl/rotor_ring.stl` as drawing aid; the STL omits the knurl, which is a callout: with it the model gives 117.1 g, §14) | 1 | JLCCNC / PCBWay CNC / local | $15–40 | magnetism check |
 | 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`stl/spindle.stl` as drawing aid) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
 | 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`stl/spindle_hub.stl`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split) |
 | 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`stl/lower_spacer.stl`) | 1 | CNC | $5–10 | replaces the bonded POM spacer |
@@ -943,7 +943,7 @@ pressed.
 | `hardware/mechanical/extract_board_parts.py` | KiCad boards → `board_parts.scad` / `board_parts.json` (needs KiCad 9 `pcbnew`) |
 | `hardware/mechanical/calcs.py` | All calculations in this document; writes `renders/calc_*.png`. §11 and §13 (NFC coil and tail) read the model via `view="prims"`. |
 | `hardware/mechanical/check_clashes.sh [margin]` → `clash_check.py` | CGAL interference check (rotor, press, rest, FA-internal pairs); legend in `clash_legend.txt` |
-| `hardware/mechanical/export_stl.sh` | Exports the 15 printed/machined parts to `stl/` |
+| `hardware/mechanical/export_stl.sh` | Exports the 16 printed/machined parts to `stl/` |
 | `hardware/mechanical/parts_plate.scad` | Overview render of the STLs (`renders/parts.png`) |
 | `hardware/mechanical/render_all.sh` | Regenerates everything, including `renders/nfc.png` (about 7 min) |
 
