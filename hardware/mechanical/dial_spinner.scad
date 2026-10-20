@@ -157,6 +157,9 @@ MAG_H       = 2.0;
 RT          = 29.0;
 POCKET_D    = 2.10;
 POCKET_H    = 2.05;
+BAL_R       = 31.0;                 // 4x M2 balance holes at theta 45/135/225/315
+BAL_D       = 1.6;                  // M2 tapping drill
+BAL_DEPTH   = 3.0;                  // blind, from the bottom face
 // rotor carrier PA12-GF, post-machined: web z 17-19, r 11-27
 CW_Z0       = 17.0;
 CW_Z1       = 19.0;
@@ -190,6 +193,8 @@ HUB_FL_Z0   = 26.1;
 HUB_FL_RO   = 8.5;                  // SPEC bottom keep-out r <= 8.5
 HUB_SCREW_R = 6.5;
 HUB_SCREW_A = [90, 210, 330];       // as placed on the main PCB (H1-H3)
+HUB_TAP_D   = 1.6;                  // 3x M2 tapped from the flange top face
+HUB_TAP_H   = 2.6;
 // main board Ø64, z 29.1-30.7
 MB_Z0       = 29.1;
 MB_T        = 1.6;
@@ -501,7 +506,8 @@ module spindle_hub()
             tube(LS_RO, SP_OD / 2, B_Z1, HUB_FL_Z0 + 0.01, fn_mid);
             tube(HUB_FL_RO, SP_OD / 2, HUB_FL_Z0, MB_Z0, fn_mid);
         }
-        for (a = HUB_SCREW_A) at_polar(HUB_SCREW_R, a, MB_Z0 - 2.6) cylinder(d = 1.6, h = 2.7, $fn = fn_small);
+        for (a = HUB_SCREW_A) at_polar(HUB_SCREW_R, a, MB_Z0 - HUB_TAP_H)
+            cylinder(d = HUB_TAP_D, h = HUB_TAP_H + 0.1, $fn = fn_small);
         radial_slot(TOP_SLOT_A, SLOT_W, B_Z1 - 0.1, MB_Z0 + 0.1, 12);
     }
 module hub_nut() color(c_hub) difference() {     // M4 x 0.5 brass round nut, 2 spanner holes
@@ -523,7 +529,8 @@ module rotor_ring()
         rotate_extrude($fn = fn_big * 2) ring_profile();
         for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N)
             translate([RT, 0, RING_Z1 - POCKET_H]) cylinder(d = POCKET_D, h = POCKET_H + 0.1, $fn = fn_small);
-        for (a = [45:90:315]) rotate(a) translate([31, 0, RING_Z0 - 0.1]) cylinder(d = 1.6, h = 3.1, $fn = 12);
+        for (a = [45:90:315]) rotate(a) translate([BAL_R, 0, RING_Z0 - 0.1])
+            cylinder(d = BAL_D, h = BAL_DEPTH + 0.1, $fn = 12);
         if (show_knurl) for (i = [0:119]) rotate(i * 3)
             translate([RING_RO, 0, RING_Z0 + 1.5]) rotate(45) translate([-0.3, -0.3, 0]) cube([0.6, 0.6, 7.0]);
     }

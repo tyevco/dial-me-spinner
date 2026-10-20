@@ -792,18 +792,23 @@ of static friction, so the puck slides unless it is held or stuck.
 
 Prices are rough 2026 single-unit estimates. "NM" means it must be non-magnetic.
 
+The five machined parts (items 4, 7, 8, 9, 10) are ordered from `hardware/mechanical/step/*.step` and
+`hardware/mechanical/drawings/*.pdf`, not from `stl/`: no CNC vendor accepts an STL, and a solid cannot
+carry a fit, a thread, a knurl or a general tolerance. `drawgen.py` builds both from the same constants
+as the model — see [`hardware/mechanical/README.md`](../hardware/mechanical/README.md).
+
 | # | Item | Spec | Qty | Source / part | Est. | Notes |
 |---|---|---|---|---|---|---|
 | 1 | Main bearing | **SKF 608-2Z** (alt. NSK 608ZZ, SKF 608-2RSL) | 1 (+4) | bearing distributors; [SKF 608-2Z](https://www.simplybearings.co.uk/products/608-2z-skf) | $2–8 | degrease and oil (§4) |
 | 2 | Bearing oil | ISO VG 2–10 synthetic instrument oil (Mobil Velocite No. 3 / No. 6) | 1 | industrial suppliers | $10 | base oil to verify |
 | 3 | Wave washer | single-turn, **22 mm bore**, ID ≥ 19.5, **working height ≤ 0.5 mm, 30–50 N, ≤ 300 N/mm**, stainless | 2 | Smalley / Rotor Clip / generic; check the catalogue height | $1–4 | many catalogue parts work at 0.8–1.5 mm: they do not fit. Load to verify. |
-| 4 | Cap ring | 0.5 mm 316 sheet, OD 24.4 / ID 19.9 (laser-cut or a shim washer) | 2 | laser-cut service / shim-washer assortment | $1 | NM |
+| 4 | Cap ring | 0.5 mm 316 sheet, OD 24.4 / ID 19.9 (laser-cut or a shim washer; `drawings/cap_ring.pdf`, `step/cap_ring.step`) | 2 | laser-cut service / shim-washer assortment | $1 | NM |
 | 5 | Track magnets | NdFeB **N52 Ø2 × 2 axial, NiCuNi** | 60 | supermagnete, first4magnets, AliExpress (one batch) | $3–6 | not K&J D11 (§6) |
 | 6 | Detent magnet | NdFeB **N52 Ø3 × 2 axial** | 3 | as above; near-equivalent [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8″ × 1/16″, slightly weaker) | $1 | |
-| 7 | Flywheel ring | 316L, 70/54/10, chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 inner, 48 magnet pockets at R_t 29.0, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`stl/rotor_ring.stl` as drawing aid; the STL omits the knurl, which is a callout: with it the model gives 117.1 g, §14) | 1 | JLCCNC / PCBWay CNC / local | $15–40 | magnetism check |
-| 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`stl/spindle.stl` as drawing aid) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
-| 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`stl/spindle_hub.stl`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split) |
-| 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`stl/lower_spacer.stl`) | 1 | CNC | $5–10 | replaces the bonded POM spacer |
+| 7 | Flywheel ring | 316L, 70/54/10, chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 inner, 48 magnet pockets at R_t 29.0, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`drawings/rotor_ring.pdf`, `step/rotor_ring.step`; the knurl is a drawing callout, not modelled: with it the model gives 117.1 g, §14) | 1 | JLCCNC / PCBWay CNC / local | **$71 quoted** (JLCCNC, SUS304, qty 1, 2026-10-20: machining $60.01 of it — the 48 blind pockets — material $6.51, engineering $4.93; Al 6061 is $8.22). 316L not offered there; get a PCBWay quote | magnetism check: JLC warn 304 may become weakly magnetic after cold working |
+| 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`drawings/spindle.pdf`, `step/spindle.step`) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
+| 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`drawings/spindle_hub.pdf`, `step/spindle_hub.step`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split). **The model's bore is still round** — the D is in this spec and on the drawing as an OPEN note, not in `dial_spinner.scad`; cut it in before ordering |
+| 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`drawings/lower_spacer.pdf`, `step/lower_spacer.step`) | 1 | CNC | $5–10 | replaces the bonded POM spacer. **The model's bore is still round** — same open D-bore as item 9 |
 | 11 | Nut | **M4×0.5 brass**, OD 7, 1.5 thick, 2 pin-spanner holes (or a thin DIN 439 M4×0.5 turned down) | 2 | CNC / fine-thread nut suppliers | $1–3 | 0.10 N·m, Loctite 222 |
 | 12 | Press pad | Ø3.0 × 1.0 silicone **40 Shore A** | 5 | punched from sheet | – | k to verify |
 | 13 | Guide pins | **knurled brass Ø3.0**, 11.0 mm (×2) and 7.0 mm (×1), M2 tapped 3 deep at the top | 3 | brass rod + knurl, or Ø3 brass dowels | $1 | NM; PEEK Ø3 at θ 60 (RF) |

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Export every printable / machined part of dial_spinner.scad to stl/ (binary STL, on the bed).
-# rotor_ring, spindle, spindle_hub, lower_spacer and cap_ring are turned / cut metal parts: the STL is a
-# drawing aid only. It carries no tolerances, threads or finish (ring knurl, spindle Ø8 h6 and M4x0.5,
-# hub M2 tappings): quote and machine from mechanical sections 5 and 13, not from the mesh.
+# rotor_ring, spindle, spindle_hub, lower_spacer and cap_ring are turned / cut metal parts, and these
+# STLs are only the assembly views' mesh: no tolerances, threads or finish, and no CNC vendor takes an
+# STL anyway. Order those five from step/*.step plus drawings/*.pdf, which drawgen.py builds from the
+# same constants and which do carry the fits, threads, knurl and general tolerance.
 set -eu
 cd "$(dirname "$0")"
 mkdir -p stl

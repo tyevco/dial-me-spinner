@@ -9,9 +9,27 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `extract_board_parts.py` → `board_parts.scad` / `.json` | Component envelopes from `hardware/kicad/*/*.kicad_pcb` (KiCad 9 pcbnew); the NFC pads J11 become a solder-joint body. Re-run after any PCB change. |
 | `calcs.py` | Rotor inertia, spin-down (SKF model), detent LUT and ringing, balance, mass budget, springs / press pad / click force, TMAG aliasing, drop and pin pull-out, actuator force budget, per-part clearances read from the model (board parts vs rotor, hub, actuator and the harness, coax and battery leads), harness/coax/window/USB checks, NFC coil inductance and C16/C17 retune, coil and tail clearances (§13). Output: `calcs_output.txt`, `renders/calc_*.png` |
 | `check_clashes.sh [margin]` (→ `clash_check.py`) | CGAL interference check: rotor envelope, press travel, rest, FA-internal pairs (NFC coil and tail included) → `clash_report.txt` (legend: `clash_legend.txt`); margin > 0 checks the rotor envelope only (near misses) |
-| `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed; rotor ring, spindle, hub, spacer, cap ring are drawing aids for turned/cut metal: no tolerances, threads or knurl — quote from [`docs/mechanical.md`](../../docs/mechanical.md) §5 and §13) |
+| `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed). For the five metal parts the mesh is only the assembly view: order them from `step/` + `drawings/` below |
 | `parts_plate.scad` | Overview of the STLs → `renders/parts.png` |
-| `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib, ~7 min) |
+| `scadvars.py` | Parses the constant table out of `dial_spinner.scad` so the B-rep models below are not a second source of truth for any dimension |
+| `models.py` | The five machined parts (`rotor_ring`, `spindle`, `spindle_hub`, `lower_spacer`, `cap_ring`) as **exact B-rep** solids (build123d / OpenCascade), plus each one's material, stock and shop notes |
+| `drawgen.py` | → `step/*.step` (exact geometry, what a CNC vendor's uploader actually accepts) and `drawings/*.pdf` (dimensioned ISO sheets carrying the fits, threads, knurl and general tolerance that no solid can hold). `--only NAME`, `--no-pdf` |
+| `tests/test_models.py` | Holds the B-rep and the OpenSCAD mesh together: volume, bounding box, ring mass against `calcs.py` §14, and `calcs.py`'s own geometry constants against the `.scad` |
+| `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib + build123d, ~7 min) |
+
+OpenSCAD has no geometry kernel, so it can only emit a mesh — and JLCCNC's uploader rejects STL outright,
+asks for STEP/DWG/DXF/PDF, and demands a drawing as soon as a part has a thread. Hence the second,
+kernel-backed description of the five metal parts. It repeats only their *topology*; every number comes
+from `dial_spinner.scad` through `scadvars.py`, and `tests/test_models.py` fails if the two drift:
+
+```
+~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 35 tests, ~6 s
+```
+
+The exact and meshed volumes agree to 0.023 % on the ring and 0.33 % on the spindle, in the direction
+and magnitude tessellation predicts, and JLCCNC's own reader measured `rotor_ring.step` at 14 823.68 mm³
+against build123d's 14 821.9 (0.012 %). STEP export is byte-deterministic apart from its timestamp line;
+STL export is not, because CGAL emits triangles in an unstable order.
 
 With the routed boards as placed (MDBT50Q at r 17.3 with its u.FL outward, J1 at r 19.5, side-entry SH SM04B J2 at
 r 17, θ 222°, R42 at r 24.1) the clash check shows only the intended contacts listed in `clash_legend.txt`, and
