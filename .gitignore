@@ -13,6 +13,11 @@ hardware/build/
 *.ses
 *.rules
 hardware/sim/results/
+# drawgen.py intermediates: the PDF is the orderable sheet and is committed, but
+# build123d traces text into outlines, so the SVG and DXF of the same sheet come
+# to ~13 MB for five parts.  Regenerate with hardware/mechanical/drawgen.py.
+hardware/mechanical/drawings/*.svg
+hardware/mechanical/drawings/*.dxf
 .pytest_cache/
 node_modules/
 .vitepress/dist/

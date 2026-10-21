@@ -39,7 +39,7 @@ Section 15 collects them into a checklist.
 |---|---|---|
 | **Base** | PA12 cup (Ø70, z 1.0–14.3) on 3 micro-suction arc pads. It holds the LiPo (long axis θ 0/180°), the base board (USB-C, charger, press switch), the 2.4 GHz flex antenna on a printed shelf at θ 90°, and 3 brass guide pins with stop screws. | Sits on the desk |
 | **Floating assembly (FA)** | 3-spoke spider plate + turned 316L spindle + brass spacers + main board (MCU, OLED, LED ring, TMAG5273, detent actuator) + optics + top cover (with the NFC tag coil). One M4 nut on the board top clamps the whole stack. It is SPEC's "stationary hub". | Does not rotate. Three springs push it up against three stop screws. A press moves it down 0.45 mm to the click and at most 0.50 mm to the hard stop. |
-| **Rotor** | 316L flywheel ring (OD 70 / ID 54 / 10) with 48 N52 Ø2×2 magnets flush in its **top face** at R 29.0, bonded to a PA12-GF carrier that holds the 608 outer race on a compliant seat | Spins on the 608 around the spindle and moves down with the FA when pressed |
+| **Rotor** | 316L flywheel ring (OD 70 / ID 54 / 10, turning only) with 48 N52 Ø2×2 magnets at R 29.0 carried in a **printed shim** that drops into a turned recess in the ring's top face, bonded to a PA12-GF carrier that holds the 608 outer race on a compliant seat | Spins on the 608 around the spindle and moves down with the FA when pressed |
 
 The magnet track does three jobs: **detent** (a stationary Ø3×2 N52 magnet 1.0 mm above the track gives 24 detents of
 15° and slides radially inward along θ = 90° to weaken it, free spin at 7.5 mm), **encoder** (TMAG5273 on the
@@ -196,17 +196,17 @@ acceptable: SKF's model gives zero seal friction for RSL at D ≤ 25 mm, and it 
 hub and spacer clamp faces to Ø10.0–10.5. **Never use RSH or RS1 contact seals** (≈ 7.6 N·mm: the rotor stops in about
 1 s). Buy 5+, measure each, keep the best two.
 
-Spin-down with the rotor computed here (Fa = 1.31 N from gravity, plus eddy and air terms of < 3 %), from the
+Spin-down with the rotor computed here (Fa = 1.24 N from gravity, plus eddy and air terms of < 3 %), from the
 [SKF frictional-moment model](https://cdn.skfmediahub.skf.com/api/public/0901d1968065e9e7) (Table 2a constants;
 it reproduces the verifier's 0.147 N·mm for the 608 and 1.6 N·mm for the 61808):
 
 | Bearing / lubricant | from 5 rev/s | from 10 rev/s | from 15 rev/s |
 |---|---|---|---|
-| 608-2Z, oil ν = 10 mm²/s | 89 s | **131 s** (487 rev) | 163 s |
-| 608-2Z, oil ν = 20 | 65 s | **95 s** (341 rev) | 116 s |
-| 608-2Z, ν 20, **friction × 2.7** (planning floor) | 24 s | **35 s** | 44 s |
-| 608-2Z, factory grease after run-in (ν 200) | 20 s | 28 s | 35 s |
-| 61808 (6808), oil ν 10 / ν 20 | 11 / 7 s | 15 / 10 s | 18 / 12 s |
+| 608-2Z, oil ν = 10 mm²/s | 87 s | **129 s** (475 rev) | 159 s |
+| 608-2Z, oil ν = 20 | 64 s | **93 s** (332 rev) | 114 s |
+| 608-2Z, ν 20, **friction × 2.7** (planning floor) | 24 s | **35 s** | 43 s |
+| 608-2Z, factory grease after run-in (ν 200) | 20 s | 28 s | 34 s |
+| 61808 (6808), oil ν 10 / ν 20 | 10 / 7 s | 14 / 10 s | 17 / 12 s |
 
 ![spin-down](../hardware/mechanical/renders/calc_spindown.png)
 
@@ -217,7 +217,11 @@ measured comparison (verifier) suggests it under-predicts friction by up to 2.7�
   pessimistic model predicts passes. Below the gate the bearing prep failed (residual grease, dirt, shield rub):
   re-clean or swap the 608.
 * **Target: ≥ 45 s** (the verifier's 45–60 s band). Record the measured value: it calibrates the friction model.
-* **Expectation if the model holds:** 95–131 s.
+* **Expectation if the model holds:** 93–129 s.
+
+The magnet shim (§5) costs 5.3 % of the rotor's inertia, which moves the ×2.7 floor from 35.3 s to 34.5 s. The gate
+stays at 35 s because the shift is 2 % inside a model whose stated uncertainty is 2.7×, but note that the baseline
+only ever cleared its own floor by 0.3 s: this gate has never had margin, and the first measured unit decides it.
 
 The ≈ 10× advantage of the 608 over a 61808 holds either way, because the same model error applies to both.
 
@@ -280,19 +284,42 @@ amplitude). Add a magnet-ring preload only if the rocking is audible or felt (to
 ## 5. Flywheel: material, drawing notes and balancing
 
 **Material: 316L stainless.** ρ 7.98 g/cm³, non-magnetic, corrosion-proof under fingers, σ ≈ 1.35 MS/m (about 11×
-below brass, so the stationary magnet's eddy drag stays at a few µN·m). Turned at JLCCNC/PCBWay CNC or a local shop,
-est. $15–40. Net ring mass 117.1 g.
+below brass, so the stationary magnet's eddy drag stays at a few µN·m). **Turning only** — the 48 magnet pockets
+have moved into a printed shim, below. Net ring mass 108.3 g. Price: §13 item 7.
 
 | Feature | Spec |
 |---|---|
 | OD / ID / height | 70.00 / 54.00 +0.02/0 / 10.00 mm |
 | Concentricity OD↔ID | ≤ 0.02 TIR |
-| Faces | flat and square ≤ 0.02. The **top face is the detent/encoder datum.** Face runout ≤ 0.05 TIR (the detent loses ~10 % torque per +0.1 mm gap). |
-| Chamfers | 1.0 × 45° top-outer (flick edge); **1.5 × 45° bottom-outer** (USB-C plug overmold clearance, §9); 0.5 × 45° on the ID |
+| Faces | flat and square ≤ 0.02. The **top face outside the recess is the detent/encoder datum** and the damping-pad land (§7). Face runout ≤ 0.05 TIR (the detent loses ~10 % torque per +0.1 mm gap). |
+| Chamfers | 1.0 × 45° top-outer (flick edge); **1.5 × 45° bottom-outer** (USB-C plug overmold clearance, §9); 0.5 × 45° bottom-inner. The top-inner chamfer is gone — it fell inside the recess |
 | Knurl | straight, DIN 82 RAA 0.8, OD band z 17.1–24.1 |
-| Magnet pockets | 48 × Ø2.10 +0.02/0 × 2.05 +0.02/0 deep, flat-bottom, on the top face at R 29.000 ± 0.02, every 7.5° ± 0.05° |
+| Shim recess | Ø62.00 × 2.00 +0.02/0 deep in the top face. Its floor is the **magnet seat**, so flat and square ≤ 0.02: the magnets bottom on steel and it is this depth, not the printed shim, that sets the 1.0 mm detent gap |
 | Balance holes | 4 × M2 tapped, 3 deep, in the bottom face at r 31, θ 45/135/225/315° |
-| Process order | rough-turn → **knurl** → N52 cling test → *only if it clings:* solution-anneal (1050 °C, water quench) → **finish-turn faces, ID, chamfers** to the TIR/flatness specs → mill pockets and drill/tap balance holes → repeat the cling test. Never anneal a finished ring (distortion, scale). Never nickel-plate (ferromagnetic). |
+| Process order | rough-turn → **knurl** → N52 cling test → *only if it clings:* solution-anneal (1050 °C, water quench) → **finish-turn faces, ID, chamfers and the recess** to the TIR/flatness specs → drill/tap balance holes → repeat the cling test. Never anneal a finished ring (distortion, scale). Never nickel-plate (ferromagnetic). |
+
+**Magnet shim (printed).** A Ø62 / Ø54 × 1.95 ring with 48 Ø2.10 **through** holes at R 29.000, every 7.5°, that
+drops into the ring's recess and is located radially by it. It exists to get the 48 blind pockets out of the steel:
+they were a flat-bottom milling operation held to ±0.02 in stainless, and as through holes in plastic they need no
+depth control at all. The quote bears it out — §13 item 7 fell from **$71.45 to $52.49**, machining $60.01 → $41.05.
+
+Three things follow, and the third is the open risk:
+
+* **The gap stack loses a term.** The magnets bottom on the recess floor and stand 2.0 proud of it, so the track
+  height is set by the ring and the magnets' own height. The shim is printed 1.95, deliberately 0.05 shy, so its
+  printed thickness never enters the stack. The gap closes 0.05 mm versus the old pocket floor (+5 % detent torque).
+* **Assembly decouples.** The 48 magnets are bonded into the shim in a flat jig, in alternating polarity, off the
+  ring and testable before commitment. A mis-built track now scraps a $0.32 printed part instead of a $52 one.
+* **Angular accuracy is the risk.** The track is a 24-pole-pair encoder, so a magnet 0.10 mm off tangentially is
+  0.198° mechanical = **4.74° electrical** — against the 3.5° §14 already budgets for XZX sampling. The scatter is
+  static, so the firmware's calibration spin can absorb it into a 48-entry LUT; detent *feel* cannot be calibrated,
+  but 0.10 mm on a 3.79 mm pitch is 2.6 % and is a prototype question. If printing proves too loose, a laser-cut
+  sheet shim holds ±0.05 mm for about the same money.
+
+**Walls are the binding constraint, not inertia.** 0.95 mm between the Ø2.10 bores and both recess walls clears
+JLC3DP's 0.8 mm hard minimum but sits under its 1.2 mm recommended wall, so prototype before committing. This is
+what fixes the recess at Ø62: narrowing it to Ø61 would buy 1.8 % of inertia back and leave 0.45 mm walls, which
+is unmanufacturable. Widening past Ø63.2 would put the damping pad (r 31.6–32.4, §7) onto plastic.
 
 **Rotor carrier.** PA12-GF (SLS) or MJF PA12-GB, 5.6 g, no ribs (the old ribs at z 16.2–17 sat below SPEC's web and
 in the wire space). Print with +0.4 mm stock on the bore and register, then **bore Ø22 H7 and turn the register to
@@ -301,15 +328,15 @@ in the wire space). Print with +0.4 mm stock on the bore and register, then **bo
 
 **Alternatives.** C360 brass ring (132 g; about 11× the eddy drag in click mode). RF-transparent ring (§9).
 
-**Balancing.** Target ISO 1940 **G2.5 at 15 rev/s**: U_per = **3.5 g·mm** for the 134 g rotor; aim ≤ 2 g·mm.
+**Balancing.** Target ISO 1940 **G2.5 at 15 rev/s**: U_per = **3.36 g·mm** for the 127 g rotor; aim ≤ 2 g·mm.
 
 | Error source | A: ring bonded freehand | B: bonded on an arbor (recommended) |
 |---|---|---|
-| Ring OD/ID eccentricity (0.02 TIR) | 1.17 g·mm | 1.17 |
-| Ring-to-bearing eccentricity | 4.37 (e ≈ 0.035) | 1.25 (TIR ≤ 0.02) |
+| Ring OD/ID eccentricity (0.02 TIR) | 1.08 g·mm | 1.08 |
+| Ring-to-bearing eccentricity | 3.92 (e ≈ 0.035) | 1.12 (TIR ≤ 0.02) |
 | 48 magnets, mass σ 3 %, random | 0.28 | 0.28 |
 | 5 mg glue blob at r 29 | 0.14 | 0.14 |
-| **RSS before correction** | **4.5** (out of spec) | **1.7** |
+| **RSS before correction** | **4.08** (out of spec) | **1.59** |
 
 Procedure:
 
@@ -598,8 +625,10 @@ stops).
 1. Retune with a π-match on the RF lead, if one is added.
 2. Swap the θ 60 hardware (above) and move the pack away: a ≤ 30 mm-wide pack gives 4.0 mm.
 3. **RF-transparent ring:** PA12-GF or PEEK ring of the same envelope with 16–24 discrete non-magnetic W-Ni-Cu slugs or
-   ZrO₂/WC-Ni balls (Ni binder, not Co), plus the same magnet pockets. I ≈ 0.5–1.0·10⁻⁴ kg·m², so the spin time scales
-   the same way.
+   ZrO₂/WC-Ni balls (Ni binder, not Co), carrying the same magnet shim. I ≈ 0.5–1.0·10⁻⁴ kg·m², so the spin time
+   scales the same way — but note the ceiling. Matching the steel ring's inertia in this envelope means matching its
+   *effective density* of 7.48 g/cm³, which needs ≈ 35 % of the ring volume filled with tungsten (lead would need
+   62 %, brass 86 %, steel 95 %). The top of that 0.5–1.0 range is the practical limit, not a design target.
 4. A segmented 316L ring: 4–8 sectors with ≥ 0.5 mm insulating gaps (re-balance per build).
 
 **Validation:**
@@ -792,18 +821,24 @@ of static friction, so the puck slides unless it is held or stuck.
 
 Prices are rough 2026 single-unit estimates. "NM" means it must be non-magnetic.
 
+The five machined parts (items 4, 7, 8, 9, 10) are ordered from `hardware/mechanical/step/*.step` and
+`hardware/mechanical/drawings/*.pdf`, not from `stl/`: no CNC vendor accepts an STL, and a solid cannot
+carry a fit, a thread, a knurl or a general tolerance. `drawgen.py` builds both from the same constants
+as the model — see [`hardware/mechanical/README.md`](../hardware/mechanical/README.md).
+
 | # | Item | Spec | Qty | Source / part | Est. | Notes |
 |---|---|---|---|---|---|---|
 | 1 | Main bearing | **SKF 608-2Z** (alt. NSK 608ZZ, SKF 608-2RSL) | 1 (+4) | bearing distributors; [SKF 608-2Z](https://www.simplybearings.co.uk/products/608-2z-skf) | $2–8 | degrease and oil (§4) |
 | 2 | Bearing oil | ISO VG 2–10 synthetic instrument oil (Mobil Velocite No. 3 / No. 6) | 1 | industrial suppliers | $10 | base oil to verify |
 | 3 | Wave washer | single-turn, **22 mm bore**, ID ≥ 19.5, **working height ≤ 0.5 mm, 30–50 N, ≤ 300 N/mm**, stainless | 2 | Smalley / Rotor Clip / generic; check the catalogue height | $1–4 | many catalogue parts work at 0.8–1.5 mm: they do not fit. Load to verify. |
-| 4 | Cap ring | 0.5 mm 316 sheet, OD 24.4 / ID 19.9 (laser-cut or a shim washer) | 2 | laser-cut service / shim-washer assortment | $1 | NM |
+| 4 | Cap ring | 0.5 mm 316 sheet, OD 24.4 / ID 19.9 (laser-cut or a shim washer; `drawings/cap_ring.pdf`, `step/cap_ring.step`) | 2 | laser-cut service / shim-washer assortment | $1 | NM |
 | 5 | Track magnets | NdFeB **N52 Ø2 × 2 axial, NiCuNi** | 60 | supermagnete, first4magnets, AliExpress (one batch) | $3–6 | not K&J D11 (§6) |
 | 6 | Detent magnet | NdFeB **N52 Ø3 × 2 axial** | 3 | as above; near-equivalent [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8″ × 1/16″, slightly weaker) | $1 | |
-| 7 | Flywheel ring | 316L, 70/54/10, chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 inner, 48 magnet pockets at R_t 29.0, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`stl/rotor_ring.stl` as drawing aid; the STL omits the knurl, which is a callout: with it the model gives 117.1 g, §14) | 1 | JLCCNC / PCBWay CNC / local | $15–40 | magnetism check |
-| 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`stl/spindle.stl` as drawing aid) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
-| 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`stl/spindle_hub.stl`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split) |
-| 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`stl/lower_spacer.stl`) | 1 | CNC | $5–10 | replaces the bonded POM spacer |
+| 7 | Flywheel ring | 316L, 70/54/10, **turning only**: chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 bottom-inner, Ø62.00 × 2.00 magnet-shim recess in the top face, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`drawings/rotor_ring.pdf`, `step/rotor_ring.step`; the knurl is a drawing callout, not modelled: with it the model gives 109.5 g, §14) | 1 | JLCCNC / PCBWay CNC / local | **$52.49 quoted** (JLCCNC, SUS304, qty 1, 2026-10-20: machining $41.05, material $6.91, engineering $4.53, no finish). Was **$71.45** with the 48 blind pockets, so moving them to the shim (item 7a) saved **$18.96**, machining −32 %. 316L not offered there; get a PCBWay quote | magnetism check: JLC warn 304 may become weakly magnetic after cold working |
+| 7a | Magnet shim | Printed Ø62 / Ø54 × 1.95 ring, 48 Ø2.10 **through** holes at R 29.000 every 7.5°; drops into item 7's recess and is located by it (`stl/magnet_shim.stl`, §5) | 1 | JLC3DP / PCBWay MJF PA12 or SLS PA12-GF | **$0.32 quoted** (JLC3DP, qty 1, 2026-10-20, 9600 resin; print it in item 35's batch) | 0.95 mm walls are under JLC3DP's 1.2 mm recommended wall, though its 0.8 hard minimum is met: prototype first. Magnet angular position is the open risk, §5 |
+| 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`drawings/spindle.pdf`, `step/spindle.step`) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
+| 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`drawings/spindle_hub.pdf`, `step/spindle_hub.step`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split). **The model's bore is still round** — the D is in this spec and on the drawing as an OPEN note, not in `dial_spinner.scad`; cut it in before ordering |
+| 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`drawings/lower_spacer.pdf`, `step/lower_spacer.step`) | 1 | CNC | $5–10 | replaces the bonded POM spacer. **The model's bore is still round** — same open D-bore as item 9 |
 | 11 | Nut | **M4×0.5 brass**, OD 7, 1.5 thick, 2 pin-spanner holes (or a thin DIN 439 M4×0.5 turned down) | 2 | CNC / fine-thread nut suppliers | $1–3 | 0.10 N·m, Loctite 222 |
 | 12 | Press pad | Ø3.0 × 1.0 silicone **40 Shore A** | 5 | punched from sheet | – | k to verify |
 | 13 | Guide pins | **knurled brass Ø3.0**, 11.0 mm (×2) and 7.0 mm (×1), M2 tapped 3 deep at the top | 3 | brass rod + knurl, or Ø3 brass dowels | $1 | NM; PEEK Ø3 at θ 60 (RF) |
@@ -828,7 +863,7 @@ Prices are rough 2026 single-unit estimates. "NM" means it must be non-magnetic.
 | 32 | Link harness | 12 single **pre-crimped SH wires** (SSH-003T-P0.2 both ends, no housings): 5 × 28 AWG (pins 1–4, 8), 7 × 32 AWG, ~100 mm; 2 × SHR-12V-S housings | 1 | JST distributors / pre-crimped SH lead sets | $4 | insert into housings after routing (§12) |
 | 33 | ESD strap | 0.1 × 3 mm phosphor bronze, ~25 mm; silver conductive epoxy (e.g. MG 8331) | 1 | | $10 | |
 | 34 | Adhesives | 2-part epoxy (3M DP420 / Loctite EA 9466); Loctite 638, 641, 222; UV glue; silicone adhesive | – | | $25 | |
-| 35 | Printed parts | `stl/`: base_cup, top_cover, light_box (black, interior painted white), fa_lower_plate, rotor_carrier (PA12-GF, machined after printing), detent_carriage, oled_bracket, stepper_saddle, carriage_rail | 1 set | JLC3DP / PCBWay **MJF PA12** or SLS PA12-GF | $25–45 | FDM for fit checks only |
+| 35 | Printed parts | `stl/`: base_cup, top_cover, light_box (black, interior painted white), fa_lower_plate, rotor_carrier (PA12-GF, machined after printing), magnet_shim (item 7a), detent_carriage, oled_bracket, stepper_saddle, carriage_rail | 1 set | JLC3DP / PCBWay **MJF PA12** or SLS PA12-GF | $25–45 | FDM for fit checks only |
 | 36 | Battery leads | 4 single **pre-crimped SH wires**, 28 AWG (SSH-003T-P0.2), two per rail, + 1 × SHR-04V-S housing for J2 (SM04B-SRSS-TB: pins 1–2 BAT+, 3–4 GND) | 1 | JST distributors / pre-crimped SH lead sets | $1–2 | replaces the pack's own leads/connector; check polarity |
 | 37 | NFC coil | Custom 13.56 MHz flex: 2-layer PI, Ø31/Ø52.5 × 0.15, black coverlay, 4 turns 0.20/0.15 at r 24.9–26.15 (≈ 1.75 µH over the board, estimate), 2.0 mm tongue tail with 3.4 × 2.2 lands for J11, 0.05 PSA on the top face (§9) | 1 (+1) | flex-PCB house, drawing from the model (no quote yet) | – | retune C16/C17 for the measured L (§9) |
 
@@ -842,20 +877,24 @@ Full output: [`calcs_output.txt`](../hardware/mechanical/calcs_output.txt). Re-r
 
 | Part | Mass (g) | I (kg·m²) |
 |---|---|---|
-| 316L ring (net, 1.5 mm bottom chamfer) | 117.1 | 1.139e-4 |
+| 316L ring (net, recessed) | 108.3 | 1.065e-4 |
 | 48 magnets | 2.26 | 1.9e-6 |
+| Printed magnet shim (PA12-GF) | 1.37 | 1.2e-6 |
 | PA12-GF carrier (no ribs) | 5.55 | 2.1e-6 |
 | 608 rotating share | 7.65 | 8.1e-7 |
 | Wave washer, cap ring, strap, adhesive | 1.4 | 4.3e-7 |
-| **Total** | **133.9** | **1.192e-4** |
+| **Total** | **126.6** | **1.129e-4** |
+
+The shim (§5) costs 5.3 % of the rotor's inertia against the solid-pocketed ring's 1.192e-4; §4 has what that does
+to spin-down.
 
 **Energy and momentum.**
 
 | rev/s | E (mJ) | L (mN·m·s) | Rim speed (m/s) |
 |---|---|---|---|
-| 5 | 59 | 3.7 | 1.1 |
-| 10 | 235 | 7.5 | 2.2 |
-| 15 | 529 | 11.2 | 3.3 |
+| 5 | 56 | 3.55 | 1.1 |
+| 10 | 223 | 7.10 | 2.2 |
+| 15 | 502 | 10.64 | 3.3 |
 
 **Spin-down:** §4. **Detent and ringing:** §7. **Balance:** §5.
 
