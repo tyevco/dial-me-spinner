@@ -7,8 +7,9 @@
 set -eu
 cd "$(dirname "$0")"
 mkdir -p stl
-parts=(base_cup top_cover light_box diffuser fa_lower_plate rotor_carrier detent_carriage link_plate \
-       oled_bracket stepper_saddle carriage_rail spindle spindle_hub lower_spacer cap_ring rotor_ring)
+parts=(base_cup top_cover light_box diffuser fa_lower_plate rotor_carrier magnet_shim detent_carriage \
+       link_plate oled_bracket stepper_saddle carriage_rail spindle spindle_hub lower_spacer cap_ring \
+       rotor_ring)
 export_one() {
   openscad -o "stl/$1.stl" --export-format binstl -D 'view="part"' -D "part=\"$1\"" \
     -D 'fn_big=128' -D 'fn_mid=48' -D 'fn_small=24' -D 'show_knurl=false' dial_spinner.scad 2>&1 \

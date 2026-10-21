@@ -32,7 +32,9 @@ RING_RO, RING_RI, RING_H = 35.0, 27.0, 10.0
 RING_Z0, RING_Z1 = 15.6, 25.6
 CH_TO, CH_BO, CH_IN = 1.0, 1.5, 0.5
 MAG_N, MAG_D, MAG_H, RT = 48, 2.0, 2.0, 29.0
-POCKET_D, POCKET_H = 2.10, 2.05
+POCKET_D, POCKET_H = 2.10, 2.05          # shim bore (was the blind pocket in the steel)
+SHIM_RI, SHIM_RO, SHIM_T = 27.0, 31.0, 2.0   # turned recess for the printed magnet shim
+SHIM_PLATE_T = 1.95                          # printed 0.05 shy of MAG_H: the magnet sets the gap
 B_Z0, B_Z1 = 18.0, 25.0                  # 608
 DET_D, DET_H, DET_GAP = 3.0, 2.0, 1.0
 MB_Z0 = 29.1
@@ -81,20 +83,28 @@ def table(rows, header):
 def rotor_parts():
     parts = []  # (name, mass_g, I_kgm2, z_cg_mm)
     v, k = annulus(RING_RO, RING_RI, RING_H)
+    # Only three chamfers survive: the top-inner one fell inside the magnet-shim recess.
     ch = [(CH_TO ** 2 / 2, RING_RO - CH_TO / 3), (CH_BO ** 2 / 2, RING_RO - CH_BO / 3),
-          (CH_IN ** 2 / 2, RING_RI + CH_IN / 3), (CH_IN ** 2 / 2, RING_RI + CH_IN / 3)]
+          (CH_IN ** 2 / 2, RING_RI + CH_IN / 3)]
     v_chamf = sum(2 * math.pi * r * a for a, r in ch)
     i_chamf = sum(2 * math.pi * r * a * r ** 2 for a, r in ch)
     v_knurl = 120 * (0.6 ** 2 / 2) * 7.0
-    v_pock = MAG_N * math.pi * (POCKET_D / 2) ** 2 * POCKET_H
+    # The 48 blind pockets are gone; the magnets sit in a printed shim in this turned recess.
+    v_rec, k_rec = annulus(SHIM_RO, SHIM_RI, SHIM_T)
     v_bal = 4 * math.pi * 0.8 ** 2 * 3.0
-    m_ring = (v - v_chamf - v_knurl - v_pock - v_bal) * RHO_316L
+    m_ring = (v - v_chamf - v_knurl - v_rec - v_bal) * RHO_316L
     i_ring = (v * RHO_316L * k - i_chamf * RHO_316L - v_knurl * RHO_316L * 34.8 ** 2
-              - v_pock * RHO_316L * RT ** 2 - v_bal * RHO_316L * 31 ** 2) * 1e-9
-    parts.append(("316L ring 70/54/10 (net)", m_ring, i_ring, 20.65))
+              - v_rec * RHO_316L * k_rec - v_bal * RHO_316L * 31 ** 2) * 1e-9
+    parts.append(("316L ring 70/54/10, recessed (net)", m_ring, i_ring, 20.23))
     v_mag = math.pi * (MAG_D / 2) ** 2 * MAG_H
     m_mag = MAG_N * v_mag * RHO_NDFEB
     parts.append(("48x N52 Ø2x2 magnets", m_mag, m_mag * RT ** 2 * 1e-9, RING_Z1 - MAG_H / 2))
+    # printed magnet shim: annulus with 48 through holes, located by the ring's recess
+    v_sh, k_sh = annulus(SHIM_RO, SHIM_RI, SHIM_PLATE_T)
+    v_sh_h = MAG_N * math.pi * (POCKET_D / 2) ** 2 * SHIM_PLATE_T
+    parts.append(("printed magnet shim (PA12-GF)", (v_sh - v_sh_h) * RHO_PA12GF,
+                  (v_sh * k_sh - v_sh_h * RT ** 2) * RHO_PA12GF * 1e-9,
+                  RING_Z1 - SHIM_T + SHIM_PLATE_T / 2))
     # PA12-GF carrier (post-machined): web r 12.2-26.95 z 17-19, collar r 11-12.2 z 17-25.5, lip r 9.9-11 z 17-18
     segs = [annulus(26.95, 12.2, 2.0), annulus(12.2, 11.0, 8.5), annulus(11.0, 9.9, 1.0)]
     zc = [18.0, 21.25, 17.5]

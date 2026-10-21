@@ -160,6 +160,18 @@ POCKET_H    = 2.05;
 BAL_R       = 31.0;                 // 4x M2 balance holes at theta 45/135/225/315
 BAL_D       = 1.6;                  // M2 tapping drill
 BAL_DEPTH   = 3.0;                  // blind, from the bottom face
+// Printed magnet shim.  The 48 magnets used to sit in blind pockets milled into the steel;
+// they now live in a printed ring that drops into a turned recess, which makes the flywheel a
+// turning-only part: dropping the 48 pockets took the quote from $71.45 to $52.49 (doc section
+// 13).  The magnets still bottom on steel, at the old pocket floor's z, so the gap is unchanged.
+// Doc section 5.
+SHIM_RI     = RING_RI;              // recess is a plain counterbore: no inner lip to turn
+SHIM_RO     = 31.0;                 // damping pad (r 31.6-32.4, section 7) stays on bare steel
+SHIM_T      = 2.0;                  // = MAG_H: recess depth = magnet height
+SHIM_Z0     = RING_Z1 - SHIM_T;     // 23.6 recess floor; magnets bottom here, as on the old
+                                    //   pocket floor (RING_Z1 - POCKET_H = 23.55)
+SHIM_PLATE_T = 1.95;                // printed 0.05 shy of MAG_H, so the magnet crown -- not the
+                                    //   shim's printed thickness -- sets the detent gap
 // rotor carrier PA12-GF, post-machined: web z 17-19, r 11-27
 CW_Z0       = 17.0;
 CW_Z1       = 19.0;
@@ -292,7 +304,7 @@ c_magbody = "#a7adb4"; c_detmag = "#8e44ad"; c_lightbx = "#262626"; c_diff = "#e
 c_cover   = "#2b2d31"; c_glass = "#0d1117"; c_aa = "#10243a"; c_battery = "#8fa3b8";
 c_kapton  = "#d08a2c"; c_coax = "#5a5a5a"; c_motor = "#6f7378"; c_hub = "#b8962e";
 c_pom     = "#e9e6dc"; c_felt = "#d9cfa8"; c_lens = [0.8, 0.9, 1.0, 0.35]; c_wire = "#c0392b";
-c_fr4     = "#c8b560"; c_pad = "#e85d75";
+c_fr4     = "#c8b560"; c_pad = "#e85d75"; c_shim = "#3f4752";
 
 // ------------------------------------------------------------------
 //  helpers
@@ -516,7 +528,7 @@ module hub_nut() color(c_hub) difference() {     // M4 x 0.5 brass round nut, 2 
 }
 
 // ==================================================================
-//  ROTOR: 316L ring + 48 magnets + PA12-GF carrier + 608 outer race + seat parts
+//  ROTOR: 316L ring + printed magnet shim + 48 magnets + PA12-GF carrier + 608 race + seat
 // ==================================================================
 module ring_profile()
     polygon([
@@ -527,16 +539,24 @@ module ring_profile()
 module rotor_ring()
     color(c_steel) difference() {
         rotate_extrude($fn = fn_big * 2) ring_profile();
-        for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N)
-            translate([RT, 0, RING_Z1 - POCKET_H]) cylinder(d = POCKET_D, h = POCKET_H + 0.1, $fn = fn_small);
+        translate([0, 0, SHIM_Z0]) cylinder(r = SHIM_RO, h = SHIM_T + 0.1, $fn = fn_big);
         for (a = [45:90:315]) rotate(a) translate([BAL_R, 0, RING_Z0 - 0.1])
             cylinder(d = BAL_D, h = BAL_DEPTH + 0.1, $fn = 12);
         if (show_knurl) for (i = [0:119]) rotate(i * 3)
             translate([RING_RO, 0, RING_Z0 + 1.5]) rotate(45) translate([-0.3, -0.3, 0]) cube([0.6, 0.6, 7.0]);
     }
 
+// Printed PA12-GF / PC ring carrying the 48 magnets; drops into the ring's turned recess and
+// is located radially by it.  48 THROUGH holes, so no printed depth controls the magnet height.
+module magnet_shim()
+    color(c_shim) difference() {
+        tube(SHIM_RO, SHIM_RI, SHIM_Z0, SHIM_Z0 + SHIM_PLATE_T, fn_big);
+        for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N) translate([RT, 0, SHIM_Z0 - 0.1])
+            cylinder(d = POCKET_D, h = SHIM_PLATE_T + 0.2, $fn = fn_small);
+    }
+
 module track_magnets()
-    for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N) translate([RT, 0, RING_Z1 - MAG_H]) {
+    for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N) translate([RT, 0, SHIM_Z0]) {
         color(c_magbody) cylinder(d = MAG_D, h = MAG_H - 0.06, $fn = fn_small);
         color(i % 2 == 0 ? c_N : c_S) translate([0, 0, MAG_H - 0.06]) cylinder(d = MAG_D, h = 0.05, $fn = fn_small);
     }
@@ -569,7 +589,7 @@ module bearing608() {
     color(c_bear) for (i = [0:6]) rotate(i * 360 / 7) translate([7.6, 0, (B_Z0 + B_Z1) / 2]) sphere(d = 3.97, $fn = 16);
 }
 
-module rotor() { rotor_ring(); track_magnets(); rotor_carrier(); wave_spring(); cap_ring(); esd_strap(); }
+module rotor() { rotor_ring(); magnet_shim(); track_magnets(); rotor_carrier(); wave_spring(); cap_ring(); esd_strap(); }
 
 // swept envelope of everything that rotates (for the clash check)
 module rotor_envelope2d()
@@ -831,7 +851,8 @@ module exploded() {
     translate([0, 0, 30 * e]) guide_hw();
     translate([0, 0, 40 * e]) { fa_lower_plate(); spindle(); press_pad(); }
     translate([0, 0, 52 * e]) lower_spacer();
-    translate([0, 0, 80 * e]) { rotor_carrier(); rotor_ring(); track_magnets(); esd_strap(); }
+    translate([0, 0, 80 * e]) { rotor_carrier(); rotor_ring(); esd_strap(); }
+    translate([0, 0, 94 * e]) { magnet_shim(); track_magnets(); }
     translate([0, 0, 92 * e]) bearing608();
     translate([0, 0, 98 * e]) { wave_spring(); cap_ring(); }
     translate([0, 0, 106 * e]) spindle_hub();
@@ -847,7 +868,7 @@ EXPL_LABELS = [
     [-13.5, "3x micro-suction arc pads"], [6, "base cup + antenna shelf (PA12)"], [13, "LiPo 503450 (theta 0/180)"],
     [30.5, "base board Ø46 + SW1 + USB-C"], [41, "guide pins, springs, stop screws"],
     [53.5, "FA spider + 316L spindle + press pad"], [68, "brass lower spacer / drop stop"],
-    [100, "316L ring + 48 magnets + carrier"], [113.5, "608-2Z (re-oiled)"],
+    [100, "316L ring + shim + 48 magnets + carrier"], [113.5, "608-2Z (re-oiled)"],
     [124, "wave washer + 316 cap ring"], [133.5, "brass hub (M2 tapped)"],
     [143, "detent carriage + stepper"], [158.5, "main board Ø64 + M4 nut"],
     [170, "light box + OLED bracket"], [179.5, "OLED 1.5in SSD1351"], [184.5, "NFC coil flex, tail to J11"],
@@ -878,6 +899,7 @@ module section(plane) {
     cut_keep(plane, c_coax, 10) coax();
     cut_keep(plane, c_wire, 27) harness();
     cut_keep(plane, c_steel, 11) rotor_ring();
+    cut_keep(plane, c_shim, 23) magnet_shim();
     cut_keep(plane, c_magbody, 12) track_magnets();
     cut_keep(plane, c_carrier, 13) rotor_carrier();
     cut_keep(plane, c_spring, 14) wave_spring();
@@ -976,7 +998,7 @@ module echo_prims() {
 
 // ---------- printable / machined parts on the bed ----------
 part_list = ["base_cup", "top_cover", "light_box", "diffuser", "fa_lower_plate", "rotor_carrier",
-             "detent_carriage", "link_plate", "oled_bracket", "stepper_saddle", "carriage_rail",
+             "magnet_shim", "detent_carriage", "link_plate", "oled_bracket", "stepper_saddle", "carriage_rail",
              "spindle", "spindle_hub", "lower_spacer", "cap_ring"];
 module print_part(p) {
     if (p == "base_cup") translate([0, 0, -CUP_Z0]) base_cup();
@@ -985,6 +1007,7 @@ module print_part(p) {
     else if (p == "diffuser") translate([0, 0, -COV_Z0]) diffuser();
     else if (p == "fa_lower_plate") translate([0, 0, FA_Z1]) mirror([0, 0, 1]) fa_lower_plate();
     else if (p == "rotor_carrier") translate([0, 0, -CW_Z0]) rotor_carrier();
+    else if (p == "magnet_shim") translate([0, 0, -SHIM_Z0]) magnet_shim();
     else if (p == "detent_carriage") translate([0, 0, 2.0 + CARR_T]) mirror([0, 0, 1]) carriage_body_local();
     else if (p == "link_plate") translate([0, 0, -LINK_Z[0]]) link_plate_local();
     else if (p == "oled_bracket") translate([0, 0, BRK_Z1]) mirror([0, 0, 1]) oled_bracket();
@@ -1051,7 +1074,7 @@ SEC_LABELS = [
     ["main board Ø64, 4-layer", [-31, 30.0], [-38, 38], "right"],
     ["TMAG5273 (bottom), 3.1 mm to track", [-29, 28.5], [-38, 29], "right"],
     ["brass hub + C-gap (wire exit θ270)", [-6, 27.5], [-38, 25.5], "right"],
-    ["316L ring, 48 magnets on top face", [-33, 22], [-38, 22.0], "right"],
+    ["316L ring + printed shim, 48 magnets", [-33, 22], [-38, 22.0], "right"],
     ["PA12-GF carrier web", [-20, 18.0], [-38, 18.5], "right"],
     ["FA spider (floats 0.5 mm)", [-5, 13.6], [-38, 15.0], "right"],
     ["base board + TS-1187A", [-14, 10.3], [-38, 11.0], "right"],

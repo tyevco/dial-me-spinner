@@ -189,26 +189,33 @@ def sheet_rotor_ring(part, solid):
                            draft=DRAFT, label=dim(2 * C.RING_RO, dia=True, tol=(0.00, -0.10)))
     faces += ExtensionLine(border=[S(-C.RING_RI, H), S(C.RING_RI, H)], offset=above(16),
                            draft=DRAFT, label=dim(2 * C.RING_RI, dia=True, fit="H7"))
+    faces += ExtensionLine(border=[S(-C.SHIM_RO, H), S(C.SHIM_RO, H)], offset=above(26),
+                           draft=DRAFT, label=dim(2 * C.SHIM_RO, dia=True, suffix="RECESS"))
     faces += ExtensionLine(border=[S(C.RING_RO, 0), S(C.RING_RO, H)], offset=20, draft=DRAFT,
                            label=dim(H, tol=(0.05, -0.05)))
-    faces += ExtensionLine(border=[S(-C.RT, H - C.POCKET_H), S(-C.RT, H)], offset=-20, draft=DRAFT,
-                           label=dim(C.POCKET_H, tol=(0.05, 0.00), suffix="DEEP"))
+    # The label is ~10 mm wide on a 2 mm span, so it cannot sit between its own
+    # extension lines; stack it outboard of the overall height, where there is room.
+    faces += ExtensionLine(border=[S(C.SHIM_RO, H - C.SHIM_T), S(C.SHIM_RO, H)], offset=34,
+                           draft=DRAFT, label=dim(C.SHIM_T, suffix="DEEP"))
     faces += _vlabel("SECTION A-A", sc[0], sc[1] + 26, K)
 
-    faces += ExtensionLine(border=[P(-C.RT, 0), P(C.RT, 0)], offset=below(48), draft=DRAFT,
-                           label=dim(2 * C.RT, dia=True, suffix=f"PCD, {int(C.MAG_N)} POCKETS"))
     faces += ExtensionLine(border=[P(-C.BAL_R, 0), P(C.BAL_R, 0)], offset=above(48), draft=DRAFT,
                            label=dim(2 * C.BAL_R, dia=True, suffix="PCD, 4 HOLES"))
-    faces += _vlabel("VIEW ON THE TOP FACE  (A-A VERTICAL)", pc[0], pc[1] + 52, K)
+    faces += _vlabel("VIEW ON THE BOTTOM FACE  (A-A VERTICAL)", pc[0], pc[1] + 52, K)
 
     faces += _lines(_common_notes(part, [
         f"CHAMFERS: {C.CH_TO:.1f} x 45 TOP OUTER, {C.CH_BO:.1f} x 45 BOTTOM OUTER, "
-        f"{C.CH_IN:.1f} x 45 BOTH INNER.",
-        f"{int(C.MAG_N)}x {DIA}{C.POCKET_D:.2f} POCKETS EQUALLY SPACED "
-        f"({360 / C.MAG_N:.1f} APART) ON THE {DIA}{2 * C.RT:.2f} PCD.",
-        f"4x {DIA}{C.BAL_D:.2f} x {C.BAL_DEPTH:.1f} DEEP AT 45/135/225/315.",
+        f"{C.CH_IN:.1f} x 45 BOTTOM INNER.",
+        f"RECESS {DIA}{2 * C.SHIM_RO:.2f} x {C.SHIM_T:.2f} +0.02/-0.00 DEEP IN THE TOP FACE.",
+        f"4x {DIA}{C.BAL_D:.2f} x {C.BAL_DEPTH:.1f} DEEP AT 45/135/225/315 IN THE BOTTOM "
+        "FACE; TAP M2 TO TRIM.",
+        "DEBURR ALL EDGES. PROCESS ORDER AND BALANCE: MECHANICAL 5 AND 14.",
         ""]), -138, -42)
-    return faces, [view(plan(solid), pc, K), view(axial_section(solid), sc, K, H / 2)]
+    # The balance holes open at the BOTTOM face, so a top view cannot show the
+    # four holes its own PCD dimension calls out.  The recess is dimensioned on
+    # the section instead, where it is a real edge rather than a circle.
+    return faces, [view(plan(solid, from_below=True), pc, K),
+                   view(axial_section(solid), sc, K, H / 2)]
 
 
 def sheet_spindle(part, solid):

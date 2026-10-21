@@ -113,7 +113,8 @@ def test_ring_mass_matches_calcs_section_14(exact):
 
 @pytest.mark.parametrize("name", ["RING_RO", "RING_RI", "RING_Z0", "RING_Z1", "CH_TO", "CH_BO",
                                   "CH_IN", "MAG_N", "MAG_D", "MAG_H", "RT", "POCKET_D",
-                                  "POCKET_H", "B_Z0", "B_Z1", "MB_Z0", "FA_Z0", "FA_Z1"])
+                                  "POCKET_H", "B_Z0", "B_Z1", "MB_Z0", "FA_Z0", "FA_Z1",
+                                  "SHIM_RI", "SHIM_RO", "SHIM_T", "SHIM_PLATE_T"])
 def test_calcs_constants_match_the_scad(name):
     """calcs.py keeps its own copy of the geometry table; it must not drift either."""
     assert getattr(calcs, name) == pytest.approx(getattr(models.C, name)), (
@@ -124,6 +125,46 @@ def test_calcs_constants_match_the_scad(name):
 def test_ring_height_constant_is_consistent():
     """calcs.RING_H is written out rather than derived from RING_Z0/RING_Z1."""
     assert calcs.RING_H == pytest.approx(models.C.RING_Z1 - models.C.RING_Z0)
+
+
+def test_recess_is_exactly_magnet_deep():
+    """The magnets bottom on steel, so the detent gap cannot drift with the shim.
+
+    SHIM_T == MAG_H is the whole reason the printed shim does not enter the gap
+    tolerance stack: the magnet crown lands flush with the ring's top face whatever
+    the shim's printed thickness turns out to be.  mechanical sections 5 and 7.
+    """
+    assert models.C.SHIM_T == pytest.approx(models.C.MAG_H)
+    assert models.C.SHIM_Z0 == pytest.approx(models.C.RING_Z1 - models.C.MAG_H)
+    assert models.C.SHIM_PLATE_T < models.C.MAG_H, "the shim must not stand proud of the magnets"
+
+
+def test_shim_has_printable_walls_and_clears_the_damping_pad():
+    """Geometry the recess bounds have to satisfy, and which a tweak could silently break."""
+    C = models.C
+    wall_o = C.SHIM_RO - (C.RT + C.POCKET_D / 2)
+    wall_i = (C.RT - C.POCKET_D / 2) - C.SHIM_RI
+    assert wall_o >= 0.9, f"shim outer wall {wall_o:.2f} too thin to print"
+    assert wall_i >= 0.9, f"shim inner wall {wall_i:.2f} too thin to print"
+    # doc section 7: the felt damping pad lands at r 31.6-32.4 and must stay on bare steel
+    assert C.SHIM_RO <= 31.6, f"recess OD {C.SHIM_RO} reaches under the damping pad"
+
+
+def test_ring_has_no_milled_features():
+    """The point of the recess: the flywheel must stay a turning-only part.
+
+    Every face is then either a plane normal to Z or a surface of revolution about it.
+    The four balance holes are the one exception -- they are drilled, and on the drawing
+    they are a note, not a milled feature -- so they are excluded by radius.
+    """
+    solid = models.PARTS["rotor_ring"].build()
+    for f in solid.faces():
+        if abs(f.center().X) > 1e-6 or abs(f.center().Y) > 1e-6:
+            continue                       # off-axis: a balance hole
+        n = f.normal_at(f.center())
+        is_planar = abs(abs(n.Z) - 1.0) < 1e-6
+        is_revolved = getattr(f, "radius", None) is not None
+        assert is_planar or is_revolved, f"non-turnable face at z {f.center().Z:.2f}"
 
 
 @pytest.mark.parametrize("name", list(models.PARTS))

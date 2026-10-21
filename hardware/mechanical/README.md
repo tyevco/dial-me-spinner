@@ -14,7 +14,7 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `scadvars.py` | Parses the constant table out of `dial_spinner.scad` so the B-rep models below are not a second source of truth for any dimension |
 | `models.py` | The five machined parts (`rotor_ring`, `spindle`, `spindle_hub`, `lower_spacer`, `cap_ring`) as **exact B-rep** solids (build123d / OpenCascade), plus each one's material, stock and shop notes |
 | `drawgen.py` | → `step/*.step` (exact geometry, what a CNC vendor's uploader actually accepts) and `drawings/*.pdf` (dimensioned ISO sheets carrying the fits, threads, knurl and general tolerance that no solid can hold). `--only NAME`, `--no-pdf` |
-| `tests/test_models.py` | Holds the B-rep and the OpenSCAD mesh together: volume, bounding box, ring mass against `calcs.py` §14, and `calcs.py`'s own geometry constants against the `.scad` |
+| `tests/test_models.py` | Holds the B-rep and the OpenSCAD mesh together: volume, bounding box, ring mass against `calcs.py` §14, and `calcs.py`'s own geometry constants against the `.scad`. Also guards the magnet-shim invariants — recess depth = magnet height, printable shim walls, and that the ring stays turning-only |
 | `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib + build123d, ~7 min) |
 
 OpenSCAD has no geometry kernel, so it can only emit a mesh — and JLCCNC's uploader rejects STL outright,
@@ -23,12 +23,12 @@ kernel-backed description of the five metal parts. It repeats only their *topolo
 from `dial_spinner.scad` through `scadvars.py`, and `tests/test_models.py` fails if the two drift:
 
 ```
-~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 35 tests, ~6 s
+~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 42 tests, ~5 s
 ```
 
-The exact and meshed volumes agree to 0.023 % on the ring and 0.33 % on the spindle, in the direction
-and magnitude tessellation predicts, and JLCCNC's own reader measured `rotor_ring.step` at 14 823.68 mm³
-against build123d's 14 821.9 (0.012 %). STEP export is byte-deterministic apart from its timestamp line;
+The exact and meshed volumes agree to 0.011 % on the ring and 0.34 % on the spindle, in the direction
+and magnitude tessellation predicts, and JLCCNC's own reader measured `rotor_ring.step` at 13 725.38 mm³
+against build123d's 13 726.36 (0.007 %). STEP export is byte-deterministic apart from its timestamp line;
 STL export is not, because CGAL emits triangles in an unstable order.
 
 With the routed boards as placed (MDBT50Q at r 17.3 with its u.FL outward, J1 at r 19.5, side-entry SH SM04B J2 at

@@ -89,11 +89,15 @@ def _revolve_profile(points):
 
 
 def rotor_ring():
-    """316L flywheel: revolved profile, 48 blind magnet pockets, 4 balance holes."""
+    """316L flywheel: revolved profile, one turned shim recess, 4 balance holes.
+
+    The 48 magnets are not pockets in the steel any more -- they sit in a printed shim
+    (dial_spinner.scad `magnet_shim`) that drops into this recess.  That is the whole
+    point of the recess: it leaves the flywheel a turning-only part, which took the
+    JLCCNC quote from $71.45 to $52.49 (mechanical section 13).
+    """
     s = _revolve_profile(ring_profile())
-    for i in range(int(C.MAG_N)):
-        s -= _at_polar(Cylinder(C.POCKET_D / 2, C.POCKET_H), C.RT, i * 360 / C.MAG_N,
-                       C.RING_Z1 - C.POCKET_H / 2)
+    s -= Pos(0, 0, C.SHIM_Z0 + C.SHIM_T / 2) * Cylinder(C.SHIM_RO, C.SHIM_T)
     for a in range(45, 360, 90):
         s -= _at_polar(Cylinder(C.BAL_D / 2, C.BAL_DEPTH), C.BAL_R, a,
                        C.RING_Z0 + C.BAL_DEPTH / 2)
@@ -154,14 +158,16 @@ def _part(name, number, material, density, build, stock, process, notes):
 #: threads, fits, knurl and the general tolerance.
 PARTS = {p.name: p for p in (
     _part("rotor_ring", "DMS-07", "316L stainless", RHO_316L, rotor_ring,
-          "Ø74 bar or ring forging", "turn / mill",
-          ["Straight knurl on the OD, 1.5 to 8.5 from the bottom face (flick grip).",
-           "48 magnet pockets Ø2.10 +0.05/-0.00, 2.05 deep from the TOP face: that",
-           "face is the magnet track, so pocket depth sets the 1.0 mm sensor gap.",
-           "4x Ø1.60 balance holes 3.0 deep from the bottom face; tap M2 for trim.",
+          "Ø74 bar or ring forging", "turn",
+          ["TURNING ONLY -- no milled features. Straight knurl on the OD, 1.5 to",
+           "8.5 from the bottom face (flick grip).",
+           "The recess seats the printed magnet shim, and its floor is the magnet",
+           "seat: face it flat and square to 0.02 and hold the depth +0.02/-0.00,",
+           "because that is what sets the 1.0 mm detent and sensor gap.",
+           "The top face OUTSIDE the recess is the encoder datum and the damping-pad",
+           "land: flat and square to 0.02, runout 0.05 TIR.",
            "316L required. 304 can become weakly magnetic after cold working and the",
-           "track runs 1.0 mm under a Hall sensor: check the blank with an N52 magnet.",
-           "Deburr all edges. Process order and balance budget: mechanical 5 and 14."]),
+           "track runs 1.0 mm under a Hall sensor: check the blank with an N52 magnet."]),
     _part("spindle", "DMS-08", "316L stainless", RHO_316L, spindle,
           "Ø12 bar", "turn / mill",
           ["Ø8 journal h6 over the bearing seat, 5.2 to 12.2 from the bottom face.",

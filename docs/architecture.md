@@ -396,8 +396,8 @@ passes a few millimetres below it.
   one JLC-stocked chip.
 * Merging the encoder with the detent track (rather than using the sensing
   research's separate 32-pole track) means logical clicks line up with physical
-  detents through a single calibrated phase. It also needs only one set of
-  magnet pockets.
+  detents through a single calibrated phase. It also needs only one magnet
+  track (one printed shim, mechanical §5).
 * The sensor and the ring move together during a press, so the gap does not
   change.
 
