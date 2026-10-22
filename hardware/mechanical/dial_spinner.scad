@@ -154,22 +154,42 @@ CH_IN       = 0.5;
 MAG_N       = 48;
 MAG_D       = 2.0;
 MAG_H       = 2.0;
+MAG_D_SORT  = 1.99;                 // diameter-sorted bin floor.  Buy ~200 and micrometer them
+                                    //   into a 0.01-wide bin: the realised float is set by the
+                                    //   BIN width, not by the catalogue ±0.05, so sorting beats
+                                    //   buying ground magnets on both cost and lead time.
 RT          = 29.0;
-POCKET_D    = 2.10;
-POCKET_H    = 2.05;
+BORE_D      = 2.03;                 // REAMED +0.01/0 -- not a printed hole and not a pocket.  A
+                                    //   printed hole cannot LOCATE a magnet: JLC3DP publish
+                                    //   ±0.3 mm on a hole with an undersize bias, so a 2.10
+                                    //   nominal spans 1.80-2.40 and the low end refuses a Ø1.95
+                                    //   magnet outright.  2.03 on the sorted bin leaves 0.015 to
+                                    //   0.025 radial clearance, inside the 0.037 gate where the
+                                    //   track's own field parks the magnet against one bore wall
+                                    //   and spends the clearance RADIALLY, where sensitivity is
+                                    //   second order and no detent well moves.  Doc section 5.
 BAL_R       = 31.0;                 // 4x M2 balance holes at theta 45/135/225/315
 BAL_D       = 1.6;                  // M2 tapping drill
 BAL_DEPTH   = 3.0;                  // blind, from the bottom face
-// Printed magnet shim.  The 48 magnets used to sit in blind pockets milled into the steel;
-// they now live in a printed ring that drops into a turned recess, which makes the flywheel a
-// turning-only part: dropping the 48 pockets took the quote from $71.45 to $52.49 (doc section
-// 13).  The magnets still bottom on steel, at the old pocket floor's z, so the gap is unchanged.
+// Magnet shim and the recess it sits in.  The 48 magnets used to sit in blind pockets milled
+// into the steel; they now live in a plate that drops into a turned recess, which makes the
+// flywheel a turning-only part: dropping the 48 pockets took the quote from $71.45 to $52.49
+// (doc section 13).  The magnets still bottom on steel, at the old pocket floor's z, so the gap
+// is unchanged.  The plate is PRINTED SOLID and its 48 bores are machined -- see BORE_D.
 // Doc section 5.
 SHIM_RI     = RING_RI;              // recess is a plain counterbore: no inner lip to turn
-SHIM_RO     = 31.0;                 // damping pad (r 31.6-32.4, section 7) stays on bare steel
+RECESS_RO   = 31.0;                 // the recess turned in the STEEL.  Stops here so the felt
+                                    //   damping pad (r 31.6-32.4, section 7) lands on bare steel
+SHIM_RO     = 30.95;                // the PLATE's own turned OD, Ø61.90, in the Ø62.00 +0.02/0
+                                    //   recess: 0.05-0.06 radial clearance.  Ø62.00 in Ø62.00 is
+                                    //   nominally zero and the measured SLS scale distribution
+                                    //   puts its positive tail into interference -- and a shim
+                                    //   that will not seat breaks the magnets-bottom-on-steel
+                                    //   datum that sets the whole 1.0 mm gap.  Turned, not
+                                    //   printed, so this is a real fit.
 SHIM_T      = 2.0;                  // = MAG_H: recess depth = magnet height
 SHIM_Z0     = RING_Z1 - SHIM_T;     // 23.6 recess floor; magnets bottom here, as on the old
-                                    //   pocket floor (RING_Z1 - POCKET_H = 23.55)
+                                    //   pocket floor (23.55)
 SHIM_PLATE_T = 1.95;                // printed 0.05 shy of MAG_H, so the magnet crown -- not the
                                     //   shim's printed thickness -- sets the detent gap
 // rotor carrier PA12-GF, post-machined: web z 17-19, r 11-27
@@ -539,20 +559,29 @@ module ring_profile()
 module rotor_ring()
     color(c_steel) difference() {
         rotate_extrude($fn = fn_big * 2) ring_profile();
-        translate([0, 0, SHIM_Z0]) cylinder(r = SHIM_RO, h = SHIM_T + 0.1, $fn = fn_big);
+        translate([0, 0, SHIM_Z0]) cylinder(r = RECESS_RO, h = SHIM_T + 0.1, $fn = fn_big);
         for (a = [45:90:315]) rotate(a) translate([BAL_R, 0, RING_Z0 - 0.1])
             cylinder(d = BAL_D, h = BAL_DEPTH + 0.1, $fn = 12);
         if (show_knurl) for (i = [0:119]) rotate(i * 3)
             translate([RING_RO, 0, RING_Z0 + 1.5]) rotate(45) translate([-0.3, -0.3, 0]) cube([0.6, 0.6, 7.0]);
     }
 
-// Printed PA12-GF / PC ring carrying the 48 magnets; drops into the ring's turned recess and
-// is located radially by it.  48 THROUGH holes, so no printed depth controls the magnet height.
+// The plate as PRINTED: a plain PA12-GF annulus, no holes.  This is the STL the printer gets.
+// The 48 bores and the OD are a machining operation, because a printed hole cannot locate a
+// magnet to 0.05 mm and a printed OD cannot be a fit (BORE_D, SHIM_RO).
+module magnet_shim_blank()
+    color(c_shim) tube(SHIM_RO, SHIM_RI, SHIM_Z0, SHIM_Z0 + SHIM_PLATE_T, fn_big);
+
+// The FINISHED plate: blank plus 48 reamed through bores.  THROUGH, so no printed depth controls
+// the magnet height.  It drops into the ring's recess, but it is centred on a mandrel in the ring
+// ID at bond time and NOT by the recess wall: a rigid eccentricity of the whole pattern swings
+// the track's tangential offset once per revolution at gain 1.0, which is a 1/rev ENCODER error
+// even though feel is indifferent to it.  Doc section 5.
 module magnet_shim()
-    color(c_shim) difference() {
-        tube(SHIM_RO, SHIM_RI, SHIM_Z0, SHIM_Z0 + SHIM_PLATE_T, fn_big);
+    difference() {
+        magnet_shim_blank();
         for (i = [0:MAG_N - 1]) rotate(i * 360 / MAG_N) translate([RT, 0, SHIM_Z0 - 0.1])
-            cylinder(d = POCKET_D, h = SHIM_PLATE_T + 0.2, $fn = fn_small);
+            cylinder(d = BORE_D, h = SHIM_PLATE_T + 0.2, $fn = fn_small);
     }
 
 module track_magnets()
@@ -998,7 +1027,7 @@ module echo_prims() {
 
 // ---------- printable / machined parts on the bed ----------
 part_list = ["base_cup", "top_cover", "light_box", "diffuser", "fa_lower_plate", "rotor_carrier",
-             "magnet_shim", "detent_carriage", "link_plate", "oled_bracket", "stepper_saddle", "carriage_rail",
+             "magnet_shim", "magnet_shim_blank", "detent_carriage", "link_plate", "oled_bracket", "stepper_saddle", "carriage_rail",
              "spindle", "spindle_hub", "lower_spacer", "cap_ring"];
 module print_part(p) {
     if (p == "base_cup") translate([0, 0, -CUP_Z0]) base_cup();
@@ -1008,6 +1037,7 @@ module print_part(p) {
     else if (p == "fa_lower_plate") translate([0, 0, FA_Z1]) mirror([0, 0, 1]) fa_lower_plate();
     else if (p == "rotor_carrier") translate([0, 0, -CW_Z0]) rotor_carrier();
     else if (p == "magnet_shim") translate([0, 0, -SHIM_Z0]) magnet_shim();
+    else if (p == "magnet_shim_blank") translate([0, 0, -SHIM_Z0]) magnet_shim_blank();  // as printed
     else if (p == "detent_carriage") translate([0, 0, 2.0 + CARR_T]) mirror([0, 0, 1]) carriage_body_local();
     else if (p == "link_plate") translate([0, 0, -LINK_Z[0]]) link_plate_local();
     else if (p == "oled_bracket") translate([0, 0, BRK_Z1]) mirror([0, 0, 1]) oled_bracket();

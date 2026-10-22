@@ -63,6 +63,7 @@ export default withMermaid(defineConfig({
         text: 'Hardware',
         items: [
           { text: 'Mechanical design', link: '/docs/mechanical' },
+          { text: 'Magnet placement study', link: '/docs/magnet-placement' },
           { text: 'Enclosure model', link: '/hardware/mechanical/README' },
           { text: 'Assembly and ordering', link: '/docs/assembly' },
           { text: 'Bring-up', link: '/docs/bringup' },
