@@ -12,7 +12,8 @@ layout, or continue the design by hand.
 | `symgen.py` | Builds simple box symbols for parts missing from the KiCad libraries |
 | `schgen.py` | Writes hierarchical `.kicad_sch` sheets. Every pin gets a short wire stub ending in a net label, global label or power symbol, and parts are auto-placed in titled groups |
 | `pcbgen.py` | Builds a `.kicad_pcb` from the KiCad netlist through the `pcbnew` API: footprints linked to symbols, outline, zones, keepouts, fills, and Specctra DSN/SES I/O for Freerouting |
-| `fab.py` | Gerbers, drill files, and the JLCPCB BOM + CPL |
+| `fab.py` | Gerbers, drill files, and the JLCPCB BOM |
+| `jlc_cpl.py` | JLCPCB CPL: per-LCSC-part rotation/origin corrections fitted to the EasyEDA footprints, and a simulation of JLC's placement of every row that stops the release if a pad lands off copper (`tests/test_jlc_cpl.py`) |
 
 ## Requirements
 

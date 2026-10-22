@@ -56,8 +56,12 @@ Both boards are routed and passed that gate, and both packages are in the reposi
 errors or warnings, 0 unconnected items and clean parity, the base board with 0 errors and 0 unconnected items (two
 silk-to-edge warnings only). DNP parts are left out of the BOM and the CPL. The CPL angles and origins carry
 per-LCSC-part corrections fitted to JLC's EasyEDA footprints (`hardware/tools/jlc_cpl.py`, cached in `hardware/design/jlc_offsets.json`; top θ + α,
-bottom 180° − θ + α), so the JLC preview should already show every part the right way round. Check it anyway
-(§3.4).
+bottom 180° − θ + α), so the JLC preview should already show every part the right way round. Before writing the
+CPL, `release.py` also simulates JLC's placement of every row with the cached EasyEDA pads and stops if a pad lands
+off copper or on another-numbered pad. That check found that the first rev A release put seven connector and switch
+rows at the wrong point (origin error in the CPL writer on footprints with repeated pad numbers: main J1, J20, J40;
+base J1, J2, J3 and SW1, up to 4.5 mm off, SW1 127 mm). The committed CPLs are the corrected ones. Check the preview
+anyway (§3.4): the simulation uses the same angle convention as the CPL, so it cannot prove that convention.
 
 ### 2.1 Main board (`hardware/kicad/main`)
 
@@ -221,7 +225,11 @@ it lists the parts flagged `dnp=True` in the sheets and every bottom-side placem
 
 ### 3.4 CPL and orientation spot-checks (in the JLC preview, before paying)
 
-The CPL already carries the per-part rotation and origin corrections (§2). The preview is the check.
+The CPL already carries the per-part rotation and origin corrections, and every row passed the placement simulation
+(§2). The preview is the check of what that simulation assumes: JLC's bottom-side angle convention. Look hardest at
+the bottom ICs (U11, U12, U30, U32, U40, U41) and the bottom parts at angles that are not a multiple of 90° (BZ1 158°,
+J1 120°, J40 138°, U10 235°, as written in the CPL).
+R26 (C4167968) is the one part EasyEDA has no footprint for, so it is not simulated: a 0402 resistor, nothing to turn.
 
 * LEDs D101–D148: pin-1 marks follow the ring; the DI/VDD pad column faces the previous LED.
 * TMAG5273 U30 (bottom, θ = 270°, Hall element at r = 29.0): long axis radial (SPEC §5.5), so its X axis is

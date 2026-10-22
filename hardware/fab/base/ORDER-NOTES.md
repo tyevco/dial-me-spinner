@@ -4,5 +4,5 @@
 
 * Do not place (DNP), excluded from BOM/CPL: none
 * Bottom-side placements (0): none
-* CPL angles and origins include the JLC library corrections from hardware/design/jlc_offsets.json (top: θ+α, bottom: 180−θ+α). Still check every IC and connector in JLC's placement preview.
+* CPL angles and origins include the JLC library corrections from hardware/design/jlc_offsets.json (top: θ+α, bottom: 180−θ+α). Every row was checked by putting the EasyEDA pads down at its point and angle: all land on copper. Still check every IC and connector in JLC's placement preview.
 * Board-only parts (no BOM): FID1, FID2, FID3, H1

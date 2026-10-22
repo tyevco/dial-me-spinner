@@ -103,7 +103,8 @@ def order_notes(pcb, net, path):
         f.write(f"* Do not place (DNP), excluded from BOM/CPL: {', '.join(dnp) or 'none'}\n")
         f.write(f"* Bottom-side placements ({len(bottom)}): {', '.join(bottom) or 'none'}\n")
         f.write("* CPL angles and origins include the JLC library corrections from hardware/design/jlc_offsets.json "
-                "(top: θ+α, bottom: 180−θ+α). Still check every IC and connector in JLC's placement preview.\n")
+                "(top: θ+α, bottom: 180−θ+α). Every row was checked by putting the EasyEDA pads down at its point and "
+                "angle: all land on copper. Still check every IC and connector in JLC's placement preview.\n")
         f.write(f"* Board-only parts (no BOM): {', '.join(sorted(fp.GetReference() for fp in b.GetFootprints() if fp.GetAttributes() & pcbnew.FP_BOARD_ONLY))}\n")
     return path
 
@@ -126,8 +127,9 @@ def release(board, force=False):
         gate(pcb, out)
     fab.gerbers(pcb, out, BOARDS[board])
     fab.jlc_bom(net, os.path.join(out, f"{proj}-BOM-JLCPCB.csv"))
-    jlc_cpl.write_cpl(pcb, os.path.join(out, f"{proj}-CPL-JLCPCB.csv"),
-                      {"dial_spinner": os.path.join(kdir, "lib", "dial_spinner.pretty")})
+    _, _, _, notes = jlc_cpl.write_cpl(pcb, os.path.join(out, f"{proj}-CPL-JLCPCB.csv"),
+                                       {"dial_spinner": os.path.join(kdir, "lib", "dial_spinner.pretty")})
+    print(f"[{board}] CPL: every JLC pad lands on copper" + "".join(f"\n  note: {n}" for n in notes))
     order_notes(pcb, net, os.path.join(out, "ORDER-NOTES.md"))
     subprocess.run(["kicad-cli", "sch", "export", "pdf", "-o", os.path.join(out, f"{proj}-schematic.pdf"), sch],
                    capture_output=True)
