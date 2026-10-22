@@ -15,6 +15,9 @@ Every CPL row is then checked by simulating JLC's placement: the EasyEDA pads (c
 at the row's point and angle, and each must land on KiCad copper, on the same-numbered pad wherever both footprints use
 that number. A row that fails stops the release; "renumber_ok" in an entry accepts a part whose two numberings differ
 by design (the tactile switch numbers its paired pads 1,1,2,2 in KiCad and 1-4 in EasyEDA).
+
+Source of the EasyEDA data: JLCEDA/EasyEDA Official Library (https://lceda.cn/, https://easyeda.com), copyright
+JLCEDA/EasyEDA; jlc_offsets.json carries the same notice.
 """
 
 from __future__ import annotations

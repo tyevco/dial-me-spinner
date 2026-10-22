@@ -229,7 +229,8 @@ The CPL already carries the per-part rotation and origin corrections, and every 
 (§2). The preview is the check of what that simulation assumes: JLC's bottom-side angle convention. Look hardest at
 the bottom ICs (U11, U12, U30, U32, U40, U41) and the bottom parts at angles that are not a multiple of 90° (BZ1 158°,
 J1 120°, J40 138°, U10 235°, as written in the CPL).
-R26 (C4167968) is the one part EasyEDA has no footprint for, so it is not simulated: a 0402 resistor, nothing to turn.
+R26 (C4167968) is the one part EasyEDA has no footprint for, so it is not simulated: a 0402 resistor, nothing to
+turn. JLC lists it as an in-stock Extended part; its preview may show it without a footprint drawing.
 
 * LEDs D101–D148: pin-1 marks follow the ring; the DI/VDD pad column faces the previous LED.
 * TMAG5273 U30 (bottom, θ = 270°, Hall element at r = 29.0): long axis radial (SPEC §5.5), so its X axis is

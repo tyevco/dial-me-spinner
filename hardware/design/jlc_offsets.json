@@ -724,5 +724,8 @@
   "ee_pads": 2,
   "footprint": "Crystal_SII_SC-20S_2.0x1.2mm",
   "ee": [["1",-0.75,0.0],["2",0.75,0.0]]
+ },
+ "_source": {
+  "note": "The EasyEDA footprint titles and the \"ee\" pad centres in this file are derived from the JLCEDA/EasyEDA Official Library (https://lceda.cn/, https://easyeda.com). Its copyright and related rights belong to JLCEDA/EasyEDA."
  }
 }

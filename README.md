@@ -195,7 +195,9 @@ part, and stops if any pad lands off copper or on a differently numbered pad
 of the same name (a symmetric package turned 180° still lands on copper, so
 the numbers are the only sign). `python3 -m pytest hardware/tools/tests -q`
 checks that this check passes on both boards and catches a wrong rotation or
-origin.
+origin. The EasyEDA footprint titles and pad centres in `jlc_offsets.json` come
+from the JLCEDA/EasyEDA Official Library ([lceda.cn](https://lceda.cn/),
+[easyeda.com](https://easyeda.com)), whose copyright belongs to JLCEDA/EasyEDA.
 
 ## Running the SPICE suite
 
