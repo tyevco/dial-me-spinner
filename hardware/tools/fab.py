@@ -1,4 +1,4 @@
-"""Fabrication outputs: gerbers, drill, JLCPCB BOM + CPL, PDFs, renders."""
+"""Fabrication outputs: gerbers, drill, JLCPCB BOM, PDFs, renders (the CPL is jlc_cpl.py)."""
 
 from __future__ import annotations
 
@@ -49,20 +49,6 @@ def jlc_bom(netlist_path, out_csv):
         w.writerow(["Comment", "Designator", "Footprint", "LCSC Part #", "MPN", "Qty"])
         for (val, fp, lcsc, mpn), refs in groups.items():
             w.writerow([val, ",".join(refs), fp, lcsc, mpn, len(refs)])
-    return out_csv
-
-
-def jlc_cpl(pcb, out_csv, tmpdir):
-    pos = os.path.join(tmpdir, "pos.csv")
-    run("kicad-cli", "pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
-        "--exclude-dnp", "--use-drill-file-origin", "-o", pos, pcb)
-    with open(pos, newline="", encoding="utf-8") as f, open(out_csv, "w", newline="", encoding="utf-8") as g:
-        r = csv.DictReader(f)
-        w = csv.writer(g)
-        w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
-        for row in r:
-            w.writerow([row["Ref"], row["PosX"] + "mm", row["PosY"] + "mm",
-                        "Top" if row["Side"] == "top" else "Bottom", row["Rot"]])
     return out_csv
 
 
