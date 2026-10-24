@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Exact B-rep solids for the five machined parts of dial-me-spinner rev A.
+"""Exact B-rep solids for the six machined parts of dial-me-spinner rev A.
 
 dial_spinner.scad is the whole-device model, but OpenSCAD has no geometry
 kernel: it can only emit a mesh, and a mesh is not something a machine shop can
 quote from -- JLCCNC's uploader rejects STL and asks for STEP, DWG, DXF or PDF.
 So the five turned / cut metal parts get a second description here, in build123d
 (OpenCascade), which carries exact surfaces: STEP for the vendor and projected
-views for drawgen.py's drawings.
+views for drawgen.py's drawings.  The magnet shim is the sixth, and the only one
+that is not metal: it is printed, but its 48 bores and its OD are *machined*, and
+a mesh cannot carry +0.01/-0.00 or a true-position callout any better for a
+plastic part than for a steel one.
 
 Dimensions are read from dial_spinner.scad by scadvars, so this file repeats only
 the *topology*, and tests/test_models.py holds the two descriptions together by
@@ -17,7 +20,7 @@ Solids are built in **assembly coordinates** -- the same z values as the .scad
 modules, so the two can be read side by side.  on_bed() drops a part to
 bottom-face-on-origin, which is what the STEP files and the drawings use.
 
-    python3 models.py          # build all five and print volume / mass / bbox
+    python3 models.py          # build all six and print volume / mass / bbox
 """
 import math
 from types import SimpleNamespace
@@ -26,7 +29,7 @@ from build123d import (Axis, Box, BuildLine, BuildPart, BuildSketch, Cylinder, P
                        Polyline, Pos, Rot, make_face, revolve)
 
 import scadvars
-from calcs import RHO_316L, RHO_BRASS
+from calcs import RHO_316L, RHO_BRASS, RHO_PA12GF
 
 C = SimpleNamespace(**scadvars.load())
 
@@ -97,7 +100,7 @@ def rotor_ring():
     JLCCNC quote from $71.45 to $52.49 (mechanical section 13).
     """
     s = _revolve_profile(ring_profile())
-    s -= Pos(0, 0, C.SHIM_Z0 + C.SHIM_T / 2) * Cylinder(C.SHIM_RO, C.SHIM_T)
+    s -= Pos(0, 0, C.SHIM_Z0 + C.SHIM_T / 2) * Cylinder(C.RECESS_RO, C.SHIM_T)
     for a in range(45, 360, 90):
         s -= _at_polar(Cylinder(C.BAL_D / 2, C.BAL_DEPTH), C.BAL_R, a,
                        C.RING_Z0 + C.BAL_DEPTH / 2)
@@ -143,6 +146,23 @@ def spindle_hub():
 def cap_ring():
     """0.5 mm 316 sheet washer bonded on the carrier collar."""
     return _tube(C.COLLAR_RO, C.CAP_RI, C.CAP_Z[0], C.CAP_Z[1])
+
+
+def magnet_shim():
+    """PA12-GF plate carrying the 48 magnets: printed solid, bores and OD machined.
+
+    The one part here that is not metal, and it earns a drawing for exactly the
+    reason the metal ones do.  A printed hole holds +/-0.3 mm at JLC3DP's published
+    figure, so a 2.10 nominal spans 1.80-2.40: at the top it leaves 0.225 mm of
+    float and at the bottom it refuses a 1.95 mm magnet outright.  There is no
+    printed nominal that both admits the magnet and locates it, which is why the
+    blank is printed solid and the bores are reamed (mechanical section 5).
+    """
+    s = _tube(C.SHIM_RO, C.SHIM_RI, C.SHIM_Z0, C.SHIM_Z0 + C.SHIM_PLATE_T)
+    for i in range(int(C.MAG_N)):
+        s -= _at_polar(Cylinder(C.BORE_D / 2, C.SHIM_PLATE_T + 0.2), C.RT,
+                       i * 360.0 / C.MAG_N, C.SHIM_Z0 + C.SHIM_PLATE_T / 2)
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -198,13 +218,25 @@ PARTS = {p.name: p for p in (
           ["0.5 mm 316 sheet, laser-cut; a stock shim washer of these sizes also works.",
            "Flatness matters more than edge finish: it runs against a wave washer.",
            "Non-magnetic."]),
+    _part("magnet_shim", "DMS-07A", "PA12-GF (SLS) ONLY", RHO_PA12GF, magnet_shim,
+          "printed blank", "print solid, then ream / turn",
+          ["DO NOT PRINT THE BORES OR THE OD. Print the blank solid and machine",
+           "both: a printed hole holds +/-0.3 at best, which cannot locate a",
+           "magnet and at the low end will not admit one.",
+           "Hold on the printed ID to turn the OD, then take the bore pattern",
+           "from the OD, so the pattern and datum B share one setup.",
+           "THE BORES LOCATE THE MAGNETS. Micrometer the lot, take the densest",
+           "0.02 bin and ream to its floor + 0.04 (2.03 shown, for 1.99-2.01):",
+           "0.010-0.025 radial clearance.",
+           "PA12-GF ONLY: unfilled PA12 or SLA resin closes the OD clearance",
+           "below 60 C. Keep the part and the magnets below 60 C at every stage."]),
 )}
 
 
 def on_bed(solid):
     """Drop a solid to bottom-face-on-origin: the STEP and drawing pose.
 
-    Z only.  All five parts are turned or cut about Z, so X and Y stay as modelled
+    Z only.  All six parts are turned or cut about Z, so X and Y stay as modelled
     and the axis of revolution stays on the origin -- which is what a lathe
     drawing and a STEP file both want.  Centring the bounding box in XY instead
     would shift the axis by half of any asymmetry (0.5 mm on the spindle, whose

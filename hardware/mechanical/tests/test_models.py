@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Hold the two descriptions of the machined parts together.
 
-models.py rebuilds the five turned / cut metal parts as exact B-rep solids so they
-can be exported as STEP and drawn, while dial_spinner.scad still describes them as
-a mesh for the assembly views.  That is two descriptions of one geometry, and the
+models.py rebuilds the five turned / cut metal parts, and the printed-then-machined
+magnet shim, as exact B-rep solids so they can be exported as STEP and drawn, while
+dial_spinner.scad still describes them as a mesh for the assembly views.  That is two descriptions of one geometry, and the
 usual way such a pair drifts is silently: someone edits one and the other keeps
 rendering happily.  These tests make the drift loud.
 
@@ -32,8 +32,9 @@ STL = os.path.join(MECH, "stl")
 #: it under-states added material *and* under-states removed material.  Which way
 #: the residual points depends on the part: the spindle is 0.33 % light (mostly
 #: outer surfaces, fn_mid = 48 on Ø8), while the ring comes out 0.023 % heavy,
-#: because its 48 pockets at fn_small = 24 and 4 balance holes at fn = 12 each cut
-#: a shade less than the true cylinder.  So only the magnitude is asserted.
+#: because its recess and 4 balance holes at fn = 12 each cut a shade less than the
+#: true cylinder.  The shim is the strongest case of that kind: 48 bores at
+#: fn_small = 24 remove about 1.1 % less than true.  Only the magnitude is asserted.
 MESH_TOL = 0.005
 #: Bounding boxes agree much more closely, but not exactly: an extent set by a
 #: facet *vertex* lands on the true surface, while one set by a cut through a
@@ -112,9 +113,9 @@ def test_ring_mass_matches_calcs_section_14(exact):
 
 
 @pytest.mark.parametrize("name", ["RING_RO", "RING_RI", "RING_Z0", "RING_Z1", "CH_TO", "CH_BO",
-                                  "CH_IN", "MAG_N", "MAG_D", "MAG_H", "RT", "POCKET_D",
-                                  "POCKET_H", "B_Z0", "B_Z1", "MB_Z0", "FA_Z0", "FA_Z1",
-                                  "SHIM_RI", "SHIM_RO", "SHIM_T", "SHIM_PLATE_T"])
+                                  "CH_IN", "MAG_N", "MAG_D", "MAG_H", "MAG_D_SORT", "RT",
+                                  "BORE_D", "B_Z0", "B_Z1", "MB_Z0", "FA_Z0", "FA_Z1",
+                                  "SHIM_RI", "SHIM_RO", "RECESS_RO", "SHIM_T", "SHIM_PLATE_T"])
 def test_calcs_constants_match_the_scad(name):
     """calcs.py keeps its own copy of the geometry table; it must not drift either."""
     assert getattr(calcs, name) == pytest.approx(getattr(models.C, name)), (
@@ -139,15 +140,101 @@ def test_recess_is_exactly_magnet_deep():
     assert models.C.SHIM_PLATE_T < models.C.MAG_H, "the shim must not stand proud of the magnets"
 
 
-def test_shim_has_printable_walls_and_clears_the_damping_pad():
-    """Geometry the recess bounds have to satisfy, and which a tweak could silently break."""
+#: The ream's own tolerance, and the clearance above which the track's field stops
+#: parking the magnet against one bore wall.  Below C_CRIT the clearance is spent
+#: RADIALLY, where sensitivity is second order and no detent well moves at all;
+#: above it the magnet is free to sit tangentially off-centre.  mechanical section 5.
+BORE_TOL, C_CRIT = 0.01, 0.037
+
+
+def test_bore_locates_the_magnet():
+    """The bore has to LOCATE the magnet, not merely contain it.
+
+    This is the term the whole placement question turns on.  Everything else is
+    spent on where the plate puts the bore; this decides whether the bore then puts
+    the magnet anywhere in particular.  It only works against a diameter-SORTED lot,
+    because the realised float is set by the bin width and not by the catalogue
+    tolerance -- which is why MAG_D_SORT exists and MAG_D alone is not enough.
+    """
     C = models.C
-    wall_o = C.SHIM_RO - (C.RT + C.POCKET_D / 2)
-    wall_i = (C.RT - C.POCKET_D / 2) - C.SHIM_RI
-    assert wall_o >= 0.9, f"shim outer wall {wall_o:.2f} too thin to print"
-    assert wall_i >= 0.9, f"shim inner wall {wall_i:.2f} too thin to print"
+    c_max = (C.BORE_D + BORE_TOL - C.MAG_D_SORT) / 2
+    assert c_max <= C_CRIT, (
+        f"worst-case radial clearance {c_max:.4f} is outside the {C_CRIT} self-centring "
+        "window: the magnet is free to sit tangentially off-centre")
+    c_min = (C.BORE_D - (C.MAG_D_SORT + C.MAG_BIN_W)) / 2
+    assert c_min >= 0.005 - 1e-9, (
+        f"bore {C.BORE_D} leaves {c_min:.4f} on the top of the {C.MAG_D_SORT:.2f}-"
+        f"{C.MAG_D_SORT + C.MAG_BIN_W:.2f} sorted bin: no room for the adhesive film")
+
+
+def test_shim_clears_the_recess_and_keeps_machinable_walls():
+    """Geometry the recess and plate bounds have to satisfy, which a tweak could break.
+
+    The OD is the one that bites quietly: a 62.00 plate in a 62.00 recess is
+    nominally zero clearance, and a plate that will not seat breaks the
+    magnets-bottom-on-steel datum that sets the entire 1.0 mm detent gap.
+    """
+    C = models.C
+    clear = C.RECESS_RO - C.SHIM_RO
+    assert 0.04 <= clear <= 0.10, (
+        f"radial recess-to-plate clearance {clear:.3f} is outside 0.04-0.10: "
+        "too little will not seat, too much lets the pattern run eccentric")
+    wall_o = C.SHIM_RO - (C.RT + C.BORE_D / 2)
+    wall_i = (C.RT - C.BORE_D / 2) - C.SHIM_RI
+    assert wall_o >= 0.9, f"shim outer wall {wall_o:.3f} too thin"
+    assert wall_i >= 0.9, f"shim inner wall {wall_i:.3f} too thin"
     # doc section 7: the felt damping pad lands at r 31.6-32.4 and must stay on bare steel
-    assert C.SHIM_RO <= 31.6, f"recess OD {C.SHIM_RO} reaches under the damping pad"
+    assert C.RECESS_RO <= 31.6, f"recess OD {C.RECESS_RO} reaches under the damping pad"
+
+
+def test_pattern_eccentricity_fits_the_unlocked_encoder():
+    """A rigid offset of the whole pattern is a 1/rev encoder error at gain 1.0.
+
+    Feel cannot see it (every well moves together), so nothing else would catch a
+    loose callout: the Ø0.60 pattern zone this replaced allowed 0.59 deg against
+    the ±0.25 deg the firmware accepts without the optional per-pole map.
+    """
+    C = models.C
+    fit = ((2 * C.RECESS_RO + C.RECESS_TOL) - (2 * C.SHIM_RO - C.SHIM_OD_TOL)) / 2
+    e = fit + C.RECESS_COAX / 2 + C.PATTERN_POS / 2
+    err = math.degrees(e / C.RT)
+    assert err <= 0.25, f"pattern eccentricity up to {e:.3f} mm = {err:.3f} deg, over 0.25"
+
+
+@pytest.mark.parametrize("cte, fits", [("CTE_PA12GF", True), ("CTE_PA12", False)])
+def test_shim_still_clears_the_recess_hot(cte, fits):
+    """The plastic outgrows the steel; at the magnets' 60 C limit it must still seat.
+
+    The unfilled case is asserted to FAIL so that a change of material (item 7a)
+    cannot quietly pass: it is the reason the drawing says PA12-GF ONLY.
+    """
+    C = models.C
+    grow = (getattr(calcs, cte) - calcs.CTE_316L) * C.SHIM_RO * (calcs.T_HOT - calcs.T_ASSY)
+    assert (C.RECESS_RO - C.SHIM_RO >= grow) is fits, (
+        f"{cte}: plate grows {grow:.3f} against {C.RECESS_RO - C.SHIM_RO:.3f} of clearance")
+
+
+def test_shim_bores_are_through_and_on_the_track_radius():
+    """48 bores, all the way through, all at R_t.
+
+    Through is the point: a blind depth printed into the plate would put the plate's
+    own thickness back into the detent gap stack, which is the term SHIM_PLATE_T <
+    MAG_H exists to keep out of it.
+    """
+    C = models.C
+    solid = models.PARTS["magnet_shim"].build()
+    bores = [f for f in solid.faces()
+             if abs((getattr(f, "radius", None) or 0.0) - C.BORE_D / 2) < 1e-6]
+    assert len(bores) == int(C.MAG_N), f"found {len(bores)} bore faces, expected {int(C.MAG_N)}"
+    for f in bores:
+        bb = f.bounding_box()
+        # a full cylindrical face has a square footprint centred on its own axis;
+        # f.center() would not do, because on a cylinder it lies on the surface
+        assert bb.size.X == pytest.approx(C.BORE_D, abs=1e-6)
+        assert bb.size.Y == pytest.approx(C.BORE_D, abs=1e-6)
+        assert math.hypot(bb.center().X, bb.center().Y) == pytest.approx(C.RT, abs=1e-6)
+        assert bb.size.Z == pytest.approx(C.SHIM_PLATE_T, abs=1e-6), (
+            "bore does not run the full plate thickness")
 
 
 def test_ring_has_no_milled_features():

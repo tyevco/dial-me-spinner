@@ -32,8 +32,10 @@ RING_RO, RING_RI, RING_H = 35.0, 27.0, 10.0
 RING_Z0, RING_Z1 = 15.6, 25.6
 CH_TO, CH_BO, CH_IN = 1.0, 1.5, 0.5
 MAG_N, MAG_D, MAG_H, RT = 48, 2.0, 2.0, 29.0
-POCKET_D, POCKET_H = 2.10, 2.05          # shim bore (was the blind pocket in the steel)
-SHIM_RI, SHIM_RO, SHIM_T = 27.0, 31.0, 2.0   # turned recess for the printed magnet shim
+BORE_D = 2.03                            # REAMED bore in the shim; a printed hole cannot locate
+MAG_D_SORT = 1.99                        # diameter-sorted bin floor (re-set to the measured lot)
+SHIM_RI, RECESS_RO, SHIM_T = 27.0, 31.0, 2.0   # turned recess in the steel
+SHIM_RO = 30.94                          # the shim's own turned OD: Ø61.88 in a Ø62.00 recess
 SHIM_PLATE_T = 1.95                          # printed 0.05 shy of MAG_H: the magnet sets the gap
 B_Z0, B_Z1 = 18.0, 25.0                  # 608
 DET_D, DET_H, DET_GAP = 3.0, 2.0, 1.0
@@ -54,6 +56,10 @@ RHO_NDFEB = 7.5e-3
 RHO_PA12GF = 1.25e-3     # [assume] SLS PA12-GF ~1.22, MJF PA12-GB ~1.30
 RHO_STEEL = 7.85e-3
 RHO_BRASS = 8.5e-3
+CTE_316L = 16.0e-6       # 1/K
+CTE_PA12GF = 60e-6       # [assume] SLS PA12-GF in-plane; the figure magnet-placement.md section 4 used
+CTE_PA12 = 100e-6        # [assume] unfilled MJF/SLS PA12; SLA resins are similar or higher
+T_ASSY, T_HOT = 22.0, 60.0   # bond temperature; the magnets' own limit caps the rotor
 
 
 def annulus(ro, ri, h):
@@ -90,7 +96,7 @@ def rotor_parts():
     i_chamf = sum(2 * math.pi * r * a * r ** 2 for a, r in ch)
     v_knurl = 120 * (0.6 ** 2 / 2) * 7.0
     # The 48 blind pockets are gone; the magnets sit in a printed shim in this turned recess.
-    v_rec, k_rec = annulus(SHIM_RO, SHIM_RI, SHIM_T)
+    v_rec, k_rec = annulus(RECESS_RO, SHIM_RI, SHIM_T)
     v_bal = 4 * math.pi * 0.8 ** 2 * 3.0
     m_ring = (v - v_chamf - v_knurl - v_rec - v_bal) * RHO_316L
     i_ring = (v * RHO_316L * k - i_chamf * RHO_316L - v_knurl * RHO_316L * 34.8 ** 2
@@ -101,7 +107,7 @@ def rotor_parts():
     parts.append(("48x N52 Ø2x2 magnets", m_mag, m_mag * RT ** 2 * 1e-9, RING_Z1 - MAG_H / 2))
     # printed magnet shim: annulus with 48 through holes, located by the ring's recess
     v_sh, k_sh = annulus(SHIM_RO, SHIM_RI, SHIM_PLATE_T)
-    v_sh_h = MAG_N * math.pi * (POCKET_D / 2) ** 2 * SHIM_PLATE_T
+    v_sh_h = MAG_N * math.pi * (BORE_D / 2) ** 2 * SHIM_PLATE_T
     parts.append(("printed magnet shim (PA12-GF)", (v_sh - v_sh_h) * RHO_PA12GF,
                   (v_sh * k_sh - v_sh_h * RT ** 2) * RHO_PA12GF * 1e-9,
                   RING_Z1 - SHIM_T + SHIM_PLATE_T / 2))

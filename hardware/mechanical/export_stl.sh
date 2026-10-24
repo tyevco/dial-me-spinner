@@ -7,7 +7,7 @@
 set -eu
 cd "$(dirname "$0")"
 mkdir -p stl
-parts=(base_cup top_cover light_box diffuser fa_lower_plate rotor_carrier magnet_shim detent_carriage \
+parts=(base_cup top_cover light_box diffuser fa_lower_plate rotor_carrier magnet_shim magnet_shim_blank detent_carriage \
        link_plate oled_bracket stepper_saddle carriage_rail spindle spindle_hub lower_spacer cap_ring \
        rotor_ring)
 export_one() {
