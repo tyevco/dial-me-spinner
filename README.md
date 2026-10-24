@@ -62,6 +62,7 @@ The same hardware serves three uses:
 | [docs/firmware.md](docs/firmware.md) | Firmware architecture plan (nRF Connect SDK / Zephyr, MCUboot), including the BQ25180 register init table (§13.1). A plan only: no firmware code exists yet |
 | [docs/simulation.md](docs/simulation.md) | The SPICE suite in `hardware/sim/`: how to run it, how a test is built, what each block covers; the latest values are on its [results page](hardware/sim/results/report.md) |
 | [docs/display-study.md](docs/display-study.md) | Rev-B study (future work): a larger round touch AMOLED. Rev A keeps the SSD1351 OLED |
+| [docs/rev-b-bench.md](docs/rev-b-bench.md) | Rev-B bench boards: the AMOLED on an nRF52840-DK, and the NFC coil over a copy of the main board's ground plane. They answer what the rev B layout waits on |
 | [hardware/design/SPEC.md](hardware/design/SPEC.md) | **Architecture of record** for the schematics: boards, link pinout, power tree, nRF52840 pin map, per-sheet contents, mechanical stack-up |
 | [hardware/tools/README.md](hardware/tools/README.md) | The Python → KiCad generator toolchain |
 

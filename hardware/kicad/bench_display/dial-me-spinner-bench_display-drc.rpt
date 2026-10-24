@@ -1,0 +1,25 @@
+** Drc report for dial-me-spinner-bench_display.kicad_pcb **
+** Created on 2026-10-23T21:44:24-0700 **
+** Report includes: Errors, Warnings, Exclusions **
+
+** Found 4 DRC violations **
+[silk_overlap]: Silkscreen overlap
+    Rule: board setup constraints silk; warning
+    @(91.2100 mm, 100.0000 mm): Circle on F.Silkscreen
+    @(78.9534 mm, 122.3003 mm): Segment of U3 on F.Silkscreen
+[silk_overlap]: Silkscreen overlap
+    Rule: board setup constraints silk; warning
+    @(91.2100 mm, 100.0000 mm): Circle on F.Silkscreen
+    @(101.2681 mm, 122.1656 mm): Segment of R10 on F.Silkscreen
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(91.2100 mm, 100.0000 mm): Circle on F.Silkscreen
+[lib_footprint_mismatch]: Footprint 'Arduino_UNO_R3' does not match copy in library 'Module'.
+    Local override; warning
+    @(93.6500 mm, 75.8700 mm): Footprint J1
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** End of Report **

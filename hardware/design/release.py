@@ -22,7 +22,14 @@ sys.path.insert(0, os.path.join(HW, "tools"))
 import fab  # noqa: E402
 import jlc_cpl  # noqa: E402
 
-BOARDS = {"main": 4, "base": 4}
+BOARDS = {"main": 4, "base": 4, "bench_display": 2, "bench_nfc_plate": 2, "bench_nfc_base": 2}
+# what JLC cannot read from the gerbers, written into each board's ORDER-NOTES.md
+FAB_NOTES = {
+    "bench_display": ["PCB: 2 layers, 1.6 mm FR4. Assemble the top only. Headers J1, J3-J5 are hand-fitted."],
+    "bench_nfc_plate": ["PCB: **0.4 mm** FR4, 2 layers, **white** solder mask (the display support plate, "
+                        "display-study 3.2). No assembly: the coil is copper only."],
+    "bench_nfc_base": ["PCB: 2 layers, 1.6 mm FR4. Assemble the bottom only; W1/W2 and J2 are hand-fitted."],
+}
 
 
 def render3d(pcb, png, side, zoom=1.0):
@@ -106,6 +113,9 @@ def order_notes(pcb, net, path):
                 "(top: θ+α, bottom: 180−θ+α). Every row was checked by putting the EasyEDA pads down at its point and "
                 "angle: all land on copper. Still check every IC and connector in JLC's placement preview.\n")
         f.write(f"* Board-only parts (no BOM): {', '.join(sorted(fp.GetReference() for fp in b.GetFootprints() if fp.GetAttributes() & pcbnew.FP_BOARD_ONLY))}\n")
+        board = os.path.basename(pcb)[len("dial-me-spinner-"):-len(".kicad_pcb")]
+        for note in FAB_NOTES.get(board, []):
+            f.write(f"* {note}\n")
     return path
 
 
