@@ -190,7 +190,7 @@ def sheet_rotor_ring(part, solid):
     faces += ExtensionLine(border=[S(-C.RING_RI, H), S(C.RING_RI, H)], offset=above(16),
                            draft=DRAFT, label=dim(2 * C.RING_RI, dia=True, fit="H7"))
     faces += ExtensionLine(border=[S(-C.RECESS_RO, H), S(C.RECESS_RO, H)], offset=above(26),
-                           draft=DRAFT, label=dim(2 * C.RECESS_RO, dia=True, suffix="RECESS"))
+                           draft=DRAFT, label=dim(2 * C.RECESS_RO, dia=True, tol=(C.RECESS_TOL, 0.00)))
     faces += ExtensionLine(border=[S(C.RING_RO, 0), S(C.RING_RO, H)], offset=20, draft=DRAFT,
                            label=dim(H, tol=(0.05, -0.05)))
     # The label is ~10 mm wide on a 2 mm span, so it cannot sit between its own
@@ -206,11 +206,14 @@ def sheet_rotor_ring(part, solid):
     faces += _lines(_common_notes(part, [
         f"CHAMFERS: {C.CH_TO:.1f} x 45 TOP OUTER, {C.CH_BO:.1f} x 45 BOTTOM OUTER, "
         f"{C.CH_IN:.1f} x 45 BOTTOM INNER.",
-        f"RECESS {DIA}{2 * C.RECESS_RO:.2f} x {C.SHIM_T:.2f} +0.02/-0.00 DEEP IN THE TOP FACE.",
+        f"RECESS {DIA}{2 * C.RECESS_RO:.2f} +{C.RECESS_TOL:.2f}/-0.00 x {C.SHIM_T:.2f} +0.02/-0.00 "
+        "DEEP IN THE TOP FACE,",
+        f"COAXIAL TO THE {DIA}{2 * C.RING_RI:.0f} H7 BORE WITHIN {DIA}{C.RECESS_COAX:.2f}: "
+        "IT CENTRES THE MAGNET TRACK.",
         f"4x {DIA}{C.BAL_D:.2f} x {C.BAL_DEPTH:.1f} DEEP AT 45/135/225/315 IN THE BOTTOM "
         "FACE; TAP M2 TO TRIM.",
         "DEBURR ALL EDGES. PROCESS ORDER AND BALANCE: MECHANICAL 5 AND 14.",
-        ""]), -138, -42)
+        ""]), -138, -24)
     # The balance holes open at the BOTTOM face, so a top view cannot show the
     # four holes its own PCD dimension calls out.  The recess is dimensioned on
     # the section instead, where it is a real edge rather than a circle.
@@ -380,7 +383,7 @@ def sheet_magnet_shim(part, solid):
 
     faces = _frame(part, K, extra_sub=f"  THK {t:.2f}")
     faces += ExtensionLine(border=[P(-C.SHIM_RO, 0), P(C.SHIM_RO, 0)], offset=below(56),
-                           draft=DRAFT, label=dim(2 * C.SHIM_RO, dia=True, tol=(0.00, -0.05)))
+                           draft=DRAFT, label=dim(2 * C.SHIM_RO, dia=True, tol=(0.00, -C.SHIM_OD_TOL)))
     faces += ExtensionLine(border=[P(-C.SHIM_RI, 0), P(C.SHIM_RI, 0)], offset=below(66),
                            draft=DRAFT, label=dim(2 * C.SHIM_RI, dia=True, suffix="AS PRINTED"))
     faces += ExtensionLine(border=[P(-C.RT, 0), P(C.RT, 0)], offset=above(56), draft=DRAFT,
@@ -389,9 +392,12 @@ def sheet_magnet_shim(part, solid):
     faces += _lines(_common_notes(part, [
         f"{int(C.MAG_N)}x {DIA}{C.BORE_D:.2f} +0.01/-0.00 THRU, EQUALLY SPACED ON THE "
         f"{DIA}{2 * C.RT:.2f} PCD.",
-        f"POSITION: PATTERN {DIA}0.60 TO A AND B, BORE TO BORE {DIA}0.07. RFS, NO MMC.",
+        f"POSITION: PATTERN {DIA}{C.PATTERN_POS:.2f} TO A AND B, BORE TO BORE {DIA}{C.BORE_POS:.2f}. "
+        "RFS, NO MMC.",
+        f"REAM TO THE MEASURED LOT: BORE = 0.02 BIN FLOOR + 0.04 ({DIA}{C.BORE_D:.2f} FOR "
+        f"{C.MAG_D_SORT:.2f}-{C.MAG_D_SORT + 0.02:.2f}).",
         f"A = EITHER FACE (SYMMETRIC).   B = {DIA}{2 * C.SHIM_RO:.2f} OUTSIDE CYLINDER.",
-        f"THICKNESS {t:.2f} AS PRINTED; FLAT WITHIN 0.05 OVER THE FULL FACE."]), -138, -42)
+        f"THICKNESS {t:.2f} AS PRINTED; FLAT WITHIN 0.05 OVER THE FULL FACE."]), -138, -24)
     return faces, [view(plan(solid), pc, K)]
 
 

@@ -9,13 +9,30 @@ in build]** where they appear:
 
 * The recess and the shim OD had been one constant (`SHIM_RO`), which is the whole reason the
   zero-clearance fit in §3 B existed. They are now two: `RECESS_RO` (the recess turned in the steel,
-  unchanged at Ø62.00) and `SHIM_RO` (the plate's own turned OD, Ø61.90).
+  unchanged at Ø62.00) and `SHIM_RO` (the plate's own turned OD, Ø61.90, later Ø61.88 — see below).
 * §8 claimed that shrinking the shim OD takes the outer web from 0.950 to 1.000 mm. It does not —
   shrinking the OD *reduces* the outer web. The 0.985 figure is the **inner** web, which improves
   because the bore shrinks from Ø2.10 to Ø2.03.
 * This report was written while the branch carrying `cfa0a18` was in flight, and it concluded from
   `git ls-remote --heads` that the work had never been pushed. It had: PR #8 merged as `dc96515`, and
   the branch was deleted on merge, which is what the listing was showing.
+
+A second review of the built design found four more, also marked **[corrected in build]**:
+
+* **The pattern callout contradicted the eccentricity finding.** §7's Ø0.60 PLTZF lets the pattern sit
+  0.30 mm off centre, a 0.59° 1/rev encoder error — 2.4× the budget §6 itself sets. It is Ø0.05 now, which
+  is cheap because the bores are cut from the OD in one setup.
+* **The mandrel fix cannot work and is not needed.** The plate's ID is left as printed, ±0.3, so a mandrel
+  in the Ø54 ring ID locates nothing; and the 1.58× figure was computed for a Ø61.80 plate with 0.40 mm of
+  clearance. What actually centres the pattern is the recess fit — and the ring drawing gave the recess Ø
+  **no tolerance**, so it fell to ISO 2768-m, ±0.3. It is Ø62.00 +0.02/0, coaxial to the Ø54 H7 bore within
+  Ø0.02, and the three terms total 0.227°, 0.91× the budget (`docs/mechanical.md` §5).
+* **The thermal paragraph used the wrong channel.** Uniform growth is tangentially neutral, as §6 says, but
+  it lands in the 0.05–0.08 mm OD clearance, not a 0.30 mm channel. PA12-GF fits (0.052 mm at 60 °C, with
+  the OD now Ø61.88); unfilled PA12 and SLA resin do not. That settles item 7a's material: PA12-GF only.
+* **A 0.01 bin is the wrong width.** The bore is floor + 0.04 +0.01/0, so worst-case clearance is 0.025
+  whatever the bin width; a 0.01 bin of a normal ±0.05 lot yields ~45 of 200, short of 48. The bin is 0.02,
+  chosen as the densest of the *measured* lot, and the clearance is 0.010–0.025 (not 0.015–0.037).
 
 The numbers in §§2–6 are **not** re-derived here. Where one of them is soft — and the most important
 one is — the report says so in place.
@@ -24,7 +41,7 @@ one is — the report says so in place.
 
 ## 1. Recommendation
 
-**Print the shim blank solid and machine the 48 bores.** Change `stl/magnet_shim.stl` to a plain Ø62/Ø54 × 1.95 annulus with no holes, then drill-and-ream 48 × **Ø2.03 +0.01/0** through, on a programmed 48-position polar pattern at R 29.000, holding the blank on a mandrel in the Ø54 ID — the same post-print-machining pattern the repo already uses twice on the rotor carrier (`docs/mechanical.md:324`, `docs/assembly.md:694`). Turn the OD to Ø61.90 in the same setup. Pair it with a diameter-sorted magnet lot.
+**Print the shim blank solid and machine the 48 bores.** Change `stl/magnet_shim.stl` to a plain Ø62/Ø54 × 1.95 annulus with no holes, then drill-and-ream 48 × **Ø2.03 +0.01/0** through, on a programmed 48-position polar pattern at R 29.000, holding the blank on a mandrel in the Ø54 ID — the same post-print-machining pattern the repo already uses twice on the rotor carrier (`docs/mechanical.md:324`, `docs/assembly.md:694`). Turn the OD to Ø61.90 in the same setup **[corrected in build: Ø61.88 +0/−0.02, and the pattern held to it within Ø0.05]**. Pair it with a diameter-sorted magnet lot.
 
 It is recommended for one reason, and it is not accuracy per se: **a printed hole cannot locate a magnet, and the bore must locate the magnet.**
 
@@ -195,7 +212,7 @@ Corrected numbers *(the original candidate's 9.25 mN, "constant to within 0.2 %"
 | park \|dt\| at c = 0.050 | 0.013 mm | 0.032 mm |
 | park \|dt\| at c = 0.055 | 0.026 mm | 0.039 mm — **fails the old budget** |
 
-**Gate: c ≤ 0.037 mm**, i.e. bore ≤ (min measured magnet Ø + 0.075 mm diametral). A Ø2.03 +0.01/0 bore on a diameter-sorted 1.99–2.00 bin gives c = 0.015–0.037 — inside the window by construction, and it admits the whole bin.
+**Gate: c ≤ 0.037 mm**, i.e. bore ≤ (min measured magnet Ø + 0.075 mm diametral). A Ø2.03 +0.01/0 bore on a diameter-sorted 1.99–2.00 bin gives c = 0.015–0.025 — inside the window by construction, and it admits the whole bin. **[corrected in build]** The bin is 0.02 wide (1.99–2.01, c = 0.010–0.025), chosen from the measured lot: a 0.01 bin does not yield 48 from 200.
 
 Two honest limits on this mechanism: it is a **necessary condition, not a locator**, and it covers at most 24 of 48 magnets as the build is written. Mask A's 24 same-polarity magnets see +1.4 mN *outward* with 26× weaker tangential stiffness, so they park on the outer wall and their position is set by the dispenser, not the field. Placing all 48 before any cure restores c_crit to 0.0485 but defeats the polarity masks' reason for existing.
 
@@ -220,7 +237,7 @@ Two honest limits on this mechanism: it is a **necessary condition, not a locato
 
 - **Adhesive as a restraint during cure.** Off by three to five orders of magnitude: shearing a 0.05 mm film of DP420 at its published 20,000–50,000 cP gives ~11 N·s/m, so the 66.8 mN one-sided force crosses the entire clearance in **0.8–8 ms** against a 15–30 minute work life. A 500 Pa·s thixotropic paste buys 92 ms. The useful corollary: "drift during cure" is not the failure mode — the magnet reaches its final position within milliseconds of placement.
 - **Cure shrinkage.** 1.7 % linear on a 0.05 mm film is **0.85 µm**, 2.4 % of the budget. Even 10 % would stay inside.
-- **Adhesive and PA12 CTE / uniform thermal growth.** An isotropic in-plane scale factor maps (R, θ) → ((1+e)R, θ): **every magnet moves radially and none moves tangentially**, exactly. All of the shim's axisymmetric growth lands in the 0.30 mm radial channel (0.049 mm for PA12-GF over 22→60 °C). Adhesive CTE contributes 0.12 µm.
+- **Adhesive and PA12 CTE / uniform thermal growth.** An isotropic in-plane scale factor maps (R, θ) → ((1+e)R, θ): **every magnet moves radially and none moves tangentially**, exactly. All of the shim's axisymmetric growth lands in the radial direction (0.049 mm for PA12-GF over 22→60 °C). Adhesive CTE contributes 0.12 µm.
 - **Tightening the shim-to-recess fit for feel.** A bulk eccentricity is a 1/rev error; measured directly, a rigid 0.10 mm translation perturbs the profile 1.12 % of peak against 7.93 % for an equal pure-tangential 1/rev error — a 7× attenuation — and the harmonic table allows 1.30 mm at m=1. **But** see the encoder finding below.
 - **A fully epoxy-bonded PA12 shim to the steel floor.** Hard dead end: the free radial mismatch at r 31 over 22→60 °C is 0.052–0.158 mm, which in a 0.05 mm glue line is **104–316 % shear strain** against EA 9466's 3 % elongation. The joint cracks on the first thermal cycle.
 
@@ -241,7 +258,7 @@ Two honest limits on this mechanism: it is a **necessary condition, not a locato
 - **No print vendor publishes a hole-position tolerance or mentions GD&T** — checked JLC3DP, Protolabs, Protolabs Network, Sculpteo. The only useful published statement is Protolabs': "holes and other small features, even on very large parts, will generally exhibit good accuracy in and of themselves, **although their positional location might be affected**." The only contractual hook is Protolabs Network's "unless otherwise agreed between the parties".
 - **The AM literature has exactly one usable local-position source**, and the paper does not report it: Leirmo & Semeniuta, *Applied Sciences* 11(5):2031 (2021) analyses only diameter, cylindricity and flatness, but its CC0 dataset (DOI 10.18710/DHACHZ) contains Calypso position .X/.Y characteristics. Extracting 11,340 rows over 404 CMM measurement sets and fitting translation + rotation + isotropic scale gives the number this whole sweep was missing (§7, below). Everything else checked reports diameter, roundness or overall dimensions only. Minetola et al., *Additive Manufacturing* 32:101103 (2020) is the best unread second opinion — paywalled.
 
-**One finding that cuts the other way and is NOT a dead end — an unbudgeted encoder error nobody flagged.** A rigid eccentricity *e* of the whole pattern displaces every magnet in a fixed direction, so the track's tangential offset swings ±e once per revolution **at gain 1.0, not the 0.542 single-magnet gain**: `e/R_t = 0.198° mechanical per 0.1 mm`. At the Ø61.80 spec's worst-case 0.40 mm diametral clearance that is 0.395° mechanical — **1.58× the entire ±0.25° the unlocked firmware accepts** (`docs/firmware.md:1196`). Feel is indifferent (m=1 budget 1.30 mm), which is exactly why it was missed. Fix: centre the shim on a mandrel in the Ø54 ring ID at bond time — the existing polarity masks already register there — rather than letting the recess wall do it. At e ≤ 0.03 mm it is 0.059°, 0.24× the budget.
+**One finding that cuts the other way and is NOT a dead end — an unbudgeted encoder error nobody flagged.** A rigid eccentricity *e* of the whole pattern displaces every magnet in a fixed direction, so the track's tangential offset swings ±e once per revolution **at gain 1.0, not the 0.542 single-magnet gain**: `e/R_t = 0.198° mechanical per 0.1 mm`. At the Ø61.80 spec's worst-case 0.40 mm diametral clearance that is 0.395° mechanical — **1.58× the entire ±0.25° the unlocked firmware accepts** (`docs/firmware.md:1196`). Feel is indifferent (m=1 budget 1.30 mm), which is exactly why it was missed. Fix: centre the shim on a mandrel in the Ø54 ring ID at bond time — the existing polarity masks already register there — rather than letting the recess wall do it. At e ≤ 0.03 mm it is 0.059°, 0.24× the budget. **[corrected in build]** The mandrel cannot locate a plate whose ID is as printed; the recess fit does the job instead, once the recess has a tolerance (it had none). See the status note at the top.
 
 ---
 
@@ -279,9 +296,10 @@ The callout to send, per ASME Y14.5-2018 §10.5 composite positional tolerancing
 
 ```
 48X Ø2.03 (+0.01/0) THRU
-  ⌖ | Ø0.60 | A | B |      <- PLTZF: pattern location (buys scale + eccentricity)
+  ⌖ | Ø0.05 | A | B |      <- PLTZF: pattern location [corrected in build from Ø0.60,
+                                which allowed a 0.59° 1/rev encoder error]
     | Ø0.07 |               <- FRTZF: hole-to-hole (the only segment that spends the budget)
-A = seating face   B = Ø61.90 outside cylinder
+A = seating face   B = Ø61.88 outside cylinder
 RFS — no (M) modifier: the bore must LOCATE the magnet, and MMC bonus tolerance
 would grant extra position error exactly when the hole is already oversize.
 ```
@@ -347,9 +365,9 @@ Built, in the commit that carries this document:
 
 * `BORE_D = 2.03` replaces `POCKET_D = 2.10`, and `MAG_D_SORT = 1.99` records the sorted bin the bore is
   specified against. `POCKET_H` is gone: a through bore has no depth.
-* `RECESS_RO` and `SHIM_RO` split apart, Ø62.00 and Ø61.90.
+* `RECESS_RO` and `SHIM_RO` split apart, Ø62.00 and Ø61.90 (Ø61.88 after the second review).
 * The shim prints as `magnet_shim_blank` (a plain annulus) and becomes the **sixth** part with a STEP and
-  a drawing, carrying the composite position callout, the sorted-lot instruction and the mandrel note.
+  a drawing, carrying the composite position callout and the sorted-lot instruction. (It also carried a mandrel note, withdrawn in the second review.)
 * Six new tests. One of them — the ring-mass check against `calcs.py` §14 — caught the split above
   leaving `models.py` behind, which had quietly shrunk the B-rep recess by 0.05 mm.
 

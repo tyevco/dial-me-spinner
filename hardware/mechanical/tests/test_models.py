@@ -161,9 +161,10 @@ def test_bore_locates_the_magnet():
     assert c_max <= C_CRIT, (
         f"worst-case radial clearance {c_max:.4f} is outside the {C_CRIT} self-centring "
         "window: the magnet is free to sit tangentially off-centre")
-    assert C.BORE_D > C.MAG_D_SORT + 0.01, (
-        f"bore {C.BORE_D} does not admit the top of the {C.MAG_D_SORT:.2f}-"
-        f"{C.MAG_D_SORT + 0.01:.2f} sorted bin")
+    c_min = (C.BORE_D - (C.MAG_D_SORT + C.MAG_BIN_W)) / 2
+    assert c_min >= 0.005 - 1e-9, (
+        f"bore {C.BORE_D} leaves {c_min:.4f} on the top of the {C.MAG_D_SORT:.2f}-"
+        f"{C.MAG_D_SORT + C.MAG_BIN_W:.2f} sorted bin: no room for the adhesive film")
 
 
 def test_shim_clears_the_recess_and_keeps_machinable_walls():
@@ -184,6 +185,33 @@ def test_shim_clears_the_recess_and_keeps_machinable_walls():
     assert wall_i >= 0.9, f"shim inner wall {wall_i:.3f} too thin"
     # doc section 7: the felt damping pad lands at r 31.6-32.4 and must stay on bare steel
     assert C.RECESS_RO <= 31.6, f"recess OD {C.RECESS_RO} reaches under the damping pad"
+
+
+def test_pattern_eccentricity_fits_the_unlocked_encoder():
+    """A rigid offset of the whole pattern is a 1/rev encoder error at gain 1.0.
+
+    Feel cannot see it (every well moves together), so nothing else would catch a
+    loose callout: the Ø0.60 pattern zone this replaced allowed 0.59 deg against
+    the ±0.25 deg the firmware accepts without the optional per-pole map.
+    """
+    C = models.C
+    fit = ((2 * C.RECESS_RO + C.RECESS_TOL) - (2 * C.SHIM_RO - C.SHIM_OD_TOL)) / 2
+    e = fit + C.RECESS_COAX / 2 + C.PATTERN_POS / 2
+    err = math.degrees(e / C.RT)
+    assert err <= 0.25, f"pattern eccentricity up to {e:.3f} mm = {err:.3f} deg, over 0.25"
+
+
+@pytest.mark.parametrize("cte, fits", [("CTE_PA12GF", True), ("CTE_PA12", False)])
+def test_shim_still_clears_the_recess_hot(cte, fits):
+    """The plastic outgrows the steel; at the magnets' 60 C limit it must still seat.
+
+    The unfilled case is asserted to FAIL so that a change of material (item 7a)
+    cannot quietly pass: it is the reason the drawing says PA12-GF ONLY.
+    """
+    C = models.C
+    grow = (getattr(calcs, cte) - calcs.CTE_316L) * C.SHIM_RO * (calcs.T_HOT - calcs.T_ASSY)
+    assert (C.RECESS_RO - C.SHIM_RO >= grow) is fits, (
+        f"{cte}: plate grows {grow:.3f} against {C.RECESS_RO - C.SHIM_RO:.3f} of clearance")
 
 
 def test_shim_bores_are_through_and_on_the_track_radius():

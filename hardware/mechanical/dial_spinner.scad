@@ -154,16 +154,20 @@ CH_IN       = 0.5;
 MAG_N       = 48;
 MAG_D       = 2.0;
 MAG_H       = 2.0;
-MAG_D_SORT  = 1.99;                 // diameter-sorted bin floor.  Buy ~200 and micrometer them
-                                    //   into a 0.01-wide bin: the realised float is set by the
-                                    //   BIN width, not by the catalogue ±0.05, so sorting beats
-                                    //   buying ground magnets on both cost and lead time.
+MAG_D_SORT  = 1.99;                 // diameter-sorted bin FLOOR, a design value: re-set it to the
+                                    //   measured lot.  Buy ~200, micrometer them, take the
+                                    //   densest MAG_BIN_W-wide bin, and ream to floor + 0.04.
+MAG_BIN_W   = 0.02;                 // 0.02, not 0.01: the bore is floor + 0.04 +0.01/0, so the
+                                    //   worst-case clearance is 0.025 whatever the bin width, and
+                                    //   only the minimum (admission) shrinks.  A 0.01 bin of a
+                                    //   normal ±0.05 lot holds ~22 %, i.e. ~45 of 200 -- short of
+                                    //   48.  A 0.02 bin holds ~44 %, ~89 of 200.
 RT          = 29.0;
 BORE_D      = 2.03;                 // REAMED +0.01/0 -- not a printed hole and not a pocket.  A
                                     //   printed hole cannot LOCATE a magnet: JLC3DP publish
                                     //   ±0.3 mm on a hole with an undersize bias, so a 2.10
                                     //   nominal spans 1.80-2.40 and the low end refuses a Ø1.95
-                                    //   magnet outright.  2.03 on the sorted bin leaves 0.015 to
+                                    //   magnet outright.  2.03 on the sorted bin leaves 0.010 to
                                     //   0.025 radial clearance, inside the 0.037 gate where the
                                     //   track's own field parks the magnet against one bore wall
                                     //   and spends the clearance RADIALLY, where sensitivity is
@@ -180,13 +184,27 @@ BAL_DEPTH   = 3.0;                  // blind, from the bottom face
 SHIM_RI     = RING_RI;              // recess is a plain counterbore: no inner lip to turn
 RECESS_RO   = 31.0;                 // the recess turned in the STEEL.  Stops here so the felt
                                     //   damping pad (r 31.6-32.4, section 7) lands on bare steel
-SHIM_RO     = 30.95;                // the PLATE's own turned OD, Ø61.90, in the Ø62.00 +0.02/0
-                                    //   recess: 0.05-0.06 radial clearance.  Ø62.00 in Ø62.00 is
+SHIM_RO     = 30.94;                // the PLATE's own turned OD, Ø61.88 +0/-0.02, in the Ø62.00
+                                    //   +0.02/0 recess: 0.06-0.08 radial clearance.  The floor is
+                                    //   THERMAL: PA12-GF grows 0.052 on this radius against 316L
+                                    //   from 22 to 60 C, and unfilled PA12 or SLA resin roughly
+                                    //   doubles that, so PA12-GF is the only material that fits.
+                                    //   The ceiling is the ENCODER, see PATTERN_POS.  Ø62.00 in Ø62.00 is
                                     //   nominally zero and the measured SLS scale distribution
                                     //   puts its positive tail into interference -- and a shim
                                     //   that will not seat breaks the magnets-bottom-on-steel
                                     //   datum that sets the whole 1.0 mm gap.  Turned, not
                                     //   printed, so this is a real fit.
+RECESS_TOL  = 0.02;                 // recess Ø +0.02/0.  Untoleranced it fell to ISO 2768-m,
+                                    //   ±0.3 on a Ø62, and a Ø61.70 recess refuses the plate.
+RECESS_COAX = 0.02;                 // recess coaxial to the Ø54 H7 bore, Ø; one turning setup
+SHIM_OD_TOL = 0.02;                 // plate OD +0/-0.02
+PATTERN_POS = 0.05;                 // bore pattern to the plate OD, Ø (composite PLTZF).  A rigid
+                                    //   eccentricity e of the pattern is a 1/rev encoder error at
+                                    //   gain 1.0, e / RT.  Recess fit + coaxiality + this sum to
+                                    //   e <= 0.115 = 0.227 deg, inside the ±0.25 deg the unlocked
+                                    //   firmware accepts.  The Ø0.60 this replaced allowed 0.59 deg.
+BORE_POS    = 0.07;                 // bore to bore, Ø (composite FRTZF): the feel budget
 SHIM_T      = 2.0;                  // = MAG_H: recess depth = magnet height
 SHIM_Z0     = RING_Z1 - SHIM_T;     // 23.6 recess floor; magnets bottom here, as on the old
                                     //   pocket floor (23.55)
@@ -573,10 +591,11 @@ module magnet_shim_blank()
     color(c_shim) tube(SHIM_RO, SHIM_RI, SHIM_Z0, SHIM_Z0 + SHIM_PLATE_T, fn_big);
 
 // The FINISHED plate: blank plus 48 reamed through bores.  THROUGH, so no printed depth controls
-// the magnet height.  It drops into the ring's recess, but it is centred on a mandrel in the ring
-// ID at bond time and NOT by the recess wall: a rigid eccentricity of the whole pattern swings
-// the track's tangential offset once per revolution at gain 1.0, which is a 1/rev ENCODER error
-// even though feel is indifferent to it.  Doc section 5.
+// the magnet height.  It drops into the ring's recess and the recess wall centres it: the turned
+// OD is datum B, the pattern is cut from it in the same setup, and the fit is tight enough
+// (PATTERN_POS) that a rigid eccentricity of the whole pattern -- a 1/rev ENCODER error at gain
+// 1.0, which feel is indifferent to -- stays inside the unlocked firmware's ±0.25 deg.  The
+// plate's ID is left as printed and locates nothing.  Doc section 5.
 module magnet_shim()
     difference() {
         magnet_shim_blank();

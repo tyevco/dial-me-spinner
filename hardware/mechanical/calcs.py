@@ -33,9 +33,9 @@ RING_Z0, RING_Z1 = 15.6, 25.6
 CH_TO, CH_BO, CH_IN = 1.0, 1.5, 0.5
 MAG_N, MAG_D, MAG_H, RT = 48, 2.0, 2.0, 29.0
 BORE_D = 2.03                            # REAMED bore in the shim; a printed hole cannot locate
-MAG_D_SORT = 1.99                        # diameter-sorted bin floor, 0.01 wide
+MAG_D_SORT = 1.99                        # diameter-sorted bin floor (re-set to the measured lot)
 SHIM_RI, RECESS_RO, SHIM_T = 27.0, 31.0, 2.0   # turned recess in the steel
-SHIM_RO = 30.95                          # the shim's own turned OD: Ø61.90 in a Ø62.00 recess
+SHIM_RO = 30.94                          # the shim's own turned OD: Ø61.88 in a Ø62.00 recess
 SHIM_PLATE_T = 1.95                          # printed 0.05 shy of MAG_H: the magnet sets the gap
 B_Z0, B_Z1 = 18.0, 25.0                  # 608
 DET_D, DET_H, DET_GAP = 3.0, 2.0, 1.0
@@ -56,6 +56,10 @@ RHO_NDFEB = 7.5e-3
 RHO_PA12GF = 1.25e-3     # [assume] SLS PA12-GF ~1.22, MJF PA12-GB ~1.30
 RHO_STEEL = 7.85e-3
 RHO_BRASS = 8.5e-3
+CTE_316L = 16.0e-6       # 1/K
+CTE_PA12GF = 60e-6       # [assume] SLS PA12-GF in-plane; the figure magnet-placement.md section 4 used
+CTE_PA12 = 100e-6        # [assume] unfilled MJF/SLS PA12; SLA resins are similar or higher
+T_ASSY, T_HOT = 22.0, 60.0   # bond temperature; the magnets' own limit caps the rotor
 
 
 def annulus(ro, ri, h):

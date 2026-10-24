@@ -23,7 +23,7 @@ kernel-backed description of the six machined parts. It repeats only their *topo
 from `dial_spinner.scad` through `scadvars.py`, and `tests/test_models.py` fails if the two drift:
 
 ```
-~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 48 tests, ~7 s
+~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 51 tests, ~7 s
 ```
 
 The exact and meshed volumes agree to 0.011 % on the ring and 0.34 % on the spindle, in the direction

@@ -298,7 +298,7 @@ have moved into a printed shim, below. Net ring mass 108.3 g. Price: §13 item 7
 | Balance holes | 4 × M2 tapped, 3 deep, in the bottom face at r 31, θ 45/135/225/315° |
 | Process order | rough-turn → **knurl** → N52 cling test → *only if it clings:* solution-anneal (1050 °C, water quench) → **finish-turn faces, ID, chamfers and the recess** to the TIR/flatness specs → drill/tap balance holes → repeat the cling test. Never anneal a finished ring (distortion, scale). Never nickel-plate (ferromagnetic). |
 
-**Magnet shim (printed blank, machined bores).** A Ø61.90 / Ø54 × 1.95 plate with 48 Ø2.03 +0.01/0 **through**
+**Magnet shim (printed blank, machined bores).** A Ø61.88 / Ø54 × 1.95 plate with 48 Ø2.03 +0.01/0 **through**
 bores at R 29.000, every 7.5°, that drops into the ring's recess. It exists to get the 48 blind pockets out of the
 steel: they were a flat-bottom milling operation held to ±0.02 in stainless, and as through bores they need no depth
 control at all. The quote bears it out — §13 item 7 fell from **$71.45 to $52.49**, machining $60.01 → $41.05.
@@ -339,11 +339,29 @@ web is then cut, not printed. What the webs still fix is the recess at Ø62: nar
 inertia back on 0.45 mm walls, which is unmanufacturable by any route. Widening past Ø63.2 would put the damping
 pad (r 31.6–32.4, §7) onto plastic.
 
-**The shim is centred on a mandrel in the ring ID at bond time, not by the recess wall.** A rigid eccentricity of
-the whole pattern displaces every magnet the same way, so the track's tangential offset swings once per revolution
-at gain 1.0 rather than the 0.542 single-magnet gain: 0.198° mechanical per 0.1 mm. At the recess clearance that is
-up to 1.58× the ±0.25° the unlocked firmware accepts. Feel is indifferent to it (the 1/rev budget is 1.30 mm),
-which is why it went unnoticed until the placement study looked for it.
+**The recess wall centres the shim, so the recess is a fit and the pattern is held to the OD.** A rigid
+eccentricity *e* of the whole pattern displaces every magnet the same way, so the track's tangential offset swings
+once per revolution at gain 1.0 rather than the 0.542 single-magnet gain: `e / R_t`, 0.198° mechanical per 0.1 mm.
+Feel is indifferent to it (the 1/rev budget is 1.30 mm), so only the encoder bounds it, at the ±0.25° the unlocked
+firmware accepts — e ≤ 0.127 mm. Three terms add up to it, and all three are now on the drawings:
+
+| term | spec | worst-case e |
+|---|---|---|
+| plate in recess | recess Ø62.00 +0.02/0, plate Ø61.88 +0/−0.02 | 0.080 |
+| recess to the bearing axis | recess coaxial to the Ø54 H7 bore within Ø0.02 | 0.010 |
+| bore pattern to the plate OD | composite position, pattern Ø0.05 to A and B | 0.025 |
+| **total** | | **0.115 mm = 0.227°, 0.91× the budget** |
+
+Before this the recess Ø had no tolerance at all, so it fell to ISO 2768-m — ±0.3 on a Ø62, at which a Ø61.70
+recess refuses the plate — and the pattern callout was Ø0.60, which alone allowed 0.59°. An earlier version of
+this paragraph prescribed a mandrel in the ring ID instead; it cannot work, because the plate's ID is left as
+printed (±0.3) and locates nothing. Cutting the OD and the pattern in one setup makes Ø0.05 cheap.
+
+**The plate is PA12-GF and nothing else, because the OD clearance is also the thermal clearance.** Against 316L,
+PA12-GF (~60 ppm/K) grows 0.052 mm on the plate's radius from a 22 °C bond to the magnets' 60 °C limit, inside the
+0.06 mm minimum clearance. Unfilled PA12 (~100 ppm/K) or an SLA resin grows ~0.10 and is in interference above
+~45 °C — so the plate cannot be opened up for those without spending the eccentricity budget. Both CTEs are
+assumptions; `tests/test_models.py` asserts the unfilled case fails, so a material change cannot pass quietly.
 
 **Rotor carrier.** PA12-GF (SLS) or MJF PA12-GB, 5.6 g, no ribs (the old ribs at z 16.2–17 sat below SPEC's web and
 in the wire space). Print with +0.4 mm stock on the bore and register, then **bore Ø22 H7 and turn the register to
@@ -395,9 +413,9 @@ face is the GND contact). Correct magnet-only errors at the magnet cup.
 
 | Item | Spec |
 |---|---|
-| Magnets | 48 × NdFeB **N52 Ø2.0 × 2.0 mm, axial, NiCuNi**, all from one batch (± 0.05 mm, ± 5 % Br). **Buy ~200 and diameter-sort them**: the realised float is set by the width of the bin you pick from, not by the vendor's tolerance, so sorting a catalogue lot beats paying for ground magnets. Reserve a 0.01-wide bin, 1.99–2.00. |
+| Magnets | 48 × NdFeB **N52 Ø2.0 × 2.0 mm, axial, NiCuNi**, all from one batch (± 0.05 mm, ± 5 % Br). **Buy ~200 and diameter-sort them**: the realised float is set by the bore, not by the vendor's tolerance, so sorting a catalogue lot beats paying for ground magnets. Take the **densest 0.02-wide bin** of the measured lot and ream to its floor + 0.04 (Ø2.03 for 1.99–2.01). Not 0.01: the worst-case clearance is 0.025 whatever the bin width, and a 0.01 bin of a normal ±0.05 lot holds ~22 % — ~45 of 200, short of 48 — against ~44 % for 0.02. |
 | Layout | Alternating N/S, **R_t = 29.0**, pitch 7.5° (3.80 mm chord): 24 electrical periods = 24 detents. Zero DC field, so stray steel causes 10–100× less cogging than a same-polarity track. |
-| Bores | Ø2.03 +0.01/0 **through**, reamed in the shim — not printed, and no longer a pocket in the steel. Size them against the sorted bin for 0.015–0.037 mm of radial clearance: below ~0.037 the track's own field parks each magnet against one bore wall, spending the clearance radially where sensitivity is second order and no detent well moves at all ([magnet placement](magnet-placement.md) §5). |
+| Bores | Ø2.03 +0.01/0 **through**, reamed in the shim — not printed, and no longer a pocket in the steel. Sized against the sorted bin for 0.010–0.025 mm of radial clearance: below ~0.037 the track's own field parks each magnet against one bore wall, spending the clearance radially where sensitivity is second order and no detent well moves at all ([magnet placement](magnet-placement.md) §5). |
 | Flushness | ± 0.03 to the ring top face, set against a flat while the epoxy cures |
 | Adhesive | low-viscosity 2-part epoxy (3M DP420 / Loctite EA 9466). Seal the cured track with a thin wiped film. Keep it ≤ 60 °C (N52; N48H for hot use). |
 | Field at the sensor | Bt/Bz ≈ 15/18 mT peak at 3 mm, zero mean ([detent research, magpylib]). The TMAG5273A2 ±133 mT range is ample. |
@@ -859,7 +877,7 @@ as the model — see [`hardware/mechanical/README.md`](../hardware/mechanical/RE
 | 5 | Track magnets | NdFeB **N52 Ø2 × 2 axial, NiCuNi** | 60 | supermagnete, first4magnets, AliExpress (one batch) | $3–6 | not K&J D11 (§6) |
 | 6 | Detent magnet | NdFeB **N52 Ø3 × 2 axial** | 3 | as above; near-equivalent [K&J D21B-N52](https://www.kjmagnetics.com/d21b-n52-neodymium-disc-magnet) (1/8″ × 1/16″, slightly weaker) | $1 | |
 | 7 | Flywheel ring | 316L, 70/54/10, **turning only**: chamfers 1.0 top-outer / 1.5 bottom-outer / 0.5 bottom-inner, Ø62.00 × 2.00 magnet-shim recess in the top face, 4× M2 balance holes at r 31, straight knurl z 17.1–24.1, process order §5 (`drawings/rotor_ring.pdf`, `step/rotor_ring.step`; the knurl is a drawing callout, not modelled: with it the model gives 109.5 g, §14) | 1 | JLCCNC / PCBWay CNC / local | **$52.49 quoted** (JLCCNC, SUS304, qty 1, 2026-10-20: machining $41.05, material $6.91, engineering $4.53, no finish). Was **$71.45** with the 48 blind pockets, so moving them to the shim (item 7a) saved **$18.96**, machining −32 %. 316L not offered there; get a PCBWay quote | magnetism check: JLC warn 304 may become weakly magnetic after cold working |
-| 7a | Magnet shim | **Printed blank, machined bores.** Print `stl/magnet_shim_blank.stl` solid (Ø62 / Ø54 × 1.95), then ream 48 Ø2.03 +0.01/0 **through** at R 29.000 every 7.5° and turn the OD to Ø61.90 in the same setup (`drawings/magnet_shim.pdf`, `step/magnet_shim.step`, §5). Size the bores against a diameter-sorted magnet lot, §6 | 1 | blank: JLC3DP / PCBWay MJF PA12 or SLS PA12-GF. Bores: any small shop | blank **$0.32 quoted** (JLC3DP, qty 1, 2026-10-20). **The 48-bore operation is UNQUOTED and is the one open price in §5's recommendation** — anchor: 48 depth-controlled pockets in stainless cost $18.96 of machining (item 7), and 48 through bores in a 1.95 plate is a strictly smaller job | **Resolve the material before ordering:** the row specifies MJF/SLS PA12 but the $0.32 is a 9600 **SLA resin** quote, and 9600's 59 °C HDT sits below the magnets' own 60 °C limit, making the shim the rotor's thermal weak point. Do not put it through the 70–75 °C PCBA bake |
+| 7a | Magnet shim | **Printed blank, machined bores.** Print `stl/magnet_shim_blank.stl` solid (Ø62 / Ø54 × 1.95), then ream 48 Ø2.03 +0.01/0 **through** at R 29.000 every 7.5° and turn the OD to Ø61.88 in the same setup (`drawings/magnet_shim.pdf`, `step/magnet_shim.step`, §5). Size the bores against a diameter-sorted magnet lot, §6 | 1 | blank: JLC3DP / PCBWay **SLS PA12-GF only** (§5: the OD clearance is also the thermal clearance). Bores: any small shop | blank **$0.32 quoted** (JLC3DP, qty 1, 2026-10-20). **The 48-bore operation is UNQUOTED and is the one open price in §5's recommendation** — anchor: 48 depth-controlled pockets in stainless cost $18.96 of machining (item 7), and 48 through bores in a 1.95 plate is a strictly smaller job | **Re-quote in PA12-GF before ordering:** the $0.32 is a 9600 **SLA resin** quote, and resin fails twice — its 59 °C HDT sits below the magnets' own 60 °C limit, and its expansion closes the OD clearance by ~45 °C. Do not put the shim through the 70–75 °C PCBA bake |
 | 8 | **Spindle** | turned **316L** from Ø12 bar: Ø8 h6, bore Ø6 (z 14.45–28.25), flange Ø10 × 0.6 with D-flat, D-flats at θ 90 (z 12.8–18, 25–29.05), slots 5.0 wide at θ 120 (z 14.45–16.35) and θ 270 (z 25.8–28.25), pad pocket Ø3.6 × 0.45 in a Ø7.8 × 0.5 relief, **M4×0.5 spigot** Ø4 to z 32.3 (`drawings/spindle.pdf`, `step/spindle.step`) | 1 (+1) | CNC turning service | $15–30 | NM; check with an N52 |
 | 9 | **Hub** | turned **C360 brass**, Ø17 flange × 3.0 + Ø11.5 × 1.1 spacer, D-bore, 3× **M2 tapped** 2.6 deep at r 6.5 (θ 90/210/330), 5.0 mm C-gap at θ 270 (`drawings/spindle_hub.pdf`, `step/spindle_hub.step`) | 1 | CNC | $8–15 | no heat-set inserts (a 0.4 mm wall would split). **The model's bore is still round** — the D is in this spec and on the drawing as an OPEN note, not in `dial_spinner.scad`; cut it in before ordering |
 | 10 | **Lower spacer** | turned C360 brass, Ø11.5 × 3.7 + flange Ø21.2 × 0.45, D-bore, 5.0 window at θ 120 (`drawings/lower_spacer.pdf`, `step/lower_spacer.step`) | 1 | CNC | $5–10 | replaces the bonded POM spacer. **The model's bore is still round** — same open D-bore as item 9 |

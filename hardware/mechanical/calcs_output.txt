@@ -8,12 +8,12 @@ part                                    mass g  I kg*m^2   z_cg mm
 --------------------------------------  ------  ---------  -------
 316L ring 70/54/10, recessed (net)      108.33  1.065e-04  20.23  
 48x N52 Ø2x2 magnets                    2.26    1.902e-06  24.60  
-printed magnet shim (PA12-GF)           1.37    1.160e-06  24.58  
+printed magnet shim (PA12-GF)           1.37    1.155e-06  24.58  
 PA12-GF carrier (no ribs)               5.55    2.120e-06  18.54  
 608-2Z rotating share                   7.65    8.116e-07  21.50  
 wave washer + 316 cap ring + ESD strap  0.98    1.345e-07  25.50  
 adhesive (bond line, magnets)           0.40    2.916e-07  20.00  
-TOTAL rotor                             126.56  1.129e-04  20.40  
+TOTAL rotor                             126.55  1.129e-04  20.40  
 
 Bearing mid-plane z = 21.50 mm; rotor CoG offset = -1.10 mm (negative = below the balls).
 Radius of gyration = 29.9 mm.  The ring alone is 94 % of I.  The 1.5 mm bottom-outer chamfer (USB-C plug clearance) costs 1.7 g vs a 0.5 chamfer.
@@ -39,7 +39,7 @@ bearing       nu mm2/s  M @600 rpm
 ------------  --------  ----------
 608-2Z        10        0.098     
 608-2Z        20        0.143     
-608-2Z        200       0.523     
+608-2Z        200       0.522     
 61808 (6808)  10        1.052     
 61808 (6808)  20        1.576     
 61808 (6808)  200       5.506     
