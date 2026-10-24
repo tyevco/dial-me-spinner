@@ -105,8 +105,17 @@ not whether the design is finished.
 
 1. **Headers.** Solder plain male headers from the bottom, plastic on top, pins down into the DK. Stacking headers
    would put the panel 8 mm higher.
-2. **Panel.** It sits face-up over the shield on a ~4 mm spacer. The silk circle is the Ø48.96 Huaxin glass; the
-   Viewe glass is Ø48.16. Everything under the outline is ≤ 1.2 mm, and the tall jumpers are outside it.
+2. **Panel.** It sits face-up over the shield in the printed **panel spacer**, `stl/bench_panel_spacer.stl` from
+   `hardware/mechanical/bench.scad`. The spacer:
+   - holds the glass edge on a ledge 4.0 mm above the board, in a Ø49.36 pocket. That fits the Ø48.96 Huaxin glass
+     and the Ø48.16 Viewe glass with 0.4 mm of play. The silk circle is the outline to line it up on;
+   - flies 2.8 mm up, over the 2.54 mm header plastic;
+   - stands on three Ø4 feet at θ 25°/115°/215° about the glass centre. A scan of every courtyard and pad on the
+     routed board found these clear by 7 mm or more, and `tests/test_bench.py` re-checks them against the board;
+   - is open over θ 155–200°, where the tail folds under.
+
+   Tape the feet down. Print it lip-down, as exported, and nothing bridges. Everything under the outline is ≤ 1.2 mm,
+   and the tall jumpers are outside it.
 3. **Tail.** Fold the tail behind the panel as the vendor's fold diagram shows, contacts down, into J2 from the left
    (the fold side). J2 is a **back-flip** FH26W: lift the actuator, which faces right, before inserting. Do not close it
    first, per Hirose.
@@ -164,7 +173,11 @@ The shield needs its own SPIM3 pinctrl. Zephyr's `arduino_spi` pins are P1.13–
 From the bottom up:
 
 1. **NFC base**, Ø64 × 1.6 mm. Its top is one unbroken GND pour, standing in for the main board's In1 plane.
-2. **A 3.0 mm printed spacer**, pinned through the three Ø2.2 locating holes at r 19.
+2. **The NFC spacer**, `stl/bench_nfc_spacer.stl`: a ring at r 16.5–21.5, 2.76 mm tall. With the 0.24 mm ferrite on
+   top of it, the plate sits 3.0 mm above the base top. M2 × 4 screws come up through the base's Ø2.2 holes at r 19
+   and self-tap into the spacer's Ø1.6 holes. The plate drops in between three tabs at its edge (θ 30°/150°/270°,
+   clear of W1/W2 and J2), flush with the plate top, so the panel rests on the plate and not on them. The spacer
+   prints flat with no supports. The screws stop 0.36 mm below the spacer's top, so the ferrite needs no holes.
 3. **The IFL05K sheet**, 0.2 mm, cut to the plate's outline and notches and stuck to the plate's **bottom**.
 4. **The coil plate**, 0.4 mm FR4, r 26.6.
 5. **The panel**, on top.
@@ -215,7 +228,6 @@ Keep the two pins matched, and tune slightly high, because a phone at contact pu
   side opposite the actuator, and from KiCad's 3D model. Check it on the first board before fitting the panel.
 - **Where the folded tail lands.** It needs a sample panel. So does the tail cutout in the support plate (option 1 in
   `display-study.md` §3.4). This plate is the full disc of option 2.
-- **The panel spacer and the NFC stack spacer.** Neither is modelled in `hardware/mechanical/` yet.
 - **The panel's top operating temperature.** The Huaxin specification contradicts itself. Its §6 absolute maximum
   ratings give −20 to **+60 °C**, while the notes on its mechanical drawing give −20 to +70 °C, the figure in
   `display-study.md` §3.1. Ask the vendor, and design to +60 until they answer.

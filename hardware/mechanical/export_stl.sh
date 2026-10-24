@@ -17,4 +17,9 @@ export_one() {
 }
 export -f export_one
 printf '%s\n' "${parts[@]}" | xargs -P 4 -I{} bash -c 'export_one {}'
+# rev B bench fixtures (bench.scad), in print orientation: docs/rev-b-bench.md
+for p in bench_panel_spacer bench_nfc_spacer; do
+  openscad -o "stl/$p.stl" --export-format binstl -D "part=\"$p\"" bench.scad 2>&1 \
+    | grep -E "WARNING|ERROR" | sed "s/^/[$p] /" || true
+done
 ls -l stl
