@@ -125,17 +125,58 @@ not whether the design is finished.
 
 ### Firmware: a DK overlay
 
+The bench firmware is [`firmware/bench`](../firmware/bench/README.md): a Zephyr app with the overlay below, the
+bring-up sequence, and shell commands for each bench check. Build it now; it is ready to flash when the boards
+arrive.
+
 The shield needs its own SPIM3 pinctrl. Zephyr's `arduino_spi` pins are P1.13–P1.15, all low-frequency pins. The
 `chipone,co5300` driver uses SCK, one data line and CS, with command and data framed in-band (`0x02`, then
-`{0x00, CMD, 0x00}`), so there is no DC pin. Check the property names against the binding in your Zephyr tree.
+`{0x00, CMD, 0x00}`), so there is no DC pin.
+
+**The SPI variant of the driver is new.** It landed on Zephyr main in September 2026 (commit `2afc59f6`), and
+**v4.5.0-rc3** is the first tag that has it. In v4.4.2 and earlier, `chipone,co5300` is the MIPI-DSI binding,
+and an SPI node will not build. The firmware pins v4.5.0-rc3 (`firmware/bench/west.yml`).
+
+Checked against that binding (`chipone,co5300-spi.yaml` + `-common.yaml`), the property names are right:
+`spi-max-frequency`, `width`, `height`, `pixel-format` (RGB565 or RGB888 only), `reset-gpios` and
+`tear-effect-gpios`. The first draft of this overlay was wrong in five places:
+
+1. It never included `<zephyr/dt-bindings/display/panel.h>`, which defines `PANEL_PIXEL_FORMAT_RGB_565`.
+2. **It let the driver initialise at boot.** The driver runs its reset and init sequence at `POST_KERNEL`, before
+   `main()` can switch VBAT and VCI_EN on, so the panel would get its init while unpowered. The node needs
+   `zephyr,deferred-init;`, and the app calls `device_init()` after the rails.
+3. **It left the DK's `spi1` enabled.** The DK enables `spi1` on P0.31 (SCK), P0.30 (MOSI) and P1.08 (MISO):
+   TE, SIO1 and the display SCK. The overlay has to disable it.
+4. It gave the driver `tear-effect-gpios`. That is a valid property, but the driver's write then waits for TE with
+   `K_FOREVER`, so a panel that never pulses TE hangs every write. Its semaphore also keeps a stale TE, so it does
+   not truly sync to the next refresh. The app owns TE instead, in `zephyr,user`, and syncs with a timeout.
+5. It put high drive on MISO, an input. That is harmless, but MISO now has its own pinctrl group.
+
+`hardware/design/tests/test_bench_display.py` checks the overlay's pins against the routed board's J1 nets and
+SPEC §4's low-frequency list.
 
 ```dts
+#include <zephyr/dt-bindings/display/panel.h>
+
+/ {
+	chosen { zephyr,display = &co5300; };
+	zephyr,user {
+		disp-vbat-en-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;	/* D1, U1 ON */
+		disp-vci-en-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;	/* D4 */
+		disp-te-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;		/* A5 */
+		tp-int-gpios = <&gpio0 28 GPIO_ACTIVE_LOW>;		/* A2 */
+		tp-rst-gpios = <&gpio0 29 GPIO_ACTIVE_LOW>;		/* A3 */
+	};
+};
+
 &pinctrl {
 	spi3_disp: spi3_disp {
 		group1 {
-			psels = <NRF_PSEL(SPIM_SCK, 1, 8)>, <NRF_PSEL(SPIM_MOSI, 0, 4)>,
-				<NRF_PSEL(SPIM_MISO, 0, 30)>;		/* SIO1 read-back: a slow pin, reduced clock */
+			psels = <NRF_PSEL(SPIM_SCK, 1, 8)>, <NRF_PSEL(SPIM_MOSI, 0, 4)>;
 			nordic,drive-mode = <NRF_DRIVE_H0H1>;
+		};
+		group2 {
+			psels = <NRF_PSEL(SPIM_MISO, 0, 30)>;	/* SIO1 read-back: a slow pin, reduced clock */
 		};
 	};
 	spi3_disp_sleep: spi3_disp_sleep {
@@ -147,24 +188,31 @@ The shield needs its own SPIM3 pinctrl. Zephyr's `arduino_spi` pins are P1.13–
 	};
 };
 
+&spi1 { status = "disabled"; };				/* P0.31, P0.30, P1.08 on the DK */
+
 &spi3 {
 	pinctrl-0 = <&spi3_disp>;
 	pinctrl-1 = <&spi3_disp_sleep>;
+	pinctrl-names = "default", "sleep";
 	cs-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;			/* D10 */
-	display@0 {
+	co5300: display@0 {
 		compatible = "chipone,co5300";
 		reg = <0>;
-		spi-max-frequency = <32000000>;
+		spi-max-frequency = <DT_FREQ_M(32)>;
 		width = <466>;
 		height = <466>;
 		pixel-format = <PANEL_PIXEL_FORMAT_RGB_565>;
-		reset-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;		/* D0 */
-		tear-effect-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;	/* A5 */
+		reset-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;	/* D0 */
+		zephyr,deferred-init;				/* init after VBAT and VCI_EN */
 	};
 };
-/* DISP_VBAT_EN P1.02 and DISP_VCI_EN P1.05 are plain GPIOs: VBAT switch on, then VCI_EN, then reset. */
-/* Touch: &i2c0 (arduino_i2c) is already P0.26/P0.27 on the DK. */
+/* Touch: &i2c0 (arduino_i2c) is already P0.26/P0.27 on the DK. NFCT is on P0.09/P0.10. */
 ```
+
+The driver has three habits to watch on the bench. It sends display-on (29h) straight after sleep-out (11h), so
+the app waits 120 ms and sends 29h again. It hard-codes a column offset of 6. It sets MADCTL's BGR bit in RGB565
+unless the node has `red-blue-swap`. The [firmware README](../firmware/bench/README.md#unverified-until-the-bench)
+lists these with the other open points.
 
 ## 2. NFC coil plate and base
 
@@ -220,7 +268,9 @@ Keep the two pins matched, and tune slightly high, because a phone at contact pu
    - each of those with the real panel on top.
 2. **Phones.** Remove R4/R5 and wire J2 to the DK's NFC connector **J5**. On the DK, P0.09/P0.10 reach J5 through
    R44/R46 (0R). **Check the DK schematic for tuning capacitors on that path** before fitting C1–C4: any that are
-   fitted there sit in parallel with these. Read with an iPhone and an Android phone, contact to 4 cm.
+   fitted there sit in parallel with these. Run `nfc start` in the [bench firmware](../firmware/bench/README.md),
+   which makes the DK a read-only Type 2 tag holding one URL. Read it with an iPhone and an Android phone, from
+   contact out to 4 cm. `nfc status` counts the fields, selects and reads.
 
 ## 3. What these boards do not settle
 
