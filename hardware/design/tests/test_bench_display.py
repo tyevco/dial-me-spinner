@@ -13,6 +13,7 @@ list, so the two 32 MHz lines cannot drift onto a slow pin.
 Reads the netlist only: needs no KiCad.
 """
 import os
+import re
 import sys
 
 import pytest
@@ -92,3 +93,72 @@ def test_header_pins_are_each_used_once():
     """A4/SDA and A5/SCL share names in the symbol; a by-name assignment would short P0.30 to P0.26."""
     used = [n for n in pin_nets("J1").values() if n and n not in ("GND", "VDD_DK", "DK_3V3")]
     assert len(used) == len(set(used)), f"a header net appears twice: {sorted(used)}"
+
+
+# ---- The bench firmware's devicetree overlay against the shield ---------------------------
+#
+# firmware/bench/boards/nrf52840dk_nrf52840.overlay is hand-written.  Hold every pin it names
+# to the routed board's J1 nets, so a pin moved on one side and not the other fails here.
+
+OVERLAY = os.path.join(os.path.dirname(HW), "firmware", "bench", "boards", "nrf52840dk_nrf52840.overlay")
+
+#: Overlay pin source -> the J1 net it must drive.  I2C is absent: the DK's own i2c0 pinctrl
+#: (P0.26/P0.27) is used as is.
+OVERLAY_NETS = {
+    "SPIM_SCK": "DISP_SCK_DK", "SPIM_MOSI": "DISP_SIO0_DK", "SPIM_MISO": "DISP_SIO1",
+    "cs-gpios": "DISP_CS_N", "reset-gpios": "DISP_RES_N",
+    "disp-vbat-en-gpios": "DISP_VBAT_EN", "disp-vci-en-gpios": "DISP_VCI_EN",
+    "disp-te-gpios": "DISP_TE", "tp-int-gpios": "TP_INT", "tp-rst-gpios": "TP_RST_N",
+}
+
+
+def overlay_text():
+    text = open(OVERLAY, encoding="utf-8").read()
+    return re.sub(r"/\*.*?\*/", "", text, flags=re.S)       # comments name pins too
+
+
+def overlay_pins(state="spi3_disp"):
+    """{source: 'Px.yy'} for the SPIM pinctrl state `state` and every *-gpios property."""
+    text = overlay_text()
+    block = re.search(rf"\b{state}\s*:\s*{state}\s*\{{(.*?)\n\t\}};", text, flags=re.S).group(1)
+    out = {f: f"P{p}.{int(n):02d}" for f, p, n in
+           re.findall(r"NRF_PSEL\((SPIM_\w+),\s*(\d),\s*(\d+)\)", block)}
+    for prop, port, pin in re.findall(r"([\w-]+-gpios)\s*=\s*<&gpio(\d)\s+(\d+)\s", text):
+        out[prop] = f"P{port}.{int(pin):02d}"
+    return out
+
+
+def j1_gpio(net):
+    pins = [p for p, n in pin_nets("J1").items() if n == net]
+    assert len(pins) == 1, f"{net} on J1 pins {pins}"
+    return DK_GPIO[pins[0]]
+
+
+@pytest.mark.parametrize("source", sorted(OVERLAY_NETS))
+def test_overlay_pin_matches_board(source):
+    got = overlay_pins().get(source)
+    want = j1_gpio(OVERLAY_NETS[source])
+    assert got == want, f"overlay {source} is {got}; the board puts {OVERLAY_NETS[source]} on {want}"
+
+
+def test_overlay_sleep_state_keeps_the_pins():
+    awake, asleep = overlay_pins("spi3_disp"), overlay_pins("spi3_disp_sleep")
+    for f in ("SPIM_SCK", "SPIM_MOSI", "SPIM_MISO"):
+        assert asleep.get(f) == awake.get(f), f"{f}: {awake.get(f)} awake, {asleep.get(f)} asleep"
+
+
+@pytest.mark.parametrize("source", ["SPIM_SCK", "SPIM_MOSI"])
+def test_overlay_32mhz_lines_are_on_full_speed_pins(source):
+    gpio = overlay_pins()[source]
+    assert gpio not in LOW_FREQUENCY, f"{source} on {gpio}, a low-frequency-only pin (SPEC §4)"
+
+
+def test_overlay_covers_every_shield_signal():
+    signals = {n for n in pin_nets("J1").values()
+               if n and n not in ("GND", "VDD_DK", "DK_3V3", "I2C_SDA", "I2C_SCL")}
+    assert signals == set(OVERLAY_NETS.values())
+
+
+def test_overlay_disables_the_dk_spi1():
+    """The DK enables spi1 on P0.31/P0.30/P1.08: TE, SIO1 and the display SCK."""
+    assert re.search(r"&spi1\s*\{\s*status\s*=\s*\"disabled\";", overlay_text())
