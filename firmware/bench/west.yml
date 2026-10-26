@@ -1,0 +1,27 @@
+# Minimal west manifest for the rev B bench firmware.
+#
+# Zephyr v4.5.0-rc3 is the first tag whose chipone,co5300 driver speaks SPI
+# (commit 2afc59f6, "drivers: display: co5300: add SPI bus support"). v4.4.2,
+# the newest final release, has only the MIPI-DSI variant. Move to v4.5.0 when
+# it is tagged.
+#
+# Only the modules an nRF52840 build needs are fetched (name-allowlist), not
+# the ~70 projects of a full `west update`. setup-zephyr.sh copies this file
+# to ~/zephyrproject/manifest/west.yml and runs `west init -l` on it.
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.5.0-rc3
+      import:
+        name-allowlist:
+          - cmsis        # CMSIS-Core headers
+          - cmsis_6      # CMSIS 6, used by Cortex-M builds
+          - hal_nordic   # nrfx: SPIM, TWIM, GPIOTE, NFCT
+
+  self:
+    path: manifest
