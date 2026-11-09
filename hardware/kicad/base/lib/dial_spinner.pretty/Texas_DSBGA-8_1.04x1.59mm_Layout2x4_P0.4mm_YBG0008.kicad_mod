@@ -1,29 +1,27 @@
 (footprint "Texas_DSBGA-8_1.04x1.59mm_Layout2x4_P0.4mm_YBG0008"
-	(version 20241229)
+	(version 20260206)
 	(generator "pcbnew")
-	(generator_version "9.0")
+	(generator_version "10.0")
 	(layer "F.Cu")
 	(descr "Texas Instruments DSBGA-8 YBG0008-C01 (BQ25180YBGR), body 1.04x1.59 mm, 2x4 balls, 0.4 mm pitch, TI example land pattern: 0.23 mm NSMD copper, mask opening <= 0.05 mm larger (0.025 per side used), 0.25 mm square R0.05 paste apertures for a 0.1 mm stencil. https://www.ti.com/lit/ds/symlink/bq25180.pdf")
 	(tags "DSBGA YBG0008 BQ25180 BGA 0.4mm NSMD")
 	(property "Reference" ""
 		(at 0 -2.344999 0)
 		(layer "F.SilkS")
-		(uuid "1021d82a-2767-4525-b4c5-04b514120a79")
+		(uuid "a6c401e4-670d-48bc-ae31-360d6d4e1f5f")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
 	(property "Value" ""
 		(at 0 2.325 0)
 		(layer "F.Fab")
-		(uuid "22244027-2ce4-449e-a4c1-2b351d5ce1e0")
+		(uuid "cd335d00-f08d-4755-ab66-b65b018f426b")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
@@ -31,11 +29,10 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "951681a5-c383-4f04-a9b1-374c96fdf2c8")
+		(uuid "1042d0ff-4338-4b30-8159-012faa23540c")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
@@ -43,15 +40,15 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "7e9be51b-6f06-4754-92fb-0c7c69c75d73")
+		(uuid "ff430aeb-52d2-4c2a-98f3-007ec4a562fe")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
 	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
 	(fp_rect
 		(start -0.62 -0.895)
 		(end 0.62 0.895)
@@ -61,7 +58,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "d07c1575-59e9-427b-91de-0506485fa327")
+		(uuid "5ff08228-9898-4a16-8e3e-b6a886110ddb")
 	)
 	(fp_circle
 		(center -0.92 -1.044999)
@@ -72,7 +69,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "fcf6f0f3-16d4-4ca0-b5ef-68528fc53c1f")
+		(uuid "88575319-108d-4ee9-9b9f-b7e30ed9ad7c")
 	)
 	(fp_rect
 		(start -1.02 -1.3)
@@ -83,7 +80,7 @@
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "8265ca08-02bc-4115-b534-103b736bd4bc")
+		(uuid "a321d37d-8c71-4255-a509-3f6fc505ce4f")
 	)
 	(fp_line
 		(start -0.52 -0.545)
@@ -93,7 +90,7 @@
 			(type default)
 		)
 		(layer "F.Fab")
-		(uuid "24938a83-f256-4f0e-b883-347b88e0f853")
+		(uuid "b757c485-d1e8-4f9d-8d49-0c42b06391fd")
 	)
 	(fp_rect
 		(start -0.52 -0.795)
@@ -104,7 +101,7 @@
 		)
 		(fill no)
 		(layer "F.Fab")
-		(uuid "0f5e9ee8-c8cd-469c-8831-34f27842561a")
+		(uuid "8d17f833-ddb5-46ad-b837-18dcd6f37956")
 	)
 	(pad "" smd roundrect
 		(at -0.2 -0.6)
@@ -112,7 +109,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "c885ea4c-2d7f-45b6-a4cd-38736e0400f7")
+		(uuid "0a5631ce-3e98-493a-97e3-0878914a1d9e")
 	)
 	(pad "" smd roundrect
 		(at -0.2 -0.2)
@@ -120,7 +117,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "8f74fe09-6fb7-43ab-be6b-514352bfc4ca")
+		(uuid "eb9fea1c-04a0-410c-a3dd-9ee3c693868f")
 	)
 	(pad "" smd roundrect
 		(at -0.2 0.2)
@@ -128,7 +125,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "26cfbd43-618e-446a-8be5-6c7bd4b1233f")
+		(uuid "ca8aacda-755e-4085-b9b9-3d5afe510327")
 	)
 	(pad "" smd roundrect
 		(at -0.2 0.6)
@@ -136,7 +133,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "c03fbce7-2690-4905-850b-58cca570e527")
+		(uuid "7f5b89e2-6bfc-4da7-ab21-15515c7b7439")
 	)
 	(pad "" smd roundrect
 		(at 0.2 -0.6)
@@ -144,7 +141,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "8642b515-cb4b-4009-9cfb-f61ae6a8a124")
+		(uuid "b2511b3a-60d6-40bf-83f5-c0e21a8766cc")
 	)
 	(pad "" smd roundrect
 		(at 0.2 -0.2)
@@ -152,7 +149,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "7e5c652f-59ef-4b95-a011-c0eb2d4dc69a")
+		(uuid "b76a52d2-f356-4155-a827-da5e2b45faba")
 	)
 	(pad "" smd roundrect
 		(at 0.2 0.2)
@@ -160,7 +157,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "bdb01c9c-88a7-42eb-991f-8febdab931da")
+		(uuid "96c5804b-ad2b-4892-8eb0-db07c8a90e86")
 	)
 	(pad "" smd roundrect
 		(at 0.2 0.6)
@@ -168,7 +165,7 @@
 		(layers "F.Paste")
 		(roundrect_rratio 0.2)
 		(thermal_bridge_angle 45)
-		(uuid "523d3115-d7f1-4890-a359-282be1031129")
+		(uuid "098342d0-03f3-4c8b-a33f-7c966e4a884d")
 	)
 	(pad "A1" smd circle
 		(at -0.2 -0.6)
@@ -176,7 +173,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "c80ccb53-d6c5-4b89-a246-587543d07352")
+		(uuid "a4523787-7dea-4b2a-8689-111aab0d109e")
 	)
 	(pad "A2" smd circle
 		(at 0.2 -0.6)
@@ -184,7 +181,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "660ec524-da23-468f-b298-72d2bd2ab530")
+		(uuid "181f275d-2121-40b5-bd70-35330799509c")
 	)
 	(pad "B1" smd circle
 		(at -0.2 -0.2)
@@ -192,7 +189,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "4aee19ab-a8c3-407f-985a-99e5940662be")
+		(uuid "57426c8c-8954-4290-b5b8-0e02d5b309d6")
 	)
 	(pad "B2" smd circle
 		(at 0.2 -0.2)
@@ -200,7 +197,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "6c4c84f1-52e5-402a-b582-c8f9f944d5ee")
+		(uuid "0486e7b1-dcd8-471a-a3a9-357290df7916")
 	)
 	(pad "C1" smd circle
 		(at -0.2 0.2)
@@ -208,7 +205,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "4dafd5c2-6339-4d19-bb07-652f644e07cf")
+		(uuid "3590f60b-60f5-4fab-8dc9-ca91c8518750")
 	)
 	(pad "C2" smd circle
 		(at 0.2 0.2)
@@ -216,7 +213,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "2bc30a12-0a3d-4788-bb3f-ed5f542a196b")
+		(uuid "4e5162e0-5198-4c80-b232-25461b1aa8f7")
 	)
 	(pad "D1" smd circle
 		(at -0.2 0.6)
@@ -224,7 +221,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "8c3c2fe1-69a3-41aa-bc5f-ddb086608bae")
+		(uuid "3cfd8d3d-29d0-4ebd-b5e4-c4d37f85be5b")
 	)
 	(pad "D2" smd circle
 		(at 0.2 0.6)
@@ -232,7 +229,7 @@
 		(property pad_prop_bga)
 		(layers "F.Cu" "F.Mask")
 		(solder_mask_margin 0.025)
-		(uuid "2445cdd6-8e8f-46a0-9484-28fd2d68782e")
+		(uuid "753fd4df-d816-42e1-bc17-68c851ec0bc6")
 	)
 	(embedded_fonts no)
 )

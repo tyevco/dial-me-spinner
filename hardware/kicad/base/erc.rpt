@@ -1,4 +1,4 @@
-ERC report (2026-10-19T10:07:13+0000, Encoding UTF8)
+ERC report (2026-11-09T07:00:23, Encoding UTF8)
 Report includes: Errors, Warnings, Exclusions
 
 ***** Sheet /
@@ -6,3 +6,9 @@ Report includes: Errors, Warnings, Exclusions
 ***** Sheet /Base board/
 
  ** ERC messages: 0  Errors 0  Warnings 0
+
+ ** Ignored checks:
+    - Global label only appears once in the schematic
+    - Four connection points are joined together
+    - SPICE model issue
+    - Assigned footprint doesn't match footprint filters

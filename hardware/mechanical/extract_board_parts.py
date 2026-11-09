@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract component envelopes from the KiCad boards into the mechanical model.
 
-    python3 extract_board_parts.py        # needs KiCad 9 pcbnew (python3-kicad)
+    python3 extract_board_parts.py        # needs KiCad 10 pcbnew (python3-kicad)
 
 Reads hardware/kicad/{main,base}/*.kicad_pcb and writes
   board_parts.scad   OpenSCAD arrays used by dial_spinner.scad

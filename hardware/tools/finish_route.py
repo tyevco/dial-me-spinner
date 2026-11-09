@@ -212,7 +212,7 @@ class Router:
         self.hole2hole = TO_MM(ds.m_HoleToHoleMin)
         self.edge_clr = TO_MM(ds.m_CopperEdgeClearance)
         self.outline = pcbnew.SHAPE_POLY_SET()
-        b.GetBoardPolygonOutlines(self.outline)
+        b.GetBoardPolygonOutlines(self.outline, True)
         self.added = []  # (netname, [uuids]) per connection
         self.ripped = set()
 
@@ -646,7 +646,7 @@ def anchor_end(b, net, pt, layer, w, exclude=()):
     for o in olds:
         if o.Type() == pcbnew.PCB_VIA_T or o.GetLayer() != layer or not o.HitTest(pt, 0):
             continue
-        a, c = o.GetStart(), o.GetEnd()
+        a, c = pcbnew.VECTOR2I(o.GetStart()), pcbnew.VECTOR2I(o.GetEnd())  # copies: KiCad 10 returns references
         if (a - pt).EuclideanNorm() <= tol or (c - pt).EuclideanNorm() <= tol:
             return []
         q = pcbnew.SEG(a, c).NearestPoint(pt)

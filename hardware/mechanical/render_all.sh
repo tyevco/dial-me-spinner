@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate every render, STL, STEP, drawing, calculation output and clash report of
 # hardware/mechanical/.
-# Needs OpenSCAD 2021.01, xvfb-run, python3 + numpy + matplotlib; KiCad 9 pcbnew (python3) to refresh
+# Needs OpenSCAD 2021.01, xvfb-run, python3 + numpy + matplotlib; KiCad 10 pcbnew (python3) to refresh
 # board_parts.scad from the PCBs, build123d for the machined parts' STEP and drawings, and
 # rsvg-convert for their PDFs (each skipped with a warning if missing).  ~7 min on 4 cores.
 set -eu

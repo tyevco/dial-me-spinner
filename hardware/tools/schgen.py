@@ -1,4 +1,4 @@
-"""Generate KiCad 9 hierarchical schematics from a Python netlist description.
+"""Generate hierarchical schematics (KiCad 9 file format, which KiCad 10 opens as is) from a Python netlist description.
 
 Every pin is wired with a short stub ending in a net label (local label if the
 net lives on one sheet, global label if it spans sheets) or a power symbol for

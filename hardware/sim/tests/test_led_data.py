@@ -202,7 +202,7 @@ def pcb_net_lengths():
             net = find(pad, "net")
             if not net:
                 continue
-            nn = short(str(net[2]) if len(net) > 2 else netname.get(str(net[1]), ""))
+            nn = short(str(net[2]) if len(net) > 2 else netname.get(str(net[1]), str(net[1])))  # KiCad 10: (net "name")
             pa = find(pad, "at")
             px, py = float(pa[1]), float(pa[2])
             pads.setdefault(nn, []).append(((ref, str(pad[1])),
