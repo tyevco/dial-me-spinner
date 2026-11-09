@@ -100,6 +100,19 @@ class Design:
                      for p in find_all(c, "property")}
             self.comps[ref] = dict(ref=ref, value=str(find(c, "value")[1]), fields=fields, props=props,
                                    dnp="dnp" in props or bool(fields.get("DNP")))
+        # Pin names from the library parts: KiCad 10 writes a node's pinfunction as "<name>_<number>" ("SDA_C1"),
+        # KiCad 9 wrote "<name>", so the name is taken from (libparts) and the pinfunction is only a fallback.
+        libpins = {}
+        for lp in find_all(find(tree, "libparts") or [], "libpart"):
+            key = (str(find(lp, "lib")[1]), str(find(lp, "part")[1]))
+            pins = find(lp, "pins")
+            libpins[key] = {str(find(q, "num")[1]): str(find(q, "name")[1])
+                            for q in (find_all(pins, "pin") if pins else []) if find(q, "name")}
+        refpins = {}
+        for c in find_all(find(tree, "components"), "comp"):
+            ls = find(c, "libsource")
+            if ls:
+                refpins[str(find(c, "ref")[1])] = libpins.get((str(find(ls, "lib")[1]), str(find(ls, "part")[1])), {})
         self.nets = {}      # net -> [(ref, pin, pinfunction)]
         self.pins = {}      # ref -> {pin: net}
         self.funcs = {}     # ref -> {pinfunction: net}
@@ -111,6 +124,9 @@ class Design:
                 ref, pin = str(find(nd, "ref")[1]), str(find(nd, "pin")[1])
                 pf = find(nd, "pinfunction")
                 func = str(pf[1]) if pf else ""
+                name = refpins.get(ref, {}).get(pin)
+                if func and name and func in (name, f"{name}_{pin}"):
+                    func = name
                 lst.append((ref, pin, func))
                 self.pins.setdefault(ref, {})[pin] = short
                 if func:

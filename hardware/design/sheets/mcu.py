@@ -117,7 +117,7 @@ def footprints(fpgen, lib_dir):
     # MDBT50Q-1MV2/-P1MV2 on-module antenna. The U1MV2 radiates through its u.FL cable, so that
     # keep-out would only block the ground plane and the LED ring above it. The small F.Cu
     # keep-out under the module's RF test area is kept.
-    io = fpgen.pcbnew.PCB_IO_MGR.PluginFind(fpgen.pcbnew.PCB_IO_MGR.KICAD_SEXP)
+    io = fpgen.pcbnew.PCB_IO_MGR.FindPlugin(fpgen.pcbnew.PCB_IO_MGR.KICAD_SEXP)
     mod = io.FootprintLoad("/usr/share/kicad/footprints/RF_Module.pretty", "Raytac_MDBT50Q")
     for z in list(mod.Zones()):
         if z.GetIsRuleArea() and z.GetLayerSet().CuStack().size() > 1:

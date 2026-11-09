@@ -115,7 +115,7 @@ def footprints(fpgen, lib_dir):
     # courtyard: body + 0.25 mm, pads + 0.25 mm
     fp.courtyard_rect(-5.25, -4.75, 5.25, 4.75)
     m = pcbnew.FP_3DMODEL()
-    m.m_Filename = "${KICAD9_3DMODEL_DIR}/Buzzer_Beeper.3dshapes/Buzzer_Murata_PKMCS0909E.step"
+    m.m_Filename = "${KICAD10_3DMODEL_DIR}/Buzzer_Beeper.3dshapes/Buzzer_Murata_PKMCS0909E.step"
     fp.fp.Models().push_back(m)
     fp.save(lib_dir)
 
