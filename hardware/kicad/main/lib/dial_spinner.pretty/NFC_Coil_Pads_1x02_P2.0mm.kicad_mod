@@ -1,29 +1,27 @@
 (footprint "NFC_Coil_Pads_1x02_P2.0mm"
-	(version 20241229)
+	(version 20260206)
 	(generator "pcbnew")
-	(generator_version "9.0")
+	(generator_version "10.0")
 	(layer "F.Cu")
 	(descr "NFC coil flex-tail solder pads, 2 pads 1.2 x 2.0 mm at 2.0 mm pitch, no paste")
 	(tags "NFC antenna coil pads")
 	(property "Reference" ""
 		(at 0 -2.275 0)
 		(layer "F.SilkS")
-		(uuid "5c9174a9-378b-4e93-b1de-29dc72003cb1")
+		(uuid "4b540340-500e-4cc9-ac02-a3a5b094904b")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
 	(property "Value" ""
 		(at 0 2.275 0)
 		(layer "F.Fab")
-		(uuid "96954333-5787-41b0-bb39-f9c4470d4483")
+		(uuid "bfdb1ea2-fb1b-401e-a4be-fac90b0619c7")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
@@ -31,11 +29,10 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "913871ae-4496-4d77-b4f6-fb61ea5c91e2")
+		(uuid "8b6b41c0-ca8d-479b-baae-7c81ec20925d")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
@@ -43,15 +40,15 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "e1bec400-8179-4b42-b4bf-5cb5e7d4c25f")
+		(uuid "03d4c5eb-cf95-4d93-ba94-210e78ba4e2c")
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.15)
 			)
 		)
 	)
 	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
 	(fp_rect
 		(start -1.85 -1.25)
 		(end 1.85 1.25)
@@ -61,7 +58,7 @@
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "041d5395-a36f-4619-97a6-8dea105d5457")
+		(uuid "72a5320d-49a7-4f85-955f-2ec4bc64a490")
 	)
 	(fp_rect
 		(start -1.6 -1)
@@ -72,7 +69,7 @@
 		)
 		(fill no)
 		(layer "F.Fab")
-		(uuid "ad239acc-54c8-4e32-8712-fced50e1aa7a")
+		(uuid "84e1827b-0642-4edf-bd8f-853afc853fbc")
 	)
 	(pad "1" smd roundrect
 		(at -1 0)
@@ -80,7 +77,7 @@
 		(layers "F.Cu" "F.Mask")
 		(roundrect_rratio 0.25)
 		(thermal_bridge_angle 45)
-		(uuid "114f1ae5-ea7f-496f-8408-632850ec8b37")
+		(uuid "ce6ac295-3927-4c48-8369-8020a7527a55")
 	)
 	(pad "2" smd roundrect
 		(at 1 0)
@@ -88,7 +85,7 @@
 		(layers "F.Cu" "F.Mask")
 		(roundrect_rratio 0.25)
 		(thermal_bridge_angle 45)
-		(uuid "7fa98ef6-8e5d-410e-b097-15500eb6941e")
+		(uuid "d624dcb7-31e0-413d-bbec-392786a6143f")
 	)
 	(embedded_fonts no)
 )

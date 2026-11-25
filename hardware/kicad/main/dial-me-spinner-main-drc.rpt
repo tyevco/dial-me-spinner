@@ -1,11 +1,38 @@
 ** Drc report for dial-me-spinner-main.kicad_pcb **
-** Created on 2026-10-19T20:23:27+0000 **
+** Created on 2026-11-09T07:20:17 **
 ** Report includes: Errors, Warnings, Exclusions **
 
-** Found 0 DRC violations **
+** Found 6 DRC violations **
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(105.3322 mm, 122.6993 mm): Footprint FID3
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(112.9576 mm, 81.2217 mm): Footprint FID1
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(77.3007 mm, 93.9178 mm): Footprint FID2
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(82.6970 mm, 86.6822 mm): Footprint FID5
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(91.1414 mm, 121.7383 mm): Footprint FID6
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(124.5000 mm, 100.0000 mm): Footprint FID4
 
 ** Found 0 unconnected pads **
 
 ** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - PTH inside courtyard
+    - NPTH inside courtyard
+    - Footprint component type doesn't match footprint pads
 
 ** End of Report **

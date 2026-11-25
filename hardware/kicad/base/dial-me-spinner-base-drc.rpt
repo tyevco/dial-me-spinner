@@ -1,8 +1,23 @@
 ** Drc report for dial-me-spinner-base.kicad_pcb **
-** Created on 2026-10-19T10:07:21+0000 **
+** Created on 2026-11-09T07:20:28 **
 ** Report includes: Errors, Warnings, Exclusions **
 
-** Found 2 DRC violations **
+** Found 7 DRC violations **
+[lib_footprint_mismatch]: Footprint 'SOT-363_SC-70-6' does not match copy in library 'Package_TO_SOT_SMD'
+    Local override; warning
+    @(92.9079 mm, 105.5410 mm): Footprint Q1
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(113.7886 mm, 86.2114 mm): Footprint FID1
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(80.7962 mm, 96.6139 mm): Footprint FID2
+[lib_footprint_mismatch]: Footprint 'USB_C_Receptacle_HRO_TYPE-C-31-M-12' does not match copy in library 'Connector_USB'
+    Local override; warning
+    @(131.3500 mm, 100.0000 mm): Footprint J1
+[lib_footprint_mismatch]: Footprint 'Fiducial_1mm_Mask2mm' does not match copy in library 'Fiducial'
+    Local override; warning
+    @(109.7500 mm, 116.8875 mm): Footprint FID3
 [silk_edge_clearance]: Silkscreen clipped by board edge
     Rule: board setup constraints silk; warning
     @(134.6000 mm, 106.5000 mm): Segment on Edge.Cuts
@@ -15,5 +30,14 @@
 ** Found 0 unconnected pads **
 
 ** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - PTH inside courtyard
+    - NPTH inside courtyard
+    - Footprint component type doesn't match footprint pads
 
 ** End of Report **

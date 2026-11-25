@@ -57,7 +57,7 @@ def test_every_part_with_pads_is_simulated(name):
     table = json.load(open(jlc_cpl.OFFSETS))
     unsimulated = set()
     for fp in pcbnew.LoadBoard(pcb).GetFootprints():
-        code = fp.GetFieldText("LCSC") if fp.HasFieldByName("LCSC") else ""
+        code = fp.GetFieldText("LCSC") if fp.HasField("LCSC") else ""
         if code and not fp.IsDNP() and not table.get(code, {}).get("ee"):
             unsimulated.add(code)
     assert unsimulated <= {"C4167968"}  # R26 0402: EasyEDA has no footprint for this code
@@ -65,12 +65,12 @@ def test_every_part_with_pads_is_simulated(name):
 
 @pytest.mark.parametrize("name", BOARDS)
 def test_simulation_matches_kicad_geometry_both_sides(name):
-    """With the KiCad library footprint itself as the 'JLC' footprint (α = 0, origin 0), every simulated pad must
+    """With the board's own footprint (in its library frame) as the 'JLC' footprint (α = 0, origin 0), every simulated pad must
     land on the same-numbered board pad on both sides. This ties the CPL angle formula (top θ, bottom 180 − θ) and
     the placement simulation to KiCad's own rotation and flip."""
     pcb, lib = board(name)
     for fp in pcbnew.LoadBoard(pcb).GetFootprints():
-        lib_fp = jlc_cpl._lib_footprint(fp, lib)
+        lib_fp = jlc_cpl._board_footprint(fp)  # the board's own copy, in its library frame
         ee = [[p.GetNumber(), pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y)]
               for p in lib_fp.Pads() if p.GetNumber() and p.IsOnCopperLayer()]
         if not ee:

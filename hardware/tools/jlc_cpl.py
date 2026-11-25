@@ -83,6 +83,24 @@ def _lib_footprint(fp, lib_dirs):
     return _LIB_CACHE[(path, name)]
 
 
+def _board_footprint(fp):
+    """The board's own copy of a footprint, put back in its library frame (unflipped, 0 degrees, at the origin) by
+    KiCad itself. The CPL is checked against this, not the installed library: a KiCad library update (10.0 moved the
+    SOT-363 pads 0.05 mm, renamed the USB-C shield pads S1 -> SH, redrew U.FL) must not change what is checked, and
+    the corrections in jlc_offsets.json were fitted to the footprint the board carries."""
+    c = pcbnew.FOOTPRINT(fp)
+    if c.IsFlipped():
+        c.Flip(c.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
+    c.SetOrientationDegrees(0)
+    c.SetPosition(pcbnew.VECTOR2I(0, 0))
+    return c
+
+
+def _pad_set(f):
+    return sorted((p.GetNumber(), round(pcbnew.ToMM(p.GetPosition().x), 4), round(pcbnew.ToMM(p.GetPosition().y), 4))
+                  for p in f.Pads())
+
+
 def fit(code, lib_fp):
     """Best rotation (0/90/180/270) and EE origin in KiCad-local mm, by pad-number fitting."""
     title, ep = _ee_pads(code)
@@ -119,7 +137,7 @@ def update_offsets(board_paths, lib_dirs, refresh=False):
     for path in board_paths:
         b = pcbnew.LoadBoard(path)
         for fp in b.GetFootprints():
-            code = fp.GetFieldText("LCSC") if fp.HasFieldByName("LCSC") else ""
+            code = fp.GetFieldText("LCSC") if fp.HasField("LCSC") else ""
             if not code or fp.IsDNP():
                 continue
             if code in table and "rot" in table[code] and not refresh:
@@ -130,7 +148,7 @@ def update_offsets(board_paths, lib_dirs, refresh=False):
                         table[code]["ee_error"] = str(e)
                 continue
             try:
-                r = fit(code, _lib_footprint(fp, lib_dirs))
+                r = fit(code, _board_footprint(fp))
             except Exception as e:  # noqa: BLE001 — network or parse problem: record it
                 r = {"error": str(e)}
             table[code] = r or {"error": "no common pads"}
@@ -195,7 +213,7 @@ def write_cpl(pcb_path, out_csv, lib_dirs, strict=True):
         attrs = fp.GetAttributes()
         if fp.IsDNP() or attrs & pcbnew.FP_EXCLUDE_FROM_POS_FILES or attrs & pcbnew.FP_EXCLUDE_FROM_BOM:
             continue
-        code = fp.GetFieldText("LCSC") if fp.HasFieldByName("LCSC") else ""
+        code = fp.GetFieldText("LCSC") if fp.HasField("LCSC") else ""
         corr = table.get(code, {})
         if "rot" not in corr:
             missing.append(f"{fp.GetReference()} ({code or 'no LCSC'})")
@@ -204,10 +222,17 @@ def write_cpl(pcb_path, out_csv, lib_dirs, strict=True):
         bottom = fp.IsFlipped()
         ang = ((180 - th) if bottom else th) + corr["rot"]
         ang = round(ang % 360, 2)
-        lib_fp = _lib_footprint(fp, lib_dirs)
+        own_fp = _board_footprint(fp)
         ref = fp.GetReference()
-        if _check_transform(fp, lib_fp) > 0.005:
+        if _check_transform(fp, own_fp) > 0.005:
             problems.append(f"{ref}: library-to-board transform does not reproduce the board pads")
+        try:
+            lib_fp = _lib_footprint(fp, lib_dirs)
+        except Exception:  # noqa: BLE001 - footprint or library gone from the installed KiCad
+            lib_fp = None
+        if lib_fp is None or _pad_set(lib_fp) != _pad_set(own_fp):
+            notes.append(f"{ref}: the board's {fp.GetFPID().GetLibItemName()} differs from the installed library copy "
+                         "(checked against the board's own copy)")
         x, y = _local_to_board(fp, corr.get("dx", 0.0), corr.get("dy", 0.0))
         mx, my = round(x - ox, 4) + 0.0, round(oy - y, 4) + 0.0  # + 0.0: no "-0.0000"
         rows.append([ref, f"{mx:.4f}mm", f"{my:.4f}mm", "Bottom" if bottom else "Top", f"{ang:g}"])

@@ -11,7 +11,7 @@ magnetic detent, press-click suspension, antenna placement, assembly and mechani
 * **Model:** [`hardware/mechanical/dial_spinner.scad`](../hardware/mechanical/dial_spinner.scad) is a parametric
   OpenSCAD 2021.01 model of the whole device. Every SPEC number is a named constant.
 * **Board parts come from the real PCBs.** [`extract_board_parts.py`](../hardware/mechanical/extract_board_parts.py)
-  reads `hardware/kicad/{main,base}/*.kicad_pcb` (KiCad 9 `pcbnew`) and writes `board_parts.scad`/`.json`: one
+  reads `hardware/kicad/{main,base}/*.kicad_pcb` (KiCad 10 `pcbnew`) and writes `board_parts.scad`/`.json`: one
   oriented box per footprint (Fab outline × datasheet height), plus the mated plugs of the side-entry connectors,
   the module's mated u.FL and a solder-joint body on the NFC pads J11. So every clash check below tests the boards as
   they are placed now.
@@ -979,7 +979,7 @@ pressed.
 | File | Purpose |
 |---|---|
 | `hardware/mechanical/dial_spinner.scad` | Parametric model. Views: `assembly`, `section`, `section_xz`, `exploded`, `board_bottom`, `base_top`, `clash`, `clash_geom`, `nfc` (section on the J11 axis), `prims`, `part` |
-| `hardware/mechanical/extract_board_parts.py` | KiCad boards → `board_parts.scad` / `board_parts.json` (needs KiCad 9 `pcbnew`) |
+| `hardware/mechanical/extract_board_parts.py` | KiCad boards → `board_parts.scad` / `board_parts.json` (needs KiCad 10 `pcbnew`) |
 | `hardware/mechanical/calcs.py` | All calculations in this document; writes `renders/calc_*.png`. §11 and §13 (NFC coil and tail) read the model via `view="prims"`. |
 | `hardware/mechanical/check_clashes.sh [margin]` → `clash_check.py` | CGAL interference check (rotor, press, rest, FA-internal pairs); legend in `clash_legend.txt` |
 | `hardware/mechanical/export_stl.sh` | Exports the 16 printed/machined parts to `stl/` |

@@ -90,7 +90,7 @@ def clip_footprint_silk(board, edge_pts, outline, margin=0.25):
 def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, max_off=3.0, hide=("H", "FID"),
                clip_silk=False):
     outline = pcbnew.SHAPE_POLY_SET()
-    board.GetBoardPolygonOutlines(outline)
+    board.GetBoardPolygonOutlines(outline, True)
     edge_pts = _edge_points(board)
     if clip_silk:  # off by default: an edited footprint shows up as a library mismatch in DRC
         clip_footprint_silk(board, edge_pts, outline)

@@ -41,7 +41,7 @@ def board_pdf(pcb, pdf, layers):
 
 
 def sync_fields(pcb, net):
-    """Copy value/MPN/LCSC/Manufacturer from the (re-exported) netlist onto the board footprints."""
+    """Copy value, DNP, BOM attributes and every symbol field from the (re-exported) netlist onto the board footprints."""
     import pcbnew
     import pcbgen
     comps, _ = pcbgen.load_netlist(net)
@@ -65,15 +65,7 @@ def sync_fields(pcb, net):
         if want != attrs and not attrs & pcbnew.FP_BOARD_ONLY:
             fp.SetAttributes(want)
             changed += 1
-        for k in ("MPN", "LCSC", "Manufacturer"):
-            v = c["fields"].get(k)
-            current = fp.GetFieldText(k) if fp.HasFieldByName(k) else None
-            if v and current != v:
-                fp.SetField(k, v)
-                fld = fp.GetFieldByName(k)
-                if fld:
-                    fld.SetVisible(False)
-                changed += 1
+        changed += pcbgen.sync_footprint_fields(fp, c["fields"])
     if changed:
         pcbnew.SaveBoard(pcb, b)
     return changed

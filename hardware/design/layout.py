@@ -846,7 +846,7 @@ def thermal_points(b):
     """Priority stitching spots: rings around the charger's GND ball (BQ25180 D2) for its heat path."""
     pts = []
     for fp in b.GetFootprints():
-        if "BQ25180" in (fp.GetFieldText("MPN") if fp.HasFieldByName("MPN") else ""):
+        if "BQ25180" in (fp.GetFieldText("MPN") if fp.HasField("MPN") else ""):
             for pad in fp.Pads():
                 if pad.GetNumber() == "D2":
                     x, y = pcbnew.ToMM(pad.GetPosition().x), pcbnew.ToMM(pad.GetPosition().y)
@@ -939,7 +939,7 @@ def set_layer_types(path, layers):
         return
     with open(path, encoding="utf-8") as f:
         s = f.read()
-    s, n = re.subn(r'\((\d+) "In1\.Cu" signal\)', r'(\1 "In1.Cu" power)', s)  # KiCad 9 numbers In1 as layer 4
+    s, n = re.subn(r'\((\d+) "In1\.Cu" signal\)', r'(\1 "In1.Cu" power)', s)  # KiCad 9 and 10 number In1 as layer 4
     if not n:
         raise RuntimeError("In1.Cu layer entry not found: the GND plane would be routed as a signal layer")
     with open(path, "w", encoding="utf-8") as f:

@@ -920,7 +920,7 @@ values from the verified research, with the two SPICE-driven changes
   * It exposes all 48 GPIO plus USB, VDDH and DCCH.
   * The 32 MHz crystal and the REG1 inductor are inside. The 32.768 kHz crystal
     (SC-20S, 2 × 12 pF) is on the board.
-  * It holds an FCC grant (SH6MDBT50Q), and KiCad 9 ships its symbol and
+  * It holds an FCC grant (SH6MDBT50Q), and KiCad ships its symbol and
     footprint.
 * **Antenna:** an off-board **Molex 146153-0100** balanced flex (34.9 × 9 mm,
   100 mm coax) on a printed shelf in the base cup at z ≈ 5.5–6, centred on
