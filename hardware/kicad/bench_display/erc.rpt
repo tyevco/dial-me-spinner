@@ -1,0 +1,16 @@
+ERC report (2026-10-23T20:35:29-0700, Encoding UTF8)
+Report includes: Errors, Warnings, Exclusions
+
+***** Sheet /
+
+***** Sheet /AMOLED bench shield/
+[pin_to_pin]: Pins of type Output and Power output are connected
+    ; error
+    @(58.42 mm, 66.04 mm): Symbol J1 Pin 2 [IOREF, Output, Line]
+    @(81.28 mm, 322.58 mm): Symbol #FLG09 Pin 1 [Power output, Line]
+[pin_to_pin]: Pins of type Open collector and Power output are connected
+    ; error
+    @(386.08 mm, 50.80 mm): Symbol U1 Pin 5 [QOD, Open collector, Line]
+    @(386.08 mm, 48.26 mm): Symbol U1 Pin 6 [VOUT, Power output, Line]
+
+ ** ERC messages: 2  Errors 2  Warnings 0

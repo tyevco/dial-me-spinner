@@ -1,0 +1,269 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "4b4e0897-aa3d-5440-8345-8720f1d731c7")
+	(paper "A3")
+	(title_block
+		(title "NFC coil plate")
+		(date "2026-10-23")
+		(rev "1")
+		(company "dial-me-spinner")
+	)
+	(lib_symbols
+		(symbol "dial_spinner:NFC_Coil"
+			(pin_names
+				(offset 1.016)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "L"
+				(at -7.62 3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left bottom)
+				)
+			)
+			(property "Value" "NFC_Coil"
+				(at -7.62 -3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left top)
+				)
+			)
+			(property "Footprint" "dial_spinner:NFC_Coil_4T_R24.6-26.3_SupportPlate"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "NFC tag coil, 4 turns, on the display support plate (net tie between the ends)"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "nfc antenna coil"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "NFC_Coil_0_1"
+				(rectangle
+					(start -7.62 2.54)
+					(end 7.62 -2.54)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "NFC_Coil_1_1"
+				(pin passive line
+					(at 0 5.08 270)
+					(length 2.54)
+					(name "A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 2.54)
+					(name "B"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(text "Coil"
+		(exclude_from_sim no)
+		(at 15.24 20.32 0)
+		(effects
+			(font
+				(size 2 2)
+				(bold yes)
+			)
+			(justify left top)
+		)
+		(uuid "94611674-f442-5c46-8dfb-25bb508fe60f")
+	)
+	(text "4 turns, 0.25 mm / 0.233 mm gap, r 24.6-26.3 (study 3.3).  ~1.41 uH bare,\nmore over the IFL05K.  Ends on B.Cu pads A (theta 210) and B (theta 190) at r 23: wire or spring them\nto bench_nfc_base's W1/W2, which sit directly under them."
+		(exclude_from_sim no)
+		(at 15.24 24.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+				(italic yes)
+			)
+			(justify left top)
+		)
+		(uuid "e921d809-d9b4-5c71-8b48-28de7b8be0bd")
+	)
+	(rectangle
+		(start 12.7 17.78)
+		(end 119.38 58.42)
+		(stroke
+			(width 0.1)
+			(type dash)
+		)
+		(fill
+			(type none)
+		)
+		(uuid "87344c99-d1e6-5051-8560-5122afb838d5")
+	)
+	(symbol
+		(lib_id "dial_spinner:NFC_Coil")
+		(at 33.02 45.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "a96f109f-54ed-5c35-9ddf-0ae603282598")
+		(property "Reference" "L1"
+			(at 33.02 36.5 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "NFC coil 4T"
+			(at 33.02 54.94 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "dial_spinner:NFC_Coil_4T_R24.6-26.3_SupportPlate"
+			(at 33.02 45.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 33.02 45.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "PCB coil: copper only, nothing to assemble"
+			(at 33.02 45.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "32f55baf-7cc6-5eff-92d6-efe334f73099")
+		)
+		(pin "2"
+			(uuid "e1c61ca4-6c01-51c7-b8f8-522cabfed9f1")
+		)
+		(instances
+			(project "dial-me-spinner-bench_nfc_plate"
+				(path "/fc48ae6b-820c-5234-a46b-1ec97c7946cc/4b4e0897-aa3d-5440-8345-8720f1d731c7"
+					(reference "L1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts (xy 27.94 45.72) (xy 25.4 45.72))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "de5e3faf-af6d-5aa5-bef6-dc38733e7647")
+	)
+	(label "COIL_A"
+		(at 25.4 45.72 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "88651fd7-5bc0-5c13-a5fc-8ea2da064294")
+	)
+	(wire
+		(pts (xy 38.1 45.72) (xy 40.64 45.72))
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "77450ea5-731b-5498-81b5-b4503724473c")
+	)
+	(label "COIL_B"
+		(at 40.64 45.72 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c4046da3-9da9-5f18-a22c-da9b117b3b0e")
+	)
+	(embedded_fonts no)
+)

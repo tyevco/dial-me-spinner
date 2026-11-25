@@ -11,10 +11,12 @@ Design notes, SPEC deviations, PCB placement findings, BOM and assembly order: [
 | `check_clashes.sh [margin]` (→ `clash_check.py`) | CGAL interference check: rotor envelope, press travel, rest, FA-internal pairs (NFC coil and tail included) → `clash_report.txt` (legend: `clash_legend.txt`); margin > 0 checks the rotor envelope only (near misses) |
 | `export_stl.sh` | Printed and machined parts → `stl/*.stl` (binary, on the bed). For the five metal parts the mesh is only the assembly view: order them from `step/` + `drawings/` below |
 | `parts_plate.scad` | Overview of the STLs → `renders/parts.png` |
+| `bench.scad` | Rev B bench fixtures, not the product: `bench_panel_spacer` holds the AMOLED 4 mm over the DK shield, `bench_nfc_spacer` holds the coil plate 3.0 mm over the NFC base ([rev B bench boards](../../docs/rev-b-bench.md)). Exported in print orientation by `export_stl.sh` |
 | `scadvars.py` | Parses the constant table out of `dial_spinner.scad` so the B-rep models below are not a second source of truth for any dimension |
 | `models.py` | The five machined parts (`rotor_ring`, `spindle`, `spindle_hub`, `lower_spacer`, `cap_ring`) as **exact B-rep** solids (build123d / OpenCascade), plus each one's material, stock and shop notes |
 | `drawgen.py` | → `step/*.step` (exact geometry, what a CNC vendor's uploader actually accepts) and `drawings/*.pdf` (dimensioned ISO sheets carrying the fits, threads, knurl and general tolerance that no solid can hold). `--only NAME`, `--no-pdf` |
 | `tests/test_models.py` | Holds the B-rep and the OpenSCAD mesh together: volume, bounding box, ring mass against `calcs.py` §14, and `calcs.py`'s own geometry constants against the `.scad`. Also guards the magnet-shim invariants — recess depth = magnet height, printable shim walls, and that the ring stays turning-only |
+| `tests/test_bench.py` | Holds `bench.scad`'s copies of board numbers to `hardware/design/layout.py`, and re-checks the panel spacer's feet against the routed shield (pcbnew; skips without it) |
 | `render_all.sh` | Regenerate everything (OpenSCAD 2021.01 + xvfb-run + numpy/matplotlib + build123d, ~7 min) |
 
 OpenSCAD has no geometry kernel, so it can only emit a mesh — and JLCCNC's uploader rejects STL outright,
@@ -23,7 +25,7 @@ kernel-backed description of the five metal parts. It repeats only their *topolo
 from `dial_spinner.scad` through `scadvars.py`, and `tests/test_models.py` fails if the two drift:
 
 ```
-~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 42 tests, ~5 s
+~/.venvs/dial-me-spinner/bin/python -m pytest hardware/mechanical/tests -q    # 50 tests, ~7 s
 ```
 
 The exact and meshed volumes agree to 0.011 % on the ring and 0.34 % on the spindle, in the direction

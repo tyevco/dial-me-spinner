@@ -1,0 +1,106 @@
+/*
+ * Rev B bench: the AMOLED shield (hardware/kicad/bench_display) on an nRF52840-DK.
+ *
+ * Pins are the shield's DK_PINS (hardware/design/sheets/bench_display.py).
+ * hardware/design/tests/test_bench_display.py holds this file to the routed
+ * board's J1 nets and to SPEC §4's low-frequency pin list, so neither side can
+ * drift alone.
+ *
+ * The two 32 MHz lines sit on the only full-speed header pins, SCK P1.08 (D7)
+ * and SIO0 P0.04 (A1). Zephyr's arduino_spi pins (P1.13-P1.15) are
+ * low-frequency pins, so SPIM3 gets its own pinctrl here.
+ */
+
+#include <zephyr/dt-bindings/display/panel.h>
+
+/ {
+	chosen {
+		zephyr,display = &co5300;
+	};
+
+	zephyr,user {
+		/* U1 TPS22917 ON. 100k pull-down (R2) holds VBAT off through reset. */
+		disp-vbat-en-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;	/* D1 */
+		/* Panel VCI_EN, the tail's power chip. 100k pull-down (R9). */
+		disp-vci-en-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;	/* D4 */
+		/*
+		 * TE belongs to the app, not the driver: the driver's write waits on
+		 * TE with K_FOREVER, so a panel that never pulses TE would hang the
+		 * shell. The app times TE itself and syncs with a timeout.
+		 */
+		disp-te-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;		/* A5 */
+		/* Touch: open-drain, R22/R23 100k pull-ups to TP_VIO. */
+		tp-int-gpios = <&gpio0 28 GPIO_ACTIVE_LOW>;		/* A2 */
+		tp-rst-gpios = <&gpio0 29 GPIO_ACTIVE_LOW>;		/* A3 */
+	};
+};
+
+&pinctrl {
+	spi3_disp: spi3_disp {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 8)>,		/* D7, DISP_SCK */
+				<NRF_PSEL(SPIM_MOSI, 0, 4)>;		/* A1, DISP_SIO0 */
+			nordic,drive-mode = <NRF_DRIVE_H0H1>;
+		};
+		group2 {
+			/* A4, DISP_SIO1: read-back only, on a low-frequency pin. */
+			psels = <NRF_PSEL(SPIM_MISO, 0, 30)>;
+		};
+	};
+
+	spi3_disp_sleep: spi3_disp_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 8)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 4)>,
+				<NRF_PSEL(SPIM_MISO, 0, 30)>;
+			low-power-enable;
+		};
+	};
+};
+
+/*
+ * The DK enables spi1 on P0.31 (SCK), P0.30 (MOSI) and P1.08 (MISO): TE, SIO1
+ * and the display SCK. Disable it. uart1 (arduino_serial, P1.01/P1.02, the
+ * reset and VBAT_EN lines) is disabled in the DK's devicetree already; keep it so.
+ */
+&spi1 {
+	status = "disabled";
+};
+
+&uart1 {
+	status = "disabled";
+};
+
+&spi3 {
+	status = "okay";
+	pinctrl-0 = <&spi3_disp>;
+	pinctrl-1 = <&spi3_disp_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;			/* D10, DISP_CS_N */
+
+	co5300: display@0 {
+		compatible = "chipone,co5300";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(32)>;
+		width = <466>;
+		height = <466>;
+		pixel-format = <PANEL_PIXEL_FORMAT_RGB_565>;
+		reset-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;	/* D0, DISP_RES_N */
+		/*
+		 * The driver would init at boot, before the app has switched VBAT
+		 * and VCI_EN on. The app calls device_init() after the rails.
+		 */
+		zephyr,deferred-init;
+	};
+};
+
+/* Touch: arduino_i2c (i2c0) is already P0.26/P0.27 on the DK. TWIM for EasyDMA. */
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+};
+
+/* NFCT: the DK's own NFC antenna connector, P0.09/P0.10, already "okay". */
+&nfct {
+	status = "okay";
+};

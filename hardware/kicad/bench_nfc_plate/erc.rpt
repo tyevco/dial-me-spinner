@@ -1,0 +1,14 @@
+ERC report (2026-10-23T20:52:45-0700, Encoding UTF8)
+Report includes: Errors, Warnings, Exclusions
+
+***** Sheet /
+[label_dangling]: Label not connected to anything
+    ; error
+    @(25.40 mm, 45.72 mm): Label 'COIL_A'
+[label_dangling]: Label not connected to anything
+    ; error
+    @(40.64 mm, 45.72 mm): Label 'COIL_B'
+
+***** Sheet /NFC coil plate/
+
+ ** ERC messages: 2  Errors 2  Warnings 0

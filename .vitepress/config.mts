@@ -57,6 +57,7 @@ export default withMermaid(defineConfig({
           { text: 'Architecture', link: '/docs/architecture' },
           { text: 'SPEC (architecture of record)', link: '/hardware/design/SPEC' },
           { text: 'Display study (rev B)', link: '/docs/display-study' },
+          { text: 'Rev B bench boards', link: '/docs/rev-b-bench' },
         ],
       },
       {
@@ -71,7 +72,10 @@ export default withMermaid(defineConfig({
       },
       {
         text: 'Firmware',
-        items: [{ text: 'Firmware design', link: '/docs/firmware' }],
+        items: [
+          { text: 'Firmware design', link: '/docs/firmware' },
+          { text: 'Rev B bench firmware', link: '/firmware/bench/README' },
+        ],
       },
       {
         text: 'Verification',

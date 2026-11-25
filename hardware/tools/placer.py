@@ -66,13 +66,16 @@ class Placer:
         self.keepouts = keepouts or []
         self.power_nets = set(power_nets)
         self.occupied = {"F": [], "B": []}
+        # optional fp -> boxes override, for a part whose bounding box is mostly empty board (a shield's headers)
+        self.boxes_for = None
 
     @staticmethod
     def side(fp):
         return "B" if fp.IsFlipped() else "F"
 
     def mark(self, fp):
-        for box in _boxes_mm(fp):
+        boxes = self.boxes_for(fp) if self.boxes_for else None
+        for box in boxes or _boxes_mm(fp):
             self.occupied[self.side(fp)].append((fp.GetReference(), box))
         # through-hole / NPTH pads (e.g. Tag-Connect alignment holes) block the other side too
         if any(p.GetAttribute() != pcbnew.PAD_ATTRIB_SMD for p in fp.Pads()):

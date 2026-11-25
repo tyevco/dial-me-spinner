@@ -671,6 +671,253 @@ def pours_base(bb):
 
 
 # --------------------------------------------------------------------------- common flow
+# ---------------------------------------------------------------- rev B bench: AMOLED shield for the nRF52840-DK
+# Arduino Uno R3 shield, 68.58 x 53.34 mm.  The outline and header pads come from KiCad's Module:Arduino_UNO_R3
+# footprint (pad 1 at its origin; the board edge runs x -27.94..+40.64, y -2.54..+50.80 from it, the fab outline
+# less the USB jack's 6.35 mm overhang).
+#
+# The panel sits face-up over the shield on a ~4 mm spacer with its tail folded behind it, as the vendor's fold
+# diagram and Waveshare's board use it: unfolded beside the board the contacts would face UP, the wrong way for a
+# bottom-contact FH26.  Folded, the contact end lands near the middle of the panel's back, so J2 sits near the
+# outline's centre with its FPC entry (the side away from the back-flip actuator) facing the fold, at the left.
+# The exact landing point needs a sample in hand (display-study §3.4); the tail has the slack for a bench fit.
+# Nothing taller than ~1.2 mm under the outline: the pin-header jumpers live to the right of it.
+# All parts on the top: one-sided assembly.
+SHIELD_W, SHIELD_H = 68.58, 53.34
+SHIELD_X0, SHIELD_Y0 = CX - SHIELD_W / 2, CY - SHIELD_H / 2
+SHIELD_PAD1 = (SHIELD_X0 + 27.94, SHIELD_Y0 + 2.54)       # Arduino footprint origin
+PANEL_C, PANEL_R = (SHIELD_X0 + 25.5, CY), 48.96 / 2      # Huaxin cover glass Ø48.96 (Viewe: Ø48.16)
+J2_SHIELD = (PANEL_C[0] + 2.0, CY, 180.0)                  # 180: the actuator faces right, entry faces the fold
+TP_COLUMN = {"TP1": -3.81, "TP2": -1.27, "TP3": 1.27, "TP4": 3.81}   # scope points 6 mm right of J2
+TP_GND = {"TP5": -2.54, "TP6": 2.54}                                # their ground springs, 8.5 mm right
+
+
+def shield_outline(bb):
+    x0, y0, x1, y1 = SHIELD_X0, SHIELD_Y0, SHIELD_X0 + SHIELD_W, SHIELD_Y0 + SHIELD_H
+    pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    bb.polyline(pcbnew.Edge_Cuts, pts, 0.1, closed=True)
+    return pts
+
+
+def shield_inside(x, y, side):
+    m = 0.8
+    return SHIELD_X0 + m <= x <= SHIELD_X0 + SHIELD_W - m and SHIELD_Y0 + m <= y <= SHIELD_Y0 + SHIELD_H - m
+
+
+def shield_fixed(comps):
+    P = {}
+    for ref, c in comps.items():
+        if c["footprint"].endswith("Arduino_UNO_R3"):
+            P[ref] = (*SHIELD_PAD1, 0.0, "F")
+        elif "FH26" in mpn(c):
+            P[ref] = (*J2_SHIELD[:2], J2_SHIELD[2], "F")
+        elif c["value"] == "VBAT EXT":
+            P[ref] = (SHIELD_X0 + 56.0, CY + 4.0, 0.0, "F")
+        elif c["value"] == "VBAT SEL":
+            P[ref] = (SHIELD_X0 + 61.0, CY + 2.73, 0.0, "F")
+        elif c["value"] == "IDD LOGIC":
+            P[ref] = (SHIELD_X0 + 58.5, CY - 13.0, 0.0, "F")
+        elif ref in TP_COLUMN:
+            P[ref] = (J2_SHIELD[0] + 6.0, CY + TP_COLUMN[ref], 0.0, "F")
+        elif ref in TP_GND:
+            P[ref] = (J2_SHIELD[0] + 8.5, CY + TP_GND[ref], 0.0, "F")
+    return P
+
+
+def _header_rows(fp, margin=1.4):
+    """One box per header row of the Arduino footprint: its pads, not the Uno board it outlines."""
+    rows = {}
+    for p in fp.Pads():
+        rows.setdefault(round(pcbnew.ToMM(p.GetPosition().y), 1), []).append(pcbnew.ToMM(p.GetPosition().x))
+    return [(min(xs) - margin, y - margin, max(xs) + margin, y + margin) for y, xs in rows.items()]
+
+
+def shield_boxes(fp):
+    return _header_rows(fp, 1.6) if fp.GetFPIDAsString().endswith("Arduino_UNO_R3") else None
+
+
+def shield_headers_only(fp):
+    """Strip the Uno outline (silk, courtyard) from J1 and give it a courtyard per header row instead."""
+    for g in list(fp.GraphicalItems()):
+        if g.GetLayer() in (pcbnew.F_SilkS, pcbnew.F_CrtYd):
+            fp.Remove(g)
+    for x0, y0, x1, y1 in _header_rows(fp, 1.4):
+        r = pcbnew.PCB_SHAPE(fp)
+        r.SetShape(pcbnew.SHAPE_T_RECT)
+        r.SetStart(pcbnew.VECTOR2I(pcbgen.MM(x0), pcbgen.MM(y0)))
+        r.SetEnd(pcbnew.VECTOR2I(pcbgen.MM(x1), pcbgen.MM(y1)))
+        r.SetLayer(pcbnew.F_CrtYd)
+        r.SetWidth(pcbgen.MM(0.05))
+        fp.Add(r)
+
+
+def shield_keepouts():
+    return [("B", lambda x, y: True)]        # nothing on the bottom: it faces the DK
+
+
+def build_shield(bb, comps, nets):
+    bb.edge_band_keepout(shield_outline(bb))
+    for r, c in comps.items():
+        if c["footprint"].endswith("Arduino_UNO_R3"):
+            shield_headers_only(bb.footprints[r])
+    x, y, _ = J2_SHIELD
+    bb.text(pcbnew.F_SilkS, "PIN 1", x + 1.4, y - 7.0, 0.8)                 # connector pin 31: local (-1.4, +4.5), turned
+    bb.text(pcbnew.F_SilkS, "<- TAIL FOLD, CONTACTS DOWN", PANEL_C[0] - 10.5, CY + 7.5, 0.8, angle=90)
+    bb.circle(pcbnew.F_SilkS, *PANEL_C, PANEL_R, 0.12)                    # cover glass on its spacer
+    bb.text(pcbnew.F_SilkS, "PANEL GLASS, 4 mm SPACER", PANEL_C[0] + 3.0, CY - PANEL_R + 6.0, 0.8)
+    bb.text(pcbnew.F_SilkS, "VBAT EXT", SHIELD_X0 + 56.0, CY + 9.6, 0.8)
+    bb.text(pcbnew.F_SilkS, "1+ 2-", SHIELD_X0 + 53.4, CY + 5.3, 0.8, angle=90)
+    bb.text(pcbnew.F_SilkS, "SEL", SHIELD_X0 + 61.0, CY + 0.6, 0.8)
+    bb.text(pcbnew.F_SilkS, "1 EXT", SHIELD_X0 + 65.0, CY + 2.73, 0.8)
+    bb.text(pcbnew.F_SilkS, "3 DK", SHIELD_X0 + 64.8, CY + 7.81, 0.8)
+    bb.text(pcbnew.F_SilkS, "IDD LOGIC", SHIELD_X0 + 58.5, CY - 16.8, 0.8)
+    bb.text(pcbnew.F_SilkS, "SCK SIO0 CS TE", J2_SHIELD[0] + 8.0, CY - 6.4, 0.8)
+    bb.text(pcbnew.F_SilkS, "REV B BENCH r1", SHIELD_X0 + 58.5, CY + 14.0, 1.0)
+    bb.text(pcbnew.F_SilkS, "AMOLED / nRF52840-DK", SHIELD_X0 + 58.5, CY + 15.8, 0.8)
+
+
+def pours_shield(bb):
+    m = 0.3
+    pts = [(SHIELD_X0 + m, SHIELD_Y0 + m), (SHIELD_X0 + SHIELD_W - m, SHIELD_Y0 + m),
+           (SHIELD_X0 + SHIELD_W - m, SHIELD_Y0 + SHIELD_H - m), (SHIELD_X0 + m, SHIELD_Y0 + SHIELD_H - m)]
+    bb.zone("GND", [pcbnew.B_Cu], pts, priority=0, clearance=0.25, name="GND_BOT")
+    bb.zone("GND", [pcbnew.F_Cu], pts, priority=0, clearance=0.25, name="GND_TOP")
+
+
+# ---------------------------------------------------------------- rev B bench: NFC coil support plate
+# docs/display-study.md §3.2/§3.3: 0.4 mm FR4, r <= 26.6, the coil on its rim.  Everything is fixed: the coil is one
+# footprint at the centre and the plate carries no other copper -- no pour, since ground on the plate would load the
+# coil.  Three locating holes at r 19 take the pins of a printed spacer that holds the plate 3.5 mm over
+# bench_nfc_base (the stack height the study models).  The ferrite sheet goes on the BOTTOM, between plate and ground,
+# so its outline and notches are drawn on the bottom silk to cut it against.
+PLATE_R = 26.6
+PLATE_HOLES = (30.0, 150.0, 270.0)
+PLATE_HOLE_R = 19.0                       # M2 hole courtyard r 2.45 stays inside the coil courtyard (r 21.9)
+GLASS_R = 48.96 / 2                       # Huaxin cover glass; the Viewe glass is Ø48.16
+TMAG_NOTCH = (253.0, 287.0)               # no ferrite within ±17° of the TMAG5273 at theta 270 (study §3.3, estimate)
+DETENT_NOTCH = (75.0, 105.0)              # optional: over the detent magnet's path
+
+
+def plate_outline(bb):
+    # a true circle: a polygon's flats sit inside it and would eat the coil's 0.3 mm edge margin
+    bb.circle(pcbnew.Edge_Cuts, CX, CY, PLATE_R, 0.1)
+
+
+def plate_fixed(comps):
+    return {ref: (CX, CY, 0.0, "F") for ref, c in comps.items() if c["footprint"].endswith("SupportPlate")}
+
+
+def _notch(bb, a0, a1, r0, r1, label):
+    for a in (a0, a1):
+        bb.polyline(pcbnew.B_SilkS, [pol(r0, a), pol(r1, a)], 0.15, closed=False)
+    bb.polyline(pcbnew.B_SilkS, [pol(r0, a0 + (a1 - a0) * i / 24) for i in range(25)], 0.15, closed=False)
+    x, y = pol(r0 - 2.2, (a0 + a1) / 2)
+    bb.text(pcbnew.B_SilkS, label, x, y, 0.8, mirror=True)
+
+
+def build_plate(bb, comps, nets):
+    plate_outline(bb)
+    for i, th in enumerate(PLATE_HOLES, 1):
+        bb.mounting_hole(*pol(PLATE_HOLE_R, th), "MountingHole:MountingHole_2.2mm_M2", f"H{i}")
+    bb.circle(pcbnew.F_SilkS, CX, CY, GLASS_R, 0.12)             # between the B via (r <= 24.33) and the coil (24.6)
+    bb.text(pcbnew.F_SilkS, "PANEL GLASS", CX, CY - 15.0, 1.0)
+    bb.text(pcbnew.F_SilkS, "rev B bench: NFC coil plate r1", CX, CY + 14.0, 1.0)
+    bb.text(pcbnew.F_SilkS, "0.4 mm FR4, coil r 24.6-26.3", CX, CY + 16.0, 0.8)
+    # the ferrite disc (r <= PLATE_R) is the plate itself; cut the notches out of it
+    _notch(bb, *TMAG_NOTCH, 23.6, PLATE_R - 0.4, "TMAG NOTCH")
+    _notch(bb, *DETENT_NOTCH, 23.6, PLATE_R - 0.4, "OPTIONAL")
+    bb.text(pcbnew.B_SilkS, "IFL05K HERE (BOTTOM)", CX, CY, 1.0, mirror=True)
+
+
+def pours_plate(bb):
+    pass
+
+
+# ---------------------------------------------------------------- rev B bench: NFC ground plane + tuning
+# A Ø64 copy of the main board as the coil sees it: the TOP is one GND pour (In1's stand-in) broken only by the two
+# coil contacts under the plate's pads; every part is on the bottom.  The DK header sits at r 29, outside the plate.
+NFCB_R = 32.0
+NFCB_CENTRE_HOLE = 2.5                    # the main board's Ø5 centre hole
+
+
+def nfcb_fixed(comps):
+    P = {}
+    for ref, c in comps.items():
+        if c["value"] == "COIL A":
+            P[ref] = (*pol(23.0, 210.0), 0.0, "F")
+        elif c["value"] == "COIL B":
+            P[ref] = (*pol(23.0, 190.0), 0.0, "F")
+        elif c["value"] == "TO DK J5":
+            P[ref] = (*pol(29.3, 200.0), 200.0 - 90.0, "B")      # pins along the tangent, outside the plate
+        elif c["value"] == "U.FL":
+            P[ref] = (*pol(11.0, 200.0), 0.0, "B")
+        elif ref in NFCB_PARTS:
+            P[ref] = (*pol(*NFCB_PARTS[ref]), 0.0, "B")
+    return P
+
+
+# The tuning network, laid out symmetrically so the two pins stay matched: NFC1 (coil end A) on the theta 210 side,
+# NFC2 (coil end B) on the theta 190 side, the damping R between them, the VNA links toward the U.FL.  The placer
+# packed these into the gap between the coil contacts and the edge header, where they could not all be routed.
+NFCB_PARTS = {"R1": (20.0, 211.0), "C1": (17.5, 213.0), "C3": (15.0, 214.0),
+              "R2": (20.0, 189.0), "C2": (17.5, 187.0), "C4": (15.0, 186.0),
+              "R3": (17.5, 200.0), "R4": (14.0, 205.0), "R5": (14.0, 195.0)}
+
+
+def nfcb_post_fixed(bb, comps, fixed):
+    """Lay the DK header along the tangent at r 29.3, centred on its MIDDLE pin (its origin is pin 1).
+
+    Measured rather than computed: on the bottom side the footprint's rotation sense is mirrored."""
+    for ref, c in comps.items():
+        if c["value"] != "TO DK J5":
+            continue
+        fp = bb.footprints[ref]
+
+        def pad_xy():
+            return {p.GetNumber(): (pcbnew.ToMM(p.GetPosition().x), pcbnew.ToMM(p.GetPosition().y)) for p in fp.Pads()}
+        q = pad_xy()
+        have = math.degrees(math.atan2(q["3"][1] - q["1"][1], q["3"][0] - q["1"][0]))
+        th = math.radians(200.0)
+        want = math.degrees(math.atan2(math.cos(th), math.sin(th)))   # the tangent, in page coordinates (y down)
+        fp.Rotate(fp.GetPosition(), pcbnew.EDA_ANGLE(-(want - have), pcbnew.DEGREES_T))
+        q = pad_xy()
+        tx, ty = pol(29.3, 200.0)
+        fp.Move(pcbnew.VECTOR2I(pcbgen.MM(tx - q["2"][0]), pcbgen.MM(ty - q["2"][1])))
+        q = pad_xy()
+        spread = abs(radius(*q["1"]) - radius(*q["3"]))
+        assert spread < 0.1, f"{ref} is not tangential (radial spread {spread:.2f} mm)"
+        # one label per pad, from where the pads actually are: a single line of text read the pins backwards
+        for num, name in (("1", "NFC1"), ("2", "NFC2"), ("3", "GND")):
+            x, y = q[num]
+            r, a = radius(x, y), angle(x, y)
+            bb.text(pcbnew.B_SilkS, name, *pol(r - 3.2, a), 0.8, mirror=True)
+
+
+def nfcb_inside(x, y, side):
+    return NFCB_CENTRE_HOLE + 1.0 <= radius(x, y) <= NFCB_R - 0.8
+
+
+def build_nfcb(bb, comps, nets):
+    bb.circle(pcbnew.Edge_Cuts, CX, CY, NFCB_R, 0.1)
+    bb.circle(pcbnew.Edge_Cuts, CX, CY, NFCB_CENTRE_HOLE, 0.1)
+    for i, th in enumerate(PLATE_HOLES, 1):
+        bb.mounting_hole(*pol(PLATE_HOLE_R, th), "MountingHole:MountingHole_2.2mm_M2", f"H{i}")
+    # no tracks on the top at all: a track there slots the plane this board exists to provide
+    bb.keepout([pcbnew.F_Cu], bb.circle_pts(CX, CY, NFCB_R + 0.5, 96), tracks=True, vias=False, pads=False,
+               pours=False, name="TOP_IS_A_PLANE")
+    bb.circle(pcbnew.F_SilkS, CX, CY, PLATE_R, 0.12)
+    bb.text(pcbnew.F_SilkS, "COIL PLATE ON A 3.0 mm SPACER", CX, CY - 10.0, 1.0)
+    bb.text(pcbnew.F_SilkS, "TOP = GND PLANE (MAIN BOARD In1)", CX, CY + 10.0, 1.0)
+    bb.text(pcbnew.B_SilkS, "rev B bench: NFC base r1", CX, CY + 8.0, 1.0, mirror=True)
+    bb.text(pcbnew.B_SilkS, "VNA: FIT R4 R5", CX, CY - 8.0, 1.0, mirror=True)
+
+
+def pours_nfcb(bb):
+    ring = bb.circle_pts(CX, CY, NFCB_R - 0.3, 180)
+    bb.zone("GND", [pcbnew.F_Cu], ring, priority=0, clearance=0.25, name="GND_PLANE_TOP")
+    bb.zone("GND", [pcbnew.B_Cu], ring, priority=0, clearance=0.25, name="GND_BOT")
+
+
 BOARDS = {
     "main": dict(layers=4, fixed=main_fixed, anchors=main_anchor_sides, inside=main_inside,
                  keepouts=main_keepouts, build=build_main, pours=pours_main, power_track=0.3,
@@ -694,6 +941,27 @@ BOARDS = {
                  keepouts=base_keepouts, build=build_base, pours=pours_base, power_track=0.3,
                  post_fixed=base_post_fixed, post_place=base_post_place,
                  fiducials=[("F", 19.5, 45), ("F", 19.5, 170), ("F", 19.5, 300)]),
+    "bench_display": dict(layers=2, fixed=shield_fixed, anchors=lambda comps: {}, inside=shield_inside,
+                          keepouts=shield_keepouts, build=build_shield, pours=pours_shield, power_track=0.4,
+                          boxes_for=shield_boxes,
+                          power_nets=("VBAT_EXT", "VBAT_IN", "DISP_VBAT", "VDD_DK", "VDD_PANEL", "VCI", "IOVCC",
+                                      "TP_VDD", "TP_VIO"),
+                          # everything that reaches the FH26 (0.6 mm pitch per row) at 0.2 mm; DISP_VBAT's
+                          # ~200 mA worst case is fine at 0.2 mm over this length.  Only the switch input stays wide.
+                          light_power=("DISP_VBAT", "VDD_DK", "VDD_PANEL", "VCI", "IOVCC", "TP_VDD", "TP_VIO"),
+                          rules=dict(track=0.15, clearance=0.15, via=0.5, via_drill=0.3),
+                          # series 0R on the 32 MHz lines at the DK pin (the scope points are fixed beside J2)
+                          pin_anchors={"R6": ("J1", "DISP_SCK_DK"), "R7": ("J1", "DISP_SIO0_DK")},
+                          fiducials=[("F", 30.0, 160), ("F", 30.0, 20), ("F", 30.0, 300)]),
+    "bench_nfc_plate": dict(layers=2, fixed=plate_fixed, anchors=lambda comps: {},
+                            inside=lambda x, y, side: radius(x, y) <= PLATE_R - 0.5, keepouts=lambda: [],
+                            build=build_plate, pours=pours_plate, power_track=0.3,
+                            rules=dict(track=0.2, clearance=0.15, via=0.45, via_drill=0.25)),
+    "bench_nfc_base": dict(layers=2, fixed=nfcb_fixed, anchors=lambda comps: {}, inside=nfcb_inside,
+                           keepouts=lambda: [("F", lambda x, y: True)],    # the top stays a plane
+                           build=build_nfcb, pours=pours_nfcb, power_track=0.3, post_fixed=nfcb_post_fixed,
+                           stitch_pitch=5.0,     # 13.56 MHz: a 5 mm stitch is still far below lambda/20 (1.1 m)
+                           rules=dict(track=0.25, clearance=0.2, via=0.6, via_drill=0.3)),
 }
 
 
@@ -745,7 +1013,7 @@ def generate(board, pours=True):
     bb.rules(edge=0.3, **rules)
     bb.set_origin(CX, CY)
     power = [n for n in nets if n in ("VSYS", "VLED", "VBUS", "VBAT", "+3V3", "GND", "+13V_OLED", "OLED_VIN")
-             or n.endswith("/VSYS")]
+             + tuple(cfg.get("power_nets", ())) or n.endswith("/VSYS")]
     pt = cfg["power_track"]
     light = [n for n in power if n in cfg.get("light_power", ())]  # low-current rails: 0.2 mm eases the dense areas
     clr = rules["clearance"]
@@ -762,6 +1030,7 @@ def generate(board, pours=True):
     if "post_fixed" in cfg:
         cfg["post_fixed"](bb, comps, fixed)
     placer = Placer(bb.board, cfg["inside"], cfg["keepouts"](), power_nets=("GND",))
+    placer.boxes_for = cfg.get("boxes_for")
     for ref in fixed:
         placer.mark(bb.footprints[ref])
     for fp in bb.board.GetFootprints():  # mounting holes added by the board builder

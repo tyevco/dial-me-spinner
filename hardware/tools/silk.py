@@ -41,6 +41,24 @@ def _edge_points(board, step=0.2):
     return pts
 
 
+def _shape_boxes(d, grow):
+    """Obstacle boxes for a silk drawing.  A circle blocks only along its ring: as one bounding box, a large guide
+    circle (a panel outline) blocks every spot inside it and pushes free labels off the board."""
+    if isinstance(d, pcbnew.PCB_SHAPE) and d.GetShape() == pcbnew.SHAPE_T_CIRCLE:
+        c, r = d.GetCenter(), pcbnew.ToMM(d.GetRadius())
+        cx, cy, w = pcbnew.ToMM(c.x), pcbnew.ToMM(c.y), pcbnew.ToMM(d.GetWidth()) / 2 + grow
+        n = max(8, int(2 * math.pi * r / 0.5))
+        return [(cx + r * math.cos(2 * math.pi * k / n) - w, cy + r * math.sin(2 * math.pi * k / n) - w,
+                 cx + r * math.cos(2 * math.pi * k / n) + w, cy + r * math.sin(2 * math.pi * k / n) + w)
+                for k in range(n)]
+    return [_mm_box(d.GetBoundingBox(), grow)]
+
+
+def _inside(box, outline):
+    """Every corner of the box on the board (the edge test alone lets a label wander off it)."""
+    return all(outline.Contains(pcbnew.VECTOR2I(MM(x), MM(y))) for x in box[0::2] for y in box[1::2])
+
+
 def _edge_clear(box, pts, margin):
     x0, y0, x1, y1 = box
     for x, y in pts:
@@ -109,7 +127,7 @@ def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, 
                     obstacles[side].append(_mm_box(f.GetBoundingBox(), gap))
         for d in board.GetDrawings():
             if d.GetLayer() == silk and not isinstance(d, pcbnew.PCB_TEXT):
-                obstacles[side].append(_mm_box(d.GetBoundingBox(), gap))
+                obstacles[side] += _shape_boxes(d, gap)
     # free board texts (labels, title) keep their spot if it is clear, else move to the nearest clear one
     for d in board.GetDrawings():
         if not isinstance(d, pcbnew.PCB_TEXT) or d.GetLayer() not in (pcbnew.F_SilkS, pcbnew.B_SilkS):
@@ -124,7 +142,7 @@ def place_refs(board, height=0.8, thickness=0.15, gap=0.15, mask=0.1, edge=0.3, 
                 a = 2 * math.pi * k / max(1, int(2 * math.pi * r / 0.25))
                 dx, dy = r * math.cos(a), r * math.sin(a)
                 box = (tb[0] + dx, tb[1] + dy, tb[2] + dx, tb[3] + dy)
-                if not any(_hit(box, o) for o in obstacles[side]) and _edge_clear(box, edge_pts, edge):
+                if not any(_hit(box, o) for o in obstacles[side]) and _edge_clear(box, edge_pts, edge)                         and _inside(box, outline):
                     spot = (dx, dy, box)
                     break
             if spot:
