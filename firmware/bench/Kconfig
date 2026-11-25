@@ -1,0 +1,34 @@
+# Rev B bench firmware options.
+
+mainmenu "dial-me-spinner rev B bench"
+
+config BENCH_AUTO_POWERUP
+	bool "Run the panel bring-up sequence at boot"
+	default y
+	help
+	  Switch VBAT on, then VCI_EN, then initialise the CO5300 and show
+	  colour bars, logging each step. Turn it off to start with the panel
+	  unpowered and run "power up" by hand, e.g. with a PPK2 already logging.
+
+config BENCH_VBAT_SETTLE_MS
+	int "Wait after DISP_VBAT_EN before VCI_EN (ms)"
+	default 10
+	help
+	  U1 (TPS22917, CT = 1 nF) reaches 90 % in about 4 ms (SLVSDW8B 7.6,
+	  3.8-4 us/pF). 10 ms leaves margin. Measure on the bench.
+
+config BENCH_VCI_SETTLE_MS
+	int "Wait after VCI_EN before the panel reset and init (ms)"
+	default 20
+	help
+	  Time for the tail's power chip (BV6802W, no datasheet found) to bring
+	  up the AMOLED rails. A guess: measure it on the bench.
+
+config BENCH_SLPOUT_MS
+	int "Wait after sleep-out (11h) before display-on (29h) (ms)"
+	default 120
+	help
+	  The usual DCS figure. The Zephyr driver sends 29h straight after 11h,
+	  so the app sends 29h again after this wait.
+
+source "Kconfig.zephyr"

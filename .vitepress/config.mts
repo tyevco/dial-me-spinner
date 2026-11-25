@@ -72,7 +72,10 @@ export default withMermaid(defineConfig({
       },
       {
         text: 'Firmware',
-        items: [{ text: 'Firmware design', link: '/docs/firmware' }],
+        items: [
+          { text: 'Firmware design', link: '/docs/firmware' },
+          { text: 'Rev B bench firmware', link: '/firmware/bench/README' },
+        ],
       },
       {
         text: 'Verification',
